@@ -91,10 +91,10 @@ export const generarPDFResultados = async (numeroUsuario, puntaje, respuestas, u
                    .font('Helvetica-Bold')
                    .text(`Pregunta ${i + 1}:`, { continued: false })
                    .font('Helvetica')
-                   .text(pregunta.texto)
+                   .text(`${pregunta.texto} (${pregunta.area})`)
                    .moveDown(0.3);
                 
-                doc.text(`Respuesta seleccionada: ${respuestaUsuario.texto} (${respuestaUsuario.puntos} puntos)`)
+                doc.text(`Respuesta seleccionada: ${respuestaUsuario.texto} ${respuestaUsuario.area} (${respuestaUsuario.puntos} puntos)`)
                    .fontSize(10)
                    .font('Helvetica-Oblique')
                    .text(`Interpretación: ${respuestaUsuario.interpretacion}`)

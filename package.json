@@ -12,7 +12,9 @@
     "start": "node start-all.js",
     "web": "node ./web/server.js",
     "dev-all": "npm run lint && nodemon ./start-all.js",
-    "start-all": "node ./start-all.js"
+    "start-all": "node ./start-all.js",
+    "test":"vitest run",
+    "gen:pdf": "node ./scripts/generatePDF.js"
   },
   "prisma": {
     "seed": "node prisma/seed/seed.js"
@@ -39,7 +41,8 @@
     "eslint": "^8.57.0",
     "eslint-plugin-builderbot": "latest",
     "nodemon": "^3.1.0",
-    "prisma": "6.18.0"
+    "prisma": "6.18.0",
+    "vitest": "^2.1.9"
   },
   "author": "",
   "license": "ISC",

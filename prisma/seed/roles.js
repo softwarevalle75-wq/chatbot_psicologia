@@ -754,7 +754,7 @@ async function main() {
                 ]
                 },
             sesiones: 0, //agregar sesiones
-            telefono: '573215963002', //agregar telefono
+            telefono: '573123192484', //agregar telefono
         },
     ]
 
@@ -794,7 +794,7 @@ async function main() {
 //-------------------------------------------------------------------------------------------------------------------------------------------
   const admins = [
     {
-      telefono: process.env.PRIMER_ADMIN || 573183644600,
+      telefono: String(process.env.PRIMER_ADMIN) || '573183644600',
       rol: 'admin',
       updatedAt: new Date(),
     }

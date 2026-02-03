@@ -172,7 +172,7 @@ export const practOfrecerTestFlow__ElegirTest = addKeyword('__NUNCA__')
     console.log('🔥 Estado actualizado - currentFlow: esperandoResultados');
   })
   .addAnswer(
-    '⏳ Por favor, espera a que el paciente termine su prueba.\n\n📝 Cuando termine, recibirás una notificación.',   
+    '⏳ Por favor, espera a que el paciente termine su prueba.\n\nCuando termine, *recibirás una notificación*.',   
     { capture: true },
     async (_, { flowDynamic}) => {
 
