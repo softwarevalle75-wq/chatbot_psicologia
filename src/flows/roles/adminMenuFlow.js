@@ -1,11 +1,23 @@
 import { addKeyword } from '@builderbot/bot';
 import { setRolTelefono, getRolTelefono, createUsuarioBasico, ensureRolMapping, obtenerUsuario } from '../../queries/queries.js';
+import { 
+  validarCambioRolPosible, 
+  revertirPracticanteAUsuario 
+} from '../../queries/cambioRol.js';
+import { 
+  notificarCambioRol, 
+  iniciarRecoleccionDatos, 
+  notificarAdministrador,
+  notificarError 
+} from '../../helpers/notificacionesCambioRol.js';
 
 const MENU = `
-*Menú Admin*
-1️⃣ Asignar / cambiar rol a un número
-2️⃣ Crear usuario con rol  
+*👑 Menú Administrador*
+
+1️⃣ Cambiar rol de usuario existente
+2️⃣ Crear nuevo usuario con rol  
 3️⃣ Ver rol actual de un número
+4️⃣ Ver usuarios pendientes de completar datos
 9️⃣ Salir
 
 Responde con el número de la opción.
@@ -51,9 +63,9 @@ export const adminMenuFlow = addKeyword(['menu'])
       console.log('📥 Admin Menu - Opción recibida:', ctx.body);
       const opt = (ctx.body || '').trim();
       
-      // Validar opción
-      if (!['1','2','3','9'].includes(opt)) {
-        return fallBack('❌ Opción inválida. Responde con *1*, *2*, *3* o *9*.');        
+// Validar opción
+      if (!['1','2','3','4','9'].includes(opt)) {
+        return fallBack('❌ Opción inválida. Responde con *1*, *2*, *3*, *4* o *9*.');        
       }
 
       // Opción de salir
@@ -107,7 +119,7 @@ export const adminPedirTelefonoFlow = addKeyword(['__capture_only__'])
       console.log('✅ Teléfono normalizado:', phone);
       await state.update({ admin_phone: phone });
 
-      // OPCIÓN 3: Ver rol actual
+// OPCIÓN 3: Ver rol actual
       if (stepOpt === '3') {
         console.log('🔍 Consultando rol para:', phone);
         try {
@@ -117,6 +129,32 @@ export const adminPedirTelefonoFlow = addKeyword(['__capture_only__'])
         } catch (err) {
           console.error('Error consultando rol:', err);
           await flowDynamic('❌ Error consultando el rol.');
+        }
+        
+        await state.clear();
+        console.log('🔙 Volviendo a adminMenuFlow');
+        return gotoFlow(adminMenuFlow);
+      }
+
+      // OPCIÓN 4: Ver usuarios pendientes
+      if (stepOpt === '4') {
+        console.log('🔍 Buscando usuarios pendientes...');
+        await flowDynamic('🔍 Buscando usuarios pendientes de completar datos...');
+        
+        try {
+          const { verificarUsuariosPendientes } = await import('../../helpers/notificacionesCambioRol.js');
+          const pendientes = await verificarUsuariosPendientes();
+          
+          if (pendientes.length === 0) {
+            await flowDynamic('✅ No hay usuarios pendientes de completar datos.');
+          } else {
+            await flowDynamic(`📋 *Usuarios pendientes (${pendientes.length}):*\n\n` + 
+              pendientes.map(tel => `📱 ${tel}`).join('\n') + 
+              '\n\nEstos usuarios recibirán recordatorios automáticos.');
+          }
+        } catch (err) {
+          console.error('Error verificando usuarios pendientes:', err);
+          await flowDynamic('❌ Error al verificar usuarios pendientes.');
         }
         
         await state.clear();
@@ -164,25 +202,50 @@ export const adminAsignarRolFlow = addKeyword(['__capture_only__'])
         return gotoFlow(adminAsignarRolFlow);
       }
 
-      // Procesar la asignación
+// Procesar la asignación
       console.log('✅ Procesando:', { stepOpt, phone, rol });
+      
       try {
         if (stepOpt === '1') {
-          await setRolTelefono(phone, rol);
-          await flowDynamic(`✅ Rol de ${phone} actualizado a *${rol}*.`);
-        }
-
-        if (stepOpt === '2') {
+          // OPCIÓN 1: Cambiar rol de usuario existente (con migración de datos)
+          const resultado = await procesarCambioRolConMigracion(phone, rol);
+          await flowDynamic(resultado.message);
+          
+          // Notificar al administrador del resultado
+          await notificarAdministrador(ctx.from, {
+            telefono: phone,
+            rolAnterior: resultado.rolAnterior,
+            rolNuevo: rol,
+            realizadoPor: ctx.from,
+            exito: resultado.exito,
+            error: resultado.error
+          });
+          
+        } else if (stepOpt === '2') {
+          // OPCIÓN 2: Crear nuevo usuario con rol (sin migración)
           if (rol === 'usuario') {
             await createUsuarioBasico(phone, {});
+            await flowDynamic(`✅ Usuario ${phone} creado con rol *usuario*.`);
+          } else if (rol === 'practicante') {
+            // Para practicantes nuevos, iniciar recolección de datos
+            const resultadoValidacion = await validarCambioRolPosible(phone, rol);
+            if (!resultadoValidacion.valido) {
+              await flowDynamic(`❌ ${resultadoValidacion.error}`);
+              throw new Error(resultadoValidacion.error);
+            }
+            
+            await setRolTelefono(phone, rol);
+            await flowDynamic(`✅ Rol asignado. Enviando notificación a ${phone} para completar datos...`);
+            await iniciarRecoleccionDatos(phone, rol);
           } else {
             await ensureRolMapping(phone, rol);
+            await flowDynamic(`✅ Creado/asignado ${phone} con rol *${rol}*.`);
           }
-          await flowDynamic(`✅ Creado/asignado ${phone} con rol *${rol}*.`);
         }
       } catch (err) {
         console.error('ADMIN_MENU error:', err);
         await flowDynamic('❌ Error realizando la operación.');
+        await notificarError(ctx.from, err.message, { phone, rol, stepOpt });
       }
 
       // Limpiar y volver al menú
@@ -193,6 +256,88 @@ export const adminAsignarRolFlow = addKeyword(['__capture_only__'])
   );
 
 // ===============================================================================================
+
+/**
+ * Procesa el cambio de rol con migración de datos
+ * @param {string} telefono - Teléfono del usuario
+ * @param {string} nuevoRol - Nuevo rol a asignar
+ * @param {string} adminTelefono - Teléfono del administrador que realiza el cambio
+ * @returns {Object} { exito: boolean, message: string, rolAnterior?: string, error?: string }
+ */
+async function procesarCambioRolConMigracion(telefono, nuevoRol) {
+  try {
+    // Obtener rol actual
+    const rolActualInfo = await getRolTelefono(telefono);
+    const rolAnterior = rolActualInfo?.rol || 'sin asignar';
+    
+    console.log(`🔄 Cambiando rol: ${telefono} de ${rolAnterior} a ${nuevoRol}`);
+    
+    // Validar si el cambio es posible
+    const validacion = await validarCambioRolPosible(telefono, nuevoRol);
+    if (!validacion.valido) {
+      return { 
+        exito: false, 
+        message: `❌ ${validacion.error}`, 
+        rolAnterior 
+      };
+    }
+    
+    // Caso 1: Usuario → Practicante (requiere recolección de datos)
+    if (rolAnterior === 'usuario' && nuevoRol === 'practicante') {
+      await setRolTelefono(telefono, nuevoRol);
+      await iniciarRecoleccionDatos(telefono, nuevoRol);
+      
+      return { 
+        exito: true, 
+        message: `✅ Rol de ${telefono} cambiado a *practicante*.\n\n📱 El usuario recibirá notificaciones para completar sus datos.`, 
+        rolAnterior 
+      };
+    }
+    
+    // Caso 2: Practicante → Usuario (requiere reversión)
+    if (rolAnterior === 'practicante' && nuevoRol === 'usuario') {
+      const resultado = await revertirPracticanteAUsuario(telefono);
+      
+      if (!resultado.exito) {
+        return { 
+          exito: false, 
+          message: `❌ Error al revertir rol: ${resultado.error}`, 
+          rolAnterior 
+        };
+      }
+      
+      // Enviar notificación al usuario
+      await notificarCambioRol(telefono, nuevoRol, { 
+        datosPrecargados: resultado.datosPrecargados 
+      });
+      
+      return { 
+        exito: true, 
+        message: `✅ Rol de ${telefono} cambiado a *usuario*.\n\n📱 Se ha enviado notificación para completar registro web.\n🗑️ Pacientes asignados han sido liberados.`, 
+        rolAnterior 
+      };
+    }
+    
+    // Caso 3: Cambios simples (otros roles)
+    await setRolTelefono(telefono, nuevoRol);
+    await notificarCambioRol(telefono, nuevoRol);
+    
+    return { 
+      exito: true, 
+      message: `✅ Rol de ${telefono} cambiado de *${rolAnterior}* a *${nuevoRol}*.\n\n📱 Se ha enviado notificación al usuario.`, 
+      rolAnterior 
+    };
+    
+  } catch (error) {
+    console.error('Error en procesarCambioRolConMigracion:', error);
+    return { 
+      exito: false, 
+      message: `❌ Error al procesar cambio de rol: ${error.message}`, 
+      rolAnterior: 'desconocido',
+      error: error.message
+    };
+  }
+}
 
 export const adminMenuMiddleware = addKeyword(['menu'])
   .addAction(async (ctx, { state, gotoFlow, endFlow }) => {

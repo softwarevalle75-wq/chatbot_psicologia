@@ -25,6 +25,7 @@ import {
   // adminPedirTelefonoFlow,
   // adminAsignarRolFlow 
 } from './roles/adminMenuFlow.js'
+
 import { practMenuFlow, practEsperarResultados } from './roles/practMenuFlow.js'
 import { 
   buscarPracticanteDisponible, 
@@ -46,7 +47,7 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
       
       // 1. VERIFICAR FLUJOS ACTIVOS CRÍTICOS (prioridad máxima)
       const currentFlow = await state.get('currentFlow');
-      
+       
       if (currentFlow === 'test') {
         console.log('🔀 Redirigiendo mensaje de test a testFlow');
         return gotoFlow(testFlow);
@@ -74,7 +75,7 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
         return;
       }
 
-      const rolInfo = await verificarRolUsuario(ctx.from);
+const rolInfo = await verificarRolUsuario(ctx.from);
 
       if (rolInfo) {
         // ===== PRACTICANTE =====
@@ -90,18 +91,36 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
             }
           });
 
+          // 🔧 MEJORA: Verificar si el practicante existe realmente en la tabla
+          if (!practicanteCompleto) {
+            console.log(`⚠️ ALERTA: Practicante con teléfono ${ctx.from} no encontrado en tabla practicante`);
+            console.log('💡 Posible caso: Rol asignado pero datos no migrados completamente');
+            
+            
+            
+            await flowDynamic(
+              '⚠️ *Error de configuración detectado*\n\n' +
+              'Tu rol está marcado como practicante, pero no encontramos tu perfil completo.\n\n' +
+              'Por favor, contacta al administrador para completar tu configuración.\n' +
+              'O envía *completar datos* si estás en proceso de migración.'
+            );
+            
+            // No continuar con el flujo de practicante para evitar errores
+            return;
+          }
+
           const usuarioPracticante = {
             tipo: 'practicante',
             data: { 
-              idPracticante: practicanteCompleto?.idPracticante || null,
-              nombre: practicanteCompleto?.nombre || 'Sin nombre',
+              idPracticante: practicanteCompleto.idPracticante, // Ahora siempre existe
+              nombre: practicanteCompleto.nombre || 'Sin nombre',
               telefono: ctx.from, 
               rol: 'practicante' 
             },
             flujo: 'practMenuFlow'
           };
 
-          console.log('👨‍⚕️ Practicante a guardar:', JSON.stringify(usuarioPracticante, null, 2));
+          console.log('👨‍⚕️ Practicante encontrado:', JSON.stringify(usuarioPracticante, null, 2));
           
           await state.update({ 
             initialized: true, 
@@ -1188,4 +1207,52 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
   );
 
 
-	//---------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------------------
+
+// Flow para manejar "completar datos" - Ayuda a practicantes pendientes de configuración
+export const completarDatosFlow = addKeyword(['completar datos'])
+  .addAction(async (ctx, { flowDynamic, state, gotoFlow }) => {
+    console.log('🔄 Usuario solicita completar datos:', ctx.from);
+    
+    // Verificar si el usuario tiene rol de practicante pero no datos completos
+    const rolInfo = await verificarRolUsuario(ctx.from);
+    
+    if (!rolInfo || rolInfo.rol !== 'practicante') {
+      await flowDynamic(
+        '❌ Esta función solo está disponible para practicantes que están en proceso de configuración.\n\n' +
+        'Si necesitas ayuda, contacta al administrador.'
+      );
+      return;
+    }
+    
+    // Verificar si ya existe en tabla practicante
+    const practicanteCompleto = await prisma.practicante.findUnique({
+      where: { telefono: ctx.from }
+    });
+    
+    if (practicanteCompleto) {
+      await flowDynamic(
+        '✅ ¡Tu perfil ya está completo!\n\n' +
+        'Ya eres un practicante activo del sistema. Envía *menu* para acceder a tus funciones.'
+      );
+      return;
+    }
+    
+    // Si está pendiente, redirigir al flujo de recolección
+    await flowDynamic(
+      '🔄 *Reanudando proceso de completar datos*\n\n' +
+      'Voy a ayudarte a completar tu perfil de practicante.'
+    );
+    
+    // Guardar en estado que estamos en proceso de completar datos
+    await state.update({ 
+      currentFlow: 'completandoDatos',
+      cambioRol: { telefono: ctx.from, nuevoRol: 'practicante' }
+    });
+    
+    // Importar dinámicamente para evitar dependencias circulares
+    const { recolectarGeneroFlow } = await import('./roles/cambioRolFlow.js');
+    return gotoFlow(recolectarGeneroFlow);
+  });
+
+//---------------------------------------------------------------------------------------------------------

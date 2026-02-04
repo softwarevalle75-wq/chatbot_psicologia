@@ -20,6 +20,8 @@ router.post('/register', async (req, res) => {
             segundoCorreo,
             fechaNacimiento,
             perteneceUniversidad,
+            documento,
+            tipoDocumento,
             password
         } = req.body;
 
@@ -27,13 +29,14 @@ router.post('/register', async (req, res) => {
         const telefonoConPrefijo = telefonoPersonal.startsWith('57') ? telefonoPersonal : `57${telefonoPersonal}`;
         console.log(`📞 Teléfono original: ${telefonoPersonal} -> Con prefijo: ${telefonoConPrefijo}`);
 
-        // Verificar si el usuario ya existe (buscar con ambos formatos)
+// Verificar si el usuario ya existe (buscar con ambos formatos)
         const existingUser = await prisma.informacionUsuario.findFirst({
             where: {
                 OR: [
                     { correo: correo },
                     { telefonoPersonal: telefonoPersonal },
-                    { telefonoPersonal: telefonoConPrefijo }
+                    { telefonoPersonal: telefonoConPrefijo },
+                    ...(documento ? [{ documento: documento }] : [])
                 ]
             }
         });
@@ -45,7 +48,7 @@ router.post('/register', async (req, res) => {
         // Cifrar contraseña
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Crear usuario
+// Crear usuario
         const user = await prisma.informacionUsuario.create({
             data: {
                 primerNombre,
@@ -56,10 +59,12 @@ router.post('/register', async (req, res) => {
                 segundoTelefono,
                 correo,
                 segundoCorreo,
-                fechaNacimiento: new Date(fechaNacimiento),
+                fechaNacimiento: fechaNacimiento ? new Date(fechaNacimiento) : new Date(),
                 perteneceUniversidad,
                 password: hashedPassword,
-                consentimientoInformado: "No"
+                consentimientoInformado: "No",
+                documento: documento || null,
+                tipoDocumento: tipoDocumento || "CC"
             }
         });
 
