@@ -152,13 +152,20 @@ export async function verificarUsuariosPendientes() {
 }
 
 /**
- * Notifica al administrador sobre cambios de rol realizados
- * @param {string} telefonoAdmin - Teléfono del administrador
+ * Notifica al administrador sobre cambios importantes
  * @param {Object} cambio - Información del cambio realizado
  * @returns {Object} { exito: boolean, error?: string }
  */
-export async function notificarAdministrador(telefonoAdmin, cambio) {
+export async function notificarAdministrador(cambio) {
   try {
+    // Obtener teléfono del administrador desde variables de entorno
+    const telefonoAdminConfig = process.env.PRIMER_ADMIN;
+    
+    if (!telefonoAdminConfig) {
+      console.error('❌ No hay teléfono de administrador configurado en variables de entorno');
+      return { exito: false, error: 'No hay teléfono de administrador configurado' };
+    }
+    
     let mensaje = `📋 *Notificación de Cambio de Rol*\n\n` +
       `📱 Teléfono: ${cambio.telefono}\n` +
       `🔄 Cambio: ${cambio.rolAnterior} → ${cambio.rolNuevo}\n` +
@@ -170,9 +177,9 @@ export async function notificarAdministrador(telefonoAdmin, cambio) {
       mensaje += `\n❌ Error: ${cambio.error}`;
     }
     
-    await adapterProvider.sendMessage(telefonoAdmin, mensaje);
+    await adapterProvider.sendMessage(telefonoAdminConfig, mensaje);
     
-    console.log(`📢 Notificación enviada al administrador ${telefonoAdmin}`);
+    console.log(`📢 Notificación enviada al administrador`);
     return { exito: true };
     
   } catch (error) {
@@ -244,6 +251,14 @@ export function programarRecordatoriosAutomaticos(intervaloHoras = 6) {
  */
 export async function notificarError(telefonoAdmin, error, contexto = {}) {
   try {
+    // Obtener teléfono del administrador desde variables de entorno
+    const telefonoAdminConfig = process.env.ADMIN_PHONE || process.env.PRIMER_ADMIN || telefonoAdmin;
+    
+    if (!telefonoAdminConfig) {
+      console.error('❌ No hay teléfono de administrador configurado en variables de entorno');
+      return { exito: false, error: 'No hay teléfono de administrador configurado' };
+    }
+    
     const mensaje = `🚨 *Error en el Sistema de Cambio de Roles*\n\n` +
       `❌ Error: ${error}\n` +
       `📱 Usuario: ${contexto.telefono || 'No especificado'}\n` +
@@ -251,9 +266,9 @@ export async function notificarError(telefonoAdmin, error, contexto = {}) {
       `🔧 Contexto: ${JSON.stringify(contexto, null, 2)}\n\n` +
       `Por favor revisar el sistema y tomar las acciones necesarias.`;
     
-    await adapterProvider.sendMessage(telefonoAdmin, mensaje);
+    await adapterProvider.sendMessage(telefonoAdminConfig, mensaje);
     
-    console.log(`🚨 Notificación de error enviada al administrador ${telefonoAdmin}`);
+    console.log(`🚨 Notificación de error enviada al administrador`);
     return { exito: true };
     
   } catch (err) {

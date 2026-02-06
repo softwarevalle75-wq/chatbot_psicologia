@@ -12,7 +12,8 @@ import {
 	testFlow,
 	agendFlow,  
 	assistantFlow, 
-	pedirNumeroPracticanteAsignadoFlow
+	pedirNumeroPracticanteAsignadoFlow,
+	completarDatosFlow
 } from "./flows/flows.js";
 
 // Importar flujos de autenticación web (temporalmente comentado)
@@ -105,9 +106,12 @@ const adapterFlow = createFlow([
     adminAsignarRolFlow,
     adminMenuMiddleware,
 
-    // Flujos de roles (después de welcome)
+// Flujos de roles (después de welcome)
     practMenuFlow,
     practEsperarResultados,
+    
+    // Flujo de configuración de practicantes
+    completarDatosFlow,
     
     // Flujos de tests (en orden lógico)
     testSelectionFlow,

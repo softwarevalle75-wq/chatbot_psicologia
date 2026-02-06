@@ -84,12 +84,6 @@
             background: #28a745;
         }
 
-        .logo p {
-            color: #666;
-            font-size: 14px;
-            margin-top: 8px;
-        }
-
         .form-row {
             display: flex;
             gap: 15px;
@@ -131,6 +125,26 @@
         .form-group select:focus {
             outline: none;
             border-color: #667eea;
+        }
+
+        .form-group.precargado {
+            background-color: #e8f5e8;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .form-group.precargado label {
+            color: #155724;
+            font-weight: 600;
+        }
+
+        .form-group input[readonly],
+        .form-group select[readonly] {
+            background-color: #f8f9fa;
+            border: 2px solid #28a745;
+            color: #155724;
+            cursor: not-allowed;
         }
 
         .checkbox-group {
@@ -241,6 +255,11 @@
             line-height: 1.5;
         }
 
+        .info-text.highlight {
+            background: #e8f5e8;
+            border-left-color: #28a745;
+        }
+
         @media (max-width: 768px) {
             .form-row {
                 flex-direction: column;
@@ -253,11 +272,10 @@
     <div class="register-container">
         <div class="logo">
             <center>
-                <h1>🤖 ChatBot Psicológico</h1>
+                <h1 id="formTitle">🤖 ChatBot Psicológico</h1>
             </center>
             <br>
 
-            <!-- Indicadores de progreso -->
             <div class="progress-container">
                 <div class="progress-step">
                     <div class="progress-circle active" data-step="1">1</div>
@@ -277,7 +295,7 @@
             </div>
         </div>
 
-        <div class="info-text">
+        <div class="info-text" id="infoText">
             <p>Complete todos los campos marcados con (*) para crear su cuenta. Esta información nos ayudará a brindarle un mejor servicio personalizado.</p>
         </div>        
 
@@ -361,128 +379,6 @@
         </div>
     </div>
 
-    <script>
-        document.getElementById('registerForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const errorDiv = document.getElementById('errorMessage');
-            const successDiv = document.getElementById('successMessage');
-            const loadingDiv = document.getElementById('loading');
-            const registerBtn = document.getElementById('registerBtn');
-            
-            // Ocultar mensajes previos
-            errorDiv.style.display = 'none';
-            successDiv.style.display = 'none';
-            
-            // Validar contraseñas
-            const password = document.getElementById('password').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
-            
-            if (password !== confirmPassword) {
-                errorDiv.textContent = 'Las contraseñas no coinciden';
-                errorDiv.style.display = 'block';
-                // Llevar el usuario al inicio de la página 
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-                return;
-            }
-
-            // Validar edad mínima 15 años
-            const fechaNacimiento = document.getElementById('fechaNacimiento').value;
-            if (fechaNacimiento) {
-                const fechaNaci = new Date(fechaNacimiento);
-                const hoy = new Date();
-                let edad = hoy.getFullYear() - fechaNaci.getFullYear();
-                const mes = hoy.getMonth() - fechaNaci.getMonth();
-
-                if (mes < 0 || (mes === 0 && hoy.getDate() < fechaNaci.getDate())){
-                    edad--;
-                }
-
-                if (edad < 15){
-                    errorDiv.textContent = "Debes ser mayor a 15 años para poder registrarte";
-                    errorDiv.style.display = 'block';
-                    // Llevar el usuario al inicio de la página 
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                    return
-                }
-            }
-            
-            // Mostrar loading
-            loadingDiv.style.display = 'block';
-            registerBtn.disabled = true;
-            
-            const pertenece = document.getElementById('perteneceUniversidad');
-
-            console.log(pertenece)
-            
-            const formData = new FormData(e.target);
-            const data = {
-                primerNombre: formData.get('primerNombre'),
-                segundoNombre: formData.get('segundoNombre'),
-                primerApellido: formData.get('primerApellido'),
-                segundoApellido: formData.get('segundoApellido'),
-                correo: formData.get('correo'),
-                segundoCorreo: formData.get('segundoCorreo'),
-                telefonoPersonal: formData.get('telefonoPersonal'),
-                segundoTelefono: formData.get('segundoTelefono'),
-                fechaNacimiento: formData.get('fechaNacimiento'),
-                perteneceUniversidad: pertenece.checked ? 'Si' : 'No',              
-                password: formData.get('password')
-            };
-            
-            try {
-                const response = await fetch('/api/auth/register', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(data)
-                });
-                
-                const result = await response.json();
-                console.log('Respuesta del servidor:', result); // DEBUG
-                
-                if (response.ok) {
-                    // Guardar información básica del usuario en localStorage
-                    const userInfo = {
-                        id: result.userId,
-                        primerNombre: data.primerNombre,
-                        primerApellido: data.primerApellido,
-                        segundoNombre: data.segundoNombre,
-                        segundoApellido: data.segundoApellido,
-                        correo: data.correo,
-                        consentimientoInformado: 'No'
-                    };
-                    console.log('Token recibido:', result.token); // DEBUG
-                    localStorage.setItem('token', result.token);
-                    localStorage.setItem('user', JSON.stringify(userInfo));
-
-                    successDiv.textContent = 'Registro exitoso. Redirigiendo al tratamiento de datos...';
-                    successDiv.style.display = 'block';
-
-                    setTimeout(() => {
-                        window.location.href = '/tratamientodatos';
-                    }, 1500);
-                } else {
-                    errorDiv.textContent = result.error || 'Error en el registro';
-                    errorDiv.style.display = 'block';
-                    // Llevar el usuario al inicio de la página 
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                errorDiv.textContent = 'Error de conexión. Intenta nuevamente.';
-                errorDiv.style.display = 'block';
-                // Llevar el usuario al inicio de la página 
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            } finally {
-                loadingDiv.style.display = 'none';
-                registerBtn.disabled = false;
-            }
-        });
-
-        // Nota: No necesitamos verificación automática aquí
-        // El usuario puede acceder al registro normalmente
-    </script>
+    <script src="register-unified.js"></script>
 </body>
 </html>

@@ -28,7 +28,7 @@ export const notificacionCambioRolFlow = addKeyword(EVENTS.ACTION)
   });
 
 // --- Flow para recolectar género ---
-export const recolectarGeneroFlow = addKeyword(EVENTS.ACTION)
+export const recolectarGeneroFlow = addKeyword(['1', '2', '3', '4'])
   .addAnswer(
     '📋 *Género*\n' +
     'Por favor, selecciona tu género:\n\n' +
