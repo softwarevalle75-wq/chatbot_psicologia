@@ -89,7 +89,7 @@ export async function migrarUsuarioAPracticante(telefono, datosAdicionales) {
       numero_documento: usuario.documento || `DOC_${Date.now()}`,
       tipo_documento: usuario.tipoDocumento || 'CC',
       genero: datosAdicionales.genero,
-      estrato: parseInt(datosAdicionales.estrato) || 1,
+      estrato: String(datosAdicionales.estrato || '1'),
       barrio: datosAdicionales.barrio || '',
       localidad: datosAdicionales.localidad || '',
       sesiones: 0,
@@ -103,8 +103,14 @@ export async function migrarUsuarioAPracticante(telefono, datosAdicionales) {
 
     // Crear horarios si se proporcionaron
     if (datosAdicionales.horarios && datosAdicionales.horarios.length > 0) {
+      // Mapear nombres de día a valores del enum DiaSemana (MAYÚSCULAS, sin tildes)
+      const diaToEnum = {
+        'lunes': 'LUNES', 'martes': 'MARTES', 'miercoles': 'MIERCOLES', 'miércoles': 'MIERCOLES',
+        'jueves': 'JUEVES', 'viernes': 'VIERNES', 'sabado': 'SABADO', 'sábado': 'SABADO',
+        'domingo': 'DOMINGO'
+      };
       const horariosData = datosAdicionales.horarios.map(horario => ({
-        dia: horario.dia,
+        dia: diaToEnum[horario.dia.toLowerCase()] || horario.dia.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
         horaInicio: parseInt(horario.horaInicio),
         horaFin: parseInt(horario.horaFin),
         practicanteId: practicante.idPracticante

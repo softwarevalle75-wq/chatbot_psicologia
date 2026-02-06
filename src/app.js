@@ -39,6 +39,15 @@ import {
 
 
 import {
+	recolectarGeneroFlow,
+	recolectarEstratoFlow,
+	recolectarBarrioFlow,
+	recolectarLocalidadFlow,
+	recolectarHorariosFlow,
+	resumenDatosFlow
+} from './flows/roles/cambioRolFlow.js';
+
+import {
 	getPracticante,
 	getUsuario,
 	addWebUser,
@@ -112,7 +121,15 @@ const adapterFlow = createFlow([
     
     // Flujo de configuración de practicantes
     completarDatosFlow,
-    
+
+    // Flujos de recolección de datos para cambio de rol
+    recolectarGeneroFlow,
+    recolectarEstratoFlow,
+    recolectarBarrioFlow,
+    recolectarLocalidadFlow,
+    recolectarHorariosFlow,
+    resumenDatosFlow,
+
     // Flujos de tests (en orden lógico)
     testSelectionFlow,
     practOfrecerTestFlow__ElegirTest,

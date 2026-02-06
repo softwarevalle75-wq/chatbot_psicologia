@@ -1,34 +1,12 @@
 import { addKeyword, EVENTS } from '@builderbot/bot';
-import { 
-  validarHorario
+import {
+  validarHorario,
+  migrarUsuarioAPracticante
 } from '../../queries/cambioRol.js';
-
-// --- Flow principal de notificación de cambio de rol ---
-export const notificacionCambioRolFlow = addKeyword(EVENTS.ACTION)
-  .addAction(async (ctx, { flowDynamic, gotoFlow, state }) => {
-    const { nuevoRol } = state.get('cambioRol');
-    
-    if (nuevoRol === 'practicante') {
-      await flowDynamic(
-        '🎉 *¡Has sido promovido a Practicante!*\n\n' +
-        'Para completar tu perfil, necesito recopilar algunos datos adicionales que son requeridos para los practicantes.\n\n' +
-        'Vamos a empezar con los datos básicos.'
-      );
-      return gotoFlow(recolectarGeneroFlow);
-    } else if (nuevoRol === 'usuario') {
-      await flowDynamic(
-        '⚠️ *Tu rol ha cambiado a Usuario*\n\n' +
-        'He eliminado tu perfil de practicante y ya no tienes pacientes asignados.\n\n' +
-        'Para continuar usando el sistema, por favor completa tu registro en el siguiente enlace:\n' +
-        '🔗 [URL_REGISTRO_WEB]\n\n' +
-        'Tus datos personales estarán precargados para tu comodidad.'
-      );
-      return gotoFlow(END);
-    }
-  });
+import { enviarBienvenidaPracticante } from '../../helpers/notificacionesCambioRol.js';
 
 // --- Flow para recolectar género ---
-export const recolectarGeneroFlow = addKeyword(['1', '2', '3', '4'])
+export const recolectarGeneroFlow = addKeyword(EVENTS.ACTION)
   .addAnswer(
     '📋 *Género*\n' +
     'Por favor, selecciona tu género:\n\n' +
@@ -157,14 +135,29 @@ export const recolectarHorariosFlow = addKeyword(EVENTS.ACTION)
       if (entrada === 'listo') {
         // Verificar que se haya capturado al menos un horario
         const horarios = state.get('horarios') || [];
-        
+
         if (horarios.length === 0) {
           await flowDynamic('❌ Debes agregar al menos un horario. Por favor ingresa al menos uno.');
           return fallBack();
         }
-        
-        await flowDynamic(`✅ Se han registrado ${horarios.length} horario(s).`);
-        return gotoFlow(confirmacionDatosFlow);
+
+        // Mostrar resumen de datos recolectados antes de ir a confirmación
+        const datosAdicionales = state.get('datosAdicionales') || {};
+        const horariosTexto = horarios.map(h => `  - ${h.dia}: ${h.horaInicio}:00 - ${h.horaFin}:00`).join('\n');
+
+        await flowDynamic(
+          `✅ Se han registrado ${horarios.length} horario(s).\n\n` +
+          `📋 *Resumen de tus datos:*\n\n` +
+          `👥 Género: ${datosAdicionales.genero || 'N/A'}\n` +
+          `🏘️ Estrato: ${datosAdicionales.estrato || 'N/A'}\n` +
+          `📍 Barrio: ${datosAdicionales.barrio || 'N/A'}\n` +
+          `🏙️ Localidad: ${datosAdicionales.localidad || 'N/A'}\n` +
+          `⏰ Horarios:\n${horariosTexto}`
+        );
+
+        // ⚠️ gotoFlow a un flujo con SOLO addAnswer(capture:true) es seguro.
+        // El race condition solo ocurre cuando el flujo destino tiene addAction(flowDynamic)+addAnswer(capture).
+        return gotoFlow(resumenDatosFlow);
       }
       
       // Procesar el horario ingresado
@@ -210,59 +203,86 @@ export const recolectarHorariosFlow = addKeyword(EVENTS.ACTION)
   );
 
 // --- Flow de confirmación de datos ---
-export const confirmacionDatosFlow = addKeyword(EVENTS.ACTION)
-  .addAction(async (ctx, { flowDynamic, state }) => {
-const datosAdicionales = state.get('datosAdicionales') || {};
-    const horarios = state.get('horarios') || {};
-    
-    let resumen = '📋 *Resumen de datos para tu perfil de Practicante:*\n\n';
-    
-    
-    
-    resumen += '🆕 *Datos adicionales:*\n';
-    resumen += `- Género: ${datosAdicionales.genero}\n`;
-    resumen += `- Estrato: ${datosAdicionales.estrato}\n`;
-    resumen += `- Barrio: ${datosAdicionales.barrio}\n`;
-    resumen += `- Localidad: ${datosAdicionales.localidad}\n\n`;
-    
-    resumen += '⏰ *Horarios de atención:*\n';
-    horarios.forEach((horario, index) => {
-      resumen += `${index + 1}. ${horario.dia} ${horario.horaInicio}:00 - ${horario.horaFin}:00\n`;
-    });
-    
-    resumen += '\n¿Estás seguro de que deseas completar el cambio de rol?\n\n';
-    resumen += '1. ✅ Sí, completar cambio\n';
-    resumen += '2. ❌ No, cancelar';
-    
-    await flowDynamic(resumen);
-  })
+// ⚠️ CRITICAL: Este flow usa SOLO addAnswer con capture:true, SIN addAction previo,
+// SIN flowDynamic previo. Esto evita el race condition de BuilderBot donde flowDynamic
+// guarda un mensaje en la BD que sobreescribe el capture:true del addAnswer.
+// El resumen de datos se muestra DESDE recolectarHorariosFlow via flowDynamic
+// ANTES del gotoFlow (flowDynamic + fallBack en vez de flowDynamic + gotoFlow).
+export const resumenDatosFlow = addKeyword(EVENTS.ACTION)
   .addAnswer(
-    '',
+    '📋 *Confirmación de datos*\n\n¿Deseas completar tu registro como practicante?\n\n1. ✅ Sí, completar\n2. ❌ No, cancelar',
     { capture: true },
-    async (ctx, { flowDynamic, fallBack, state, gotoFlow }) => {
+    async (ctx, { flowDynamic, fallBack, state }) => {
       const opcion = ctx.body.trim();
-      
-if (opcion === '1') {
-        await flowDynamic(
-          '✅ *¡Cambio de rol completado exitosamente!*\n\n' +
-          'Ya eres oficialmente un practicante del sistema.\n' +
-          'Los usuarios podrán agendar citas contigo y recibirás notificaciones cuando completen sus pruebas.\n\n' +
-          '¡Bienvenido al equipo de practicantes! 🎉'
-        );
-        
-        // Limpiar estado
-        await state.clean();
-        return gotoFlow(END);
+
+      if (opcion === '1') {
+        const cambioRol = state.get('cambioRol') || {};
+        const datosAdicionales = state.get('datosAdicionales') || {};
+        const horarios = state.get('horarios') || [];
+        const telefono = cambioRol.telefono || ctx.from;
+
+        await flowDynamic('⏳ Guardando datos en el sistema...');
+
+        const resultado = await migrarUsuarioAPracticante(telefono, {
+          genero: datosAdicionales.genero,
+          estrato: String(datosAdicionales.estrato),
+          barrio: datosAdicionales.barrio,
+          localidad: datosAdicionales.localidad,
+          horarios
+        });
+
+        if (!resultado.exito) {
+          await flowDynamic(
+            `❌ *Error al guardar datos:* ${resultado.error}\n\n` +
+            'Por favor, contacta al administrador o intenta de nuevo enviando *completar datos*.'
+          );
+          await state.update({
+            currentFlow: null,
+            completandoDatos: null,
+            cambioRol: null,
+            datosAdicionales: null,
+            horarios: null
+          });
+          return;
+        }
+
+        await enviarBienvenidaPracticante(telefono, {
+          nombre: resultado.practicante?.nombre || 'Practicante',
+          numero_documento: resultado.practicante?.numero_documento || '',
+          genero: datosAdicionales.genero,
+          estrato: String(datosAdicionales.estrato),
+          barrio: datosAdicionales.barrio,
+          localidad: datosAdicionales.localidad,
+          horarios
+        });
+
+        await state.update({
+          currentFlow: null,
+          completandoDatos: null,
+          cambioRol: null,
+          datosAdicionales: null,
+          horarios: null
+        });
+        return;
       } else if (opcion === '2') {
-        await flowDynamic('❌ *Proceso cancelado.*\n\nTu rol no ha sido modificado. Si tienes dudas, contacta al administrador.');
-        await state.clean();
-        return gotoFlow(END);
+        await flowDynamic('❌ *Proceso cancelado.*\n\nSi tienes dudas, contacta al administrador.');
+        await state.update({
+          currentFlow: null,
+          completandoDatos: null,
+          cambioRol: null,
+          datosAdicionales: null,
+          horarios: null
+        });
+        return;
       } else {
-        await flowDynamic('❌ Por favor, selecciona una opción válida (1-2).');
+        await flowDynamic('❌ Opción no válida. Responde *1* o *2*.');
         return fallBack();
       }
     }
   );
+
+// Alias para mantener compatibilidad con imports existentes
+export const confirmacionDatosFlow = resumenDatosFlow;
 
 // --- Flow de recordatorio para datos pendientes ---
 export const recordatorioDatosFlow = addKeyword(EVENTS.ACTION)

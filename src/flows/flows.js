@@ -27,6 +27,7 @@ import {
 } from './roles/adminMenuFlow.js'
 
 import { practMenuFlow, practEsperarResultados } from './roles/practMenuFlow.js'
+import { recolectarGeneroFlow } from './roles/cambioRolFlow.js'
 import { 
   buscarPracticanteDisponible, 
   guardarCita, 
@@ -46,8 +47,25 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
       // console.log('🔍 ==============================')
       
       // 1. VERIFICAR FLUJOS ACTIVOS CRÍTICOS (prioridad máxima)
-      const currentFlow = await state.get('currentFlow');
-       
+      let currentFlow = await state.get('currentFlow');
+
+      // ⚠️ DETECCIÓN DE CAMBIO DE ROL EN TIEMPO REAL
+      // Si el usuario está en un flujo activo, verificar si un admin le cambió el rol.
+      // Si el rol cambió, limpiar el state para sacarlo de su flujo actual y re-evaluar.
+      let _rolInfoCache = null; // Cache para evitar doble consulta a BD
+      if (currentFlow && currentFlow !== 'completandoDatos') {
+        _rolInfoCache = await verificarRolUsuario(ctx.from);
+        const userEnState = await state.get('user');
+        const rolEnState = userEnState?.data?.rol || userEnState?.tipo;
+
+        if (_rolInfoCache && rolEnState && _rolInfoCache.rol !== rolEnState) {
+          console.log(`🔄 ¡ROL CAMBIÓ! State: ${rolEnState} → BD: ${_rolInfoCache.rol}. Limpiando flujo actual (${currentFlow}).`);
+          await state.update({ currentFlow: null, user: null, initialized: false });
+          currentFlow = null;
+          // Continuar ejecución para que se re-evalúe el rol abajo
+        }
+      }
+
       if (currentFlow === 'test') {
         console.log('🔀 Redirigiendo mensaje de test a testFlow');
         return gotoFlow(testFlow);
@@ -68,14 +86,19 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
         console.log('🚫 Usuario confirmando cita, no interferir con welcomeFlow')
         return;
       }
+      if (currentFlow === 'completandoDatos') {
+        console.log('🚫 Practicante completando datos, no interferir con welcomeFlow')
+        return;
+      }
 
-      // 2. ⭐ NUEVO: VERIFICAR SI ES PRACTICANTE PRIMERO (ANTES DE AUTENTICAR)      
+      // 2. ⭐ NUEVO: VERIFICAR SI ES PRACTICANTE PRIMERO (ANTES DE AUTENTICAR)
       if (currentFlow === 'admin'){
         console.log('Ya esta en flujo admin, se omite verificación de rol')
         return;
       }
 
-const rolInfo = await verificarRolUsuario(ctx.from);
+      // Reutilizar cache si ya consultamos el rol en la detección de cambio
+      const rolInfo = _rolInfoCache || await verificarRolUsuario(ctx.from);
 
       if (rolInfo) {
         // ===== PRACTICANTE =====
@@ -91,22 +114,22 @@ const rolInfo = await verificarRolUsuario(ctx.from);
             }
           });
 
-          // 🔧 MEJORA: Verificar si el practicante existe realmente en la tabla
+          // Verificar si el practicante existe realmente en la tabla
           if (!practicanteCompleto) {
-            console.log(`⚠️ ALERTA: Practicante con teléfono ${ctx.from} no encontrado en tabla practicante`);
-            console.log('💡 Posible caso: Rol asignado pero datos no migrados completamente');
-            
-            
-            
+            console.log(`⚠️ Practicante con teléfono ${ctx.from} no encontrado en tabla practicante - redirigiendo a completar datos`);
+
             await flowDynamic(
-              '⚠️ *Error de configuración detectado*\n\n' +
-              'Tu rol está marcado como practicante, pero no encontramos tu perfil completo.\n\n' +
-              'Por favor, contacta al administrador para completar tu configuración.\n' +
-              'O envía *completar datos* si estás en proceso de migración.'
+              '📋 *Tu perfil de practicante no está completo*\n\n' +
+              'Necesitamos recopilar algunos datos adicionales para activar tu perfil.\n\n' +
+              'Vamos a empezar con los datos básicos.'
             );
-            
-            // No continuar con el flujo de practicante para evitar errores
-            return;
+
+            await state.update({
+              currentFlow: 'completandoDatos',
+              cambioRol: { telefono: ctx.from, nuevoRol: 'practicante' }
+            });
+
+            return gotoFlow(recolectarGeneroFlow);
           }
 
           const usuarioPracticante = {
@@ -1250,8 +1273,6 @@ export const completarDatosFlow = addKeyword(['completar datos'])
       cambioRol: { telefono: ctx.from, nuevoRol: 'practicante' }
     });
     
-    // Importar dinámicamente para evitar dependencias circulares
-    const { recolectarGeneroFlow } = await import('./roles/cambioRolFlow.js');
     return gotoFlow(recolectarGeneroFlow);
   });
 

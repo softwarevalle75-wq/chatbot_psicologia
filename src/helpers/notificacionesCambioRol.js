@@ -93,15 +93,22 @@ export async function iniciarRecoleccionDatos(telefono, nuevoRol) {
     if (nuevoRol !== 'practicante') {
       return { exito: false, error: 'Este flujo solo es para rol de practicante' };
     }
-    
-    // Pequeña pausa para que el usuario lea
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    
-    
-    console.log(`🚀 Proceso de recolección de datos iniciado para ${telefono}`);
+
+    // Pequeña pausa para que el usuario lea la notificación del admin
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Enviar mensaje al nuevo practicante para que inicie el proceso
+    const mensaje =
+      '📋 *Acción requerida: Completar perfil de practicante*\n\n' +
+      'Un administrador te ha asignado el rol de practicante.\n\n' +
+      'Para activar tu perfil, necesitamos algunos datos adicionales.\n\n' +
+      '👉 *Envía cualquier mensaje* para iniciar el proceso de configuración.';
+
+    await adapterProvider.sendMessage(telefono, mensaje);
+
+    console.log(`🚀 Notificación de recolección de datos enviada a ${telefono}`);
     return { exito: true };
-    
+
   } catch (error) {
     console.error('Error en iniciarRecoleccionDatos:', error);
     return { exito: false, error: 'Error al iniciar recolección de datos' };
