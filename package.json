@@ -14,7 +14,8 @@
     "dev-all": "npm run lint && nodemon ./start-all.js",
     "start-all": "node ./start-all.js",
     "test":"vitest run",
-    "gen:pdf": "node ./scripts/generatePDF.js"
+    "gen:pdf": "node ./scripts/generatePDF.js",
+    "seed-test": "node prisma/seed/seed-test.js"
   },
   "prisma": {
     "seed": "node prisma/seed/seed.js"

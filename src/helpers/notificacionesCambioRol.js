@@ -41,7 +41,7 @@ export async function notificarCambioRol(telefono, nuevoRol, opciones = {}) {
     }
     
     // Enviar mensaje usando el provider
-    await adapterProvider.sendMessage(telefono, mensaje);
+    await adapterProvider.sendMessage(telefono, mensaje, {});
     
     console.log(`✅ Notificación de cambio de rol enviada a ${telefono}: ${nuevoRol}`);
     return { exito: true };
@@ -70,7 +70,7 @@ export async function enviarRecordatorioDatos(telefono, rolPendiente) {
         'Este recordatorio se enviará cada 6 horas hasta que completes el proceso.';
     }
     
-    await adapterProvider.sendMessage(telefono, mensaje);
+    await adapterProvider.sendMessage(telefono, mensaje, {});
     
     console.log(`📅 Recordatorio enviado a ${telefono} para rol ${rolPendiente}`);
     return { exito: true };
@@ -104,7 +104,7 @@ export async function iniciarRecoleccionDatos(telefono, nuevoRol) {
       'Para activar tu perfil, necesitamos algunos datos adicionales.\n\n' +
       '👉 *Envía cualquier mensaje* para iniciar el proceso de configuración.';
 
-    await adapterProvider.sendMessage(telefono, mensaje);
+    await adapterProvider.sendMessage(telefono, mensaje, {});
 
     console.log(`🚀 Notificación de recolección de datos enviada a ${telefono}`);
     return { exito: true };
@@ -184,7 +184,7 @@ export async function notificarAdministrador(cambio) {
       mensaje += `\n❌ Error: ${cambio.error}`;
     }
     
-    await adapterProvider.sendMessage(telefonoAdminConfig, mensaje);
+    await adapterProvider.sendMessage(telefonoAdminConfig, mensaje, {});
     
     console.log(`📢 Notificación enviada al administrador`);
     return { exito: true };
@@ -220,10 +220,9 @@ export async function enviarBienvenidaPracticante(telefono, datosPracticante) {
       `• Agendar citas\n` +
       `• Recibir notificaciones cuando los pacientes completen pruebas\n` +
       `• Acceder a herramientas de apoyo profesional\n\n` +
-      `Para empezar, envía *menu* al bot.\n\n` +
-      `¡Estamos para apoyarte! 🌟`;
+      `Para empezar, envía un mensaje al bot.`;
     
-    await adapterProvider.sendMessage(telefono, mensaje);
+    await adapterProvider.sendMessage(telefono, mensaje, {});
     
     console.log(`👋 Bienvenida enviada a nuevo practicante ${telefono}`);
     return { exito: true };
@@ -273,7 +272,7 @@ export async function notificarError(telefonoAdmin, error, contexto = {}) {
       `🔧 Contexto: ${JSON.stringify(contexto, null, 2)}\n\n` +
       `Por favor revisar el sistema y tomar las acciones necesarias.`;
     
-    await adapterProvider.sendMessage(telefonoAdminConfig, mensaje);
+    await adapterProvider.sendMessage(telefonoAdminConfig, mensaje, {});
     
     console.log(`🚨 Notificación de error enviada al administrador`);
     return { exito: true };

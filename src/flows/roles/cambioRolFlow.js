@@ -120,7 +120,7 @@ export const recolectarHorariosFlow = addKeyword(EVENTS.ACTION)
   .addAnswer(
     '⏰ *Horarios de atención*\n\n' +
     'Como practicante, necesitas definir tus horarios de atención. Esto es **obligatorio** para que los pacientes puedan agendar citas contigo.\n\n' +
-    'Formato: Día HoraInicio HoraFin\n' +
+    'Formato: Día  Hora de Inicio  Hora de Fin\n' +
     'Ejemplos:\n' +
     '- Lunes 8 12\n' +
     '- Martes 14 18\n' +
@@ -163,7 +163,7 @@ export const recolectarHorariosFlow = addKeyword(EVENTS.ACTION)
       // Procesar el horario ingresado
       const partes = entrada.split(' ');
       if (partes.length !== 3) {
-        await flowDynamic('❌ Formato incorrecto. Usa: Día HoraInicio HoraFin');
+        await flowDynamic('❌ Formato incorrecto. Usa: Día  Hora de Inicio  Hora de Fin');
         return fallBack();
       }
       

@@ -686,8 +686,19 @@ export const menuFlow = addKeyword(utils.setEvent('MENU_FLOW'))
     { capture: true, idle: 600000 }, // Timeout de 10 minutos
     async (ctx, { flowDynamic, gotoFlow, fallBack, endFlow, state }) => {
       try {
+        // ⚠️ DETECCIÓN DE CAMBIO DE ROL DENTRO DEL MENÚ
+        // Si un admin cambió el rol mientras el usuario estaba en el menú,
+        // sacarlo del menú y dejar que welcomeFlow re-evalúe.
+        const rolActual = await verificarRolUsuario(ctx.from);
+        if (rolActual && rolActual.rol !== 'usuario') {
+          console.log(`🔄 ¡ROL CAMBIÓ en menuFlow! Ahora es: ${rolActual.rol}. Saliendo del menú.`);
+          await state.update({ currentFlow: null, user: null, initialized: false });
+          await flowDynamic(`🔄 *Tu rol ha cambiado a ${rolActual.rol}.*\n\nPor favor, escribe nuevamente para continuar.`);
+          return endFlow();
+        }
+
         // Manejo de inactividad (timeout)
-        if (ctx.idleFallBack) {
+        if (ctx?.idleFallBack) {
           await flowDynamic('Te demoraste en responder, Escribe otra vez para empezar.');
           return endFlow();
         } // sirve para hacer un timeout de 10 mins
