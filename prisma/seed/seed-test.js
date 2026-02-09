@@ -1,25 +1,12 @@
-/**
- * Script de seed para pruebas
- *
- * Uso:
- *   node prisma/seed-test.mjs usuario        → Crea usuario normal (puede usar el bot como paciente)
- *   node prisma/seed-test.mjs practicante    → Crea practicante pendiente (activa flujo completar datos)
- *   node prisma/seed-test.mjs limpiar        → Borra todos los datos de prueba
- *
- * El número de teléfono se configura abajo.
- */
-
 import Prisma from '@prisma/client';
 const prisma = new Prisma.PrismaClient();
 
 import dotenv from 'dotenv';
 dotenv.config();
 
-// =====================================================================
-// CONFIGURA AQUÍ
-// =====================================================================
+// ==============================================
 const TELEFONO = process.env.TELEFONO_PRUEBAS;
-// =====================================================================
+// ==============================================
 
 const comando = process.argv[2];
 
@@ -27,6 +14,9 @@ if (!comando || !['usuario', 'practicante', 'limpiar'].includes(comando)) {
   console.log('Uso: node prisma/seed-test.mjs [usuario|practicante|limpiar]');
   process.exit(1);
 }
+
+//  FUNCIÓN LIMPIAR
+// ================
 
 async function limpiar() {
   console.log(`\n🧹 Limpiando datos de prueba para ${TELEFONO}...\n`);
@@ -59,6 +49,9 @@ async function limpiar() {
 
   console.log('\n✅ Limpieza completa.\n');
 }
+
+//  FUNCIÓN CREAR USUARIO
+// ======================
 
 async function crearUsuario() {
   await limpiar();
@@ -94,6 +87,9 @@ async function crearUsuario() {
   console.log(`     Consentimiento: Si`);
   console.log(`\n  📱 Escribe al bot desde este número → verás el menú de paciente.\n`);
 }
+
+//  FUNCIÓN CREAR PRACTICANTE PENDIENTE
+// ===================================
 
 async function crearPracticantePendiente() {
   await limpiar();
@@ -136,6 +132,9 @@ async function crearPracticantePendiente() {
   console.log(`\n  📱 Escribe al bot desde este número → te pedirá completar datos`);
   console.log(`     (género, estrato, barrio, localidad, horarios).\n`);
 }
+
+//  FUNCIÓN PRINCIPAL
+// =================
 
 async function main() {
   try {
