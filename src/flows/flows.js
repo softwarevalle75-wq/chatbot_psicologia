@@ -1267,7 +1267,7 @@ export const completarDatosFlow = addKeyword(['completar datos'])
     if (practicanteCompleto) {
       await flowDynamic(
         '✅ ¡Tu perfil ya está completo!\n\n' +
-        'Ya eres un practicante activo del sistema. Envía *menu* para acceder a tus funciones.'
+        'Ya eres un practicante activo del sistema. Envía `menu` para acceder a tus funciones.'
       );
       return;
     }

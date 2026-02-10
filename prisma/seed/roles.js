@@ -749,12 +749,12 @@ async function main() {
             localidad: 'Chapinero', 
             horarios: {
                 create: [
-                    { dia: "DOMINGO", horaInicio: 1200, horaFin: 1200 },   // 20:00 - 20:00
-                  //   { dia: "DOMINGO", horaInicio: 460, horaFin: 660 }   // 9:00 - 11:00
+                    { dia: "LUNES", horaInicio: 1200, horaFin: 1200 },   // 20:00 - 20:00
+                    { dia: "DOMINGO", horaInicio: 460, horaFin: 660 }   // 9:00 - 11:00
                 ]
                 },
             sesiones: 0, //agregar sesiones
-            telefono: '', //agregar telefono
+            telefono: '573115011014', //agregar telefono
         },
     ]
 

@@ -1,17 +1,18 @@
 import Prisma from '@prisma/client';
+import { v4 as uuidv4} from 'uuid'
 const prisma = new Prisma.PrismaClient();
 
-import dotenv from 'dotenv';
-dotenv.config();
-
-// ==============================================
-const TELEFONO = process.env.TELEFONO_PRUEBAS;
-// ==============================================
 
 const comando = process.argv[2];
+const telefono = process.argv[3];
 
-if (!comando || !['usuario', 'practicante', 'limpiar'].includes(comando)) {
-  console.log('Uso: node prisma/seed-test.mjs [usuario|practicante|limpiar]');
+// ==============================================
+// const TELEFONO = process.env.TELEFONO_PRUEBAS;
+const TELEFONO = telefono.includes('57') ? telefono : '573115011014';
+// ==============================================
+
+if (!comando || !['usuario', 'practicante', 'limpiar', 'practicanteCompleto'].includes(comando)) {
+  console.log('Uso: node prisma/seed-test.mjs [usuario|practicante|limpiar|practicanteCompleto]');
   process.exit(1);
 }
 
@@ -133,6 +134,43 @@ async function crearPracticantePendiente() {
   console.log(`     (género, estrato, barrio, localidad, horarios).\n`);
 }
 
+//  FUNCIÓN PRACTICANTE COMPLETO
+// ============================
+
+async function crearPracticanteCompleto() {
+  await limpiar();
+
+  console.log('👨‍⚕️ Creando PRACTICANTE COMPLETO...\n');
+
+    // Crear registro en tabla practicante
+  await prisma.practicante.create({
+    data: {
+      idPracticante: uuidv4(),
+      numero_documento: '22222222',
+      tipo_documento: 'CC',
+      nombre: 'Practicante para pruebas',
+      genero: 'M',
+      estrato: '3', 
+      barrio: 'Chapinero',
+      localidad: 'Chapinero', 
+      horarios: {
+          create: [
+              { dia: "LUNES", horaInicio: 1200, horaFin: 1200 },   // 20:00 - 20:00
+              { dia: "DOMINGO", horaInicio: 460, horaFin: 660 }   // 9:00 - 11:00
+          ]
+          },
+      sesiones: 0, 
+      telefono: TELEFONO
+    }
+  });
+
+  console.log('  ✅ Practicante completo creado:');
+  console.log(`     Teléfono: ${TELEFONO}`);
+  console.log(`     Rol en rolChat: practicante`);
+  console.log(`     Tabla practicante: ✅ LLENA (completo)`);
+  console.log(`\n  📱 Escribe al bot desde este número → verás el menú de practicante.\n`);
+}
+
 //  FUNCIÓN PRINCIPAL
 // =================
 
@@ -147,6 +185,9 @@ async function main() {
         break;
       case 'limpiar':
         await limpiar();
+        break;
+      case 'practicanteCompleto':
+        await crearPracticanteCompleto();
         break;
     }
   } catch (error) {

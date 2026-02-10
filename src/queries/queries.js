@@ -239,6 +239,36 @@ export const obtenerUsuario = async (numero) => {
 }
 //---------------------------------------------------------------------------------------------------------
 
+// Retorna el usuario solo si existe y completó el registro (tiene nombre y flujo != 'register').
+export const buscarUsuarioRegistrado = async (numero) => {
+  try {
+    const user = await prisma.informacionUsuario.findUnique({
+      where: { telefonoPersonal: numero },
+      select: {
+        idUsuario: true,
+        primerNombre: true,
+        primerApellido: true,
+        telefonoPersonal: true,
+        flujo: true,
+        consentimientoInformado: true,
+      }
+    });
+
+    // No existe en BD
+    if (!user) return null;
+
+    // Existe pero no completó registro
+    if (user.flujo === 'register' || !user.primerNombre) return null;
+
+    return user;
+  } catch (error) {
+    console.error('Error al buscar usuario registrado:', error);
+    return null;
+  }
+};
+
+//---------------------------------------------------------------------------------------------------------
+
 // Normaliza el número (solo dígitos)
 const normalizePhone = (raw) => (raw || '').replace(/\D/g, '');
 

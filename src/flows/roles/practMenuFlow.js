@@ -1,6 +1,6 @@
 // src/flows/pract/practMenuFlow.js
 import { addKeyword } from '@builderbot/bot';
-import { switchFlujo, obtenerUsuario, sendAutonomousMessage, prisma, changeTest } from '../../queries/queries.js';
+import { switchFlujo, obtenerUsuario, sendAutonomousMessage, prisma, changeTest, buscarUsuarioRegistrado } from '../../queries/queries.js';
 import { apiAssistant2 } from '../../flows/assist/assistant2.js';
 //import { procesarGHQ12 } from '../../flows/tests/ghq12.js';
 //import { procesarDASS21 } from '../../flows/tests/dass21.js';
@@ -53,6 +53,23 @@ export const practOfrecerTestFlow__PedirTelefono = addKeyword(['__pedir_tel__'])
       await flowDynamic('❌ Teléfono inválido. Escribe solo números, al menos 8 dígitos.');
       return fallBack();
       }
+
+      // Verifica registro de usuario (sin auto-crear)
+      const telConPrefijo = tel.startsWith('57') ? tel : '57' + tel;
+      const usuarioRegistrado = await buscarUsuarioRegistrado(telConPrefijo);
+
+      if (!usuarioRegistrado) {
+        await flowDynamic(
+          '❌ *Este usuario no está registrado en el sistema.*\n\n' +
+          'Por favor, comunícate con el paciente para que complete su registro.'
+        )
+        await flowDynamic(
+          'Inténtalo nuevamente cuando el paciente haya hecho el registro, ' +
+          'o escribe `menu` para volver al menú principal.'
+        )
+        return fallBack()
+      }
+
       await state.update({ pacienteTelefono: tel });
       return gotoFlow(practOfrecerTestFlow__ElegirTest);
     }
