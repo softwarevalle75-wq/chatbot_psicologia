@@ -1,0 +1,148 @@
+{
+  "description": "Dataset de evaluación para sistema RAG de psicología",
+  "version": "1.0",
+  "created": "2026-02-21",
+  "questions": [
+    {
+      "id": "Q1",
+      "question": "¿Cuál es el punto de corte recomendado para el GHQ-12 en población general?",
+      "expected_keywords": ["punto de corte", "GHQ-12", "2/3", "general"],
+      "source": "GHQ-12",
+      "difficulty": "fácil"
+    },
+    {
+      "id": "Q2", 
+      "question": "¿Cuántas dimensiones mide el Cuestionario de Salud General?",
+      "expected_keywords": ["dimensiones", "GHQ-12", "factores", "ansiedad", "depresión"],
+      "source": "GHQ-12",
+      "difficulty": "fácil"
+    },
+    {
+      "id": "Q3",
+      "question": "¿Qué significa la abreviatura GHQ?",
+      "expected_keywords": ["General Health Questionnaire", "GHQ", "cuestionario"],
+      "source": "GHQ-12", 
+      "difficulty": "fácil"
+    },
+    {
+      "id": "Q4",
+      "question": "¿En qué año se validó el GHQ-12 para población colombiana?",
+      "expected_keywords": ["2017", "colombiana", "validación", "Ruiz"],
+      "source": "GHQ-12",
+      "difficulty": "medio"
+    },
+    {
+      "id": "Q5",
+      "question": "¿Cuáles son los rangos de puntuación para el DASS-21?",
+      "expected_keywords": ["rangos", "puntuación", "DASS-21", "normal", "leve", "moderado", "severo"],
+      "source": "DASS-21",
+      "difficulty": "fácil"
+    },
+    {
+      "id": "Q6",
+      "question": "¿Qué dimensiones evalúa el DASS-21?",
+      "expected_keywords": ["depresión", "ansiedad", "estrés", "dimensiones", "DASS-21"],
+      "source": "DASS-21",
+      "difficulty": "fácil"
+    },
+    {
+      "id": "Q7",
+      "question": "¿Cuántos ítems tiene el DASS-21?",
+      "expected_keywords": ["21", "ítems", "preguntas", "DASS-21"],
+      "source": "DASS-21",
+      "difficulty": "fácil"
+    },
+    {
+      "id": "Q8",
+      "question": "¿Qué tipo de escala de respuesta utiliza el DASS-21?",
+      "expected_keywords": ["Likert", "4 puntos", "escala", "0-3", "frecuencia"],
+      "source": "DASS-21",
+      "difficulty": "medio"
+    },
+    {
+      "id": "Q9",
+      "question": "¿Quiénes son los autores de la validación del GHQ-12 en Colombia?",
+      "expected_keywords": ["Ruiz", "García-Beltrán", "Suárez-Falcón", "autores"],
+      "source": "GHQ-12",
+      "difficulty": "medio"
+    },
+    {
+      "id": "Q10",
+      "question": "¿Cuál es la confiabilidad del GHQ-12 según el estudio colombiano?",
+      "expected_keywords": ["alfa de Cronbach", "confiabilidad", "0.89", "confiable"],
+      "source": "GHQ-12",
+      "difficulty": "difícil"
+    },
+    {
+      "id": "Q11",
+      "question": "¿Para qué población está diseñado el DASS-21?",
+      "expected_keywords": ["adultos", "población general", "clínica", "no clínica"],
+      "source": "DASS-21",
+      "difficulty": "medio"
+    },
+    {
+      "id": "Q12",
+      "question": "¿Cuál es el tiempo de aplicación recomendado para el GHQ-12?",
+      "expected_keywords": ["tiempo", "aplicación", "minutos", "2-5 minutos"],
+      "source": "GHQ-12",
+      "difficulty": "medio"
+    },
+    {
+      "id": "Q13",
+      "question": "¿Qué diferencias existen entre las versiones GHQ-12 y GHQ-28?",
+      "expected_keywords": ["GHQ-28", "diferencias", "ítems", "adicional"],
+      "source": "GHQ-12",
+      "difficulty": "difícil"
+    },
+    {
+      "id": "Q14",
+      "question": "¿Cuáles son los puntajes de corte para depresión en el DASS-21?",
+      "expected_keywords": ["depresión", "puntajes", "corte", "9-13", "14-20", "21+"],
+      "source": "DASS-21",
+      "difficulty": "medio"
+    },
+    {
+      "id": "Q15",
+      "question": "¿Qué propiedades psicométricas se evaluaron en la validación del GHQ-12?",
+      "expected_keywords": ["psicométricas", "validez", "confiabilidad", "estructura factorial"],
+      "source": "GHQ-12",
+      "difficulty": "difícil"
+    },
+    {
+      "id": "NEG1",
+      "question": "¿Cuál es el costo del tratamiento para ansiedad?",
+      "expected_keywords": [],
+      "source": "NEGATIVE",
+      "difficulty": "control",
+      "expected_response": "La información no se encuentra en el contexto proporcionado."
+    },
+    {
+      "id": "NEG2", 
+      "question": "¿Qué medicamentos se recomiendan para la depresión?",
+      "expected_keywords": [],
+      "source": "NEGATIVE",
+      "difficulty": "control",
+      "expected_response": "La información no se encuentra en el contexto proporcionado."
+    },
+    {
+      "id": "NEG3",
+      "question": "¿Dónde puedo encontrar un psicólogo en Bogotá?",
+      "expected_keywords": [],
+      "source": "NEGATIVE", 
+      "difficulty": "control",
+      "expected_response": "La información no se encuentra en el contexto proporcionado."
+    }
+  ],
+  "metadata": {
+    "total_questions": 18,
+    "positive_questions": 15,
+    "negative_questions": 3,
+    "sources": ["GHQ-12", "DASS-21"],
+    "difficulty_distribution": {
+      "fácil": 6,
+      "medio": 7,
+      "difícil": 3,
+      "control": 3
+    }
+  }
+}

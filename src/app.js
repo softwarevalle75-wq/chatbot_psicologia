@@ -62,6 +62,9 @@ import {
 } from "./queries/queries.js";
 import { getRealPhoneFromCtx } from "./helpers/jidHelper.js";
 
+// inicializar RAG
+import { initializeRAG } from "./RAG/index.js";
+
 const PORT = process.env.PORT ?? 3000;
 export const adapterProvider = createProvider(Provider, {
 	// Esto envía pings cada 30 segundos, pa mantener activa la conec
@@ -184,6 +187,14 @@ const adapterFlow = createFlow([
 	const { configurarProviderDASS21 } = await import('./flows/tests/dass21.js');
 	configurarProviderGHQ12(adapterProvider);
 	configurarProviderDASS21(adapterProvider);
+
+	//---------------------------------------------------------------------------------------------------------
+	
+	// Inicializar RAG
+	initializeRAG()
+		.then(() => console.log('✅ RAG listo'))
+		.catch(err => console.error('❌ Error inicializando RAG:', err));
+	
 
 	//---------------------------------------------------------------------------------------------------------
 	
