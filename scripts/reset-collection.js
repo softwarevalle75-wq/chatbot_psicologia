@@ -31,6 +31,22 @@ async function resetCollection() {
         })
         
         console.log('✅ Colección creada exitosamente')
+        
+        // Crear índices de payload para filtrado eficiente
+        console.log('🏷️ Creando índices de payload...')
+        try {
+            await client.createPayloadIndex(collectionName, {
+                field_name: 'source',
+                field_schema: {
+                    type: 'keyword',
+                    is_indexed: true
+                }
+            })
+            console.log('✅ Índice creado para campo "source"')
+        } catch (indexError) {
+            console.warn('⚠️  Error creando índice (puede que ya exista):', indexError.message)
+        }
+        
         console.log('📊 Configuración:')
         console.log('   • Vector size: 1536')
         console.log('   • Distance: Cosine')

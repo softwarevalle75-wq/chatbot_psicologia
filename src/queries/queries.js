@@ -1448,3 +1448,74 @@ export const guardarResultadoPrueba = async (telefono, tipoTest, datosResultados
 		console.error(`❌ Error al guardar resultado para ${telefono} en ${tipoTest}:`, error);
 	}
 };
+
+//---------------------------------------------------------------------------------------------------------
+// Configuración RAG Unificada para Tests Psicológicos
+
+/**
+ * Obtiene la configuración general del RAG para tests psicológicos
+ */
+export const getRagPsychologicalConfig = async () => {
+	try {
+		const config = await prisma.ragPsychologicalConfig.findUnique({
+			where: { id: 'general' }
+		});
+
+		if (!config) {
+			throw new Error('Configuración RAG general no encontrada. Necesita inicializar el sistema.');
+		}
+
+		return config;
+	} catch (error) {
+		console.error('❌ Error al obtener configuración RAG:', error);
+		throw new Error('Error al obtener configuración del sistema RAG.');
+	}
+};
+
+/**
+ * Inicializa o actualiza la configuración general del RAG con los prompts proporcionados
+ */
+export const initializeRagPsychologicalConfig = async (systemInstructions, promptTemplate, metadata = {}) => {
+	try {
+		const config = await prisma.ragPsychologicalConfig.upsert({
+			where: { id: 'general' },
+			update: {
+				systemInstructions,
+				promptTemplate,
+				metadata,
+				version: metadata.version || '1.0'
+			},
+			create: {
+				id: 'general',
+				systemInstructions,
+				promptTemplate,
+				metadata,
+				version: metadata.version || '1.0'
+			}
+		});
+
+		console.log('✅ Configuración RAG inicializada correctamente');
+		return config;
+	} catch (error) {
+		console.error('❌ Error al inicializar configuración RAG:', error);
+		throw new Error('Error al inicializar configuración del sistema RAG.');
+	}
+};
+
+/**
+ * Actualiza la versión de la configuración RAG
+ */
+export const updateRagPsychologicalConfigVersion = async (newVersion) => {
+	try {
+		const config = await prisma.ragPsychologicalConfig.update({
+			where: { id: 'general' },
+			data: { version: newVersion }
+		});
+
+		console.log(`✅ Versión RAG actualizada a ${newVersion}`);
+		return config;
+	} catch (error) {
+		console.error('❌ Error al actualizar versión RAG:', error);
+		throw new Error('Error al actualizar versión de configuración RAG.');
+	}
+};

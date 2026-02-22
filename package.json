@@ -24,7 +24,8 @@
     "test:chunking": "node ./tests/chunk-integrity-test.js",
     "test:quick": "node ./tests/quick-test.js",
     "test:diagnose": "node ./tests/diagnose-env.js",
-    "clear:qdrant": "node ./scripts/reset-collection.js"
+    "clear:qdrant": "node ./scripts/reset-collection.js",
+    "test:openai": "node ./tests/test-openai.js"
   },
   "prisma": {
     "seed": "node prisma/seed/seed.js"

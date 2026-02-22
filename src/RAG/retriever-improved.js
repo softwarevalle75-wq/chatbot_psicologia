@@ -15,7 +15,7 @@ const search = async (query, source, k = DEFAULT_K) => {
     const client = getQdrantClient()
     const collectionName = getCollectionName()
     const queryVector = await generateEmbedding(query)
-    
+
     const results = await client.search(collectionName, {
         vector: queryVector,
         limit: k,

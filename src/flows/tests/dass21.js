@@ -9,6 +9,7 @@ import {
 } from '../../queries/queries.js'
 
 import { generarPDFResultadosDASS21 } from './testPDF_DASS21.js'
+import { interpretPsychologicalTest } from '../../RAG/psychological-interpreter.js'
 import fs from 'fs'
 
 const rtasDass21 = () => {
@@ -49,30 +50,6 @@ const cuestDass21 = {
 		// '21. Sentí que la vida no tenía ningún sentido\n    ' + rtasDass21(),	
 		],
 
-	subescalas: {
-		depresion: [3, 5, 10, 13, 16, 17, 21],
-		ansiedad: [2, 4, 7, 9, 15, 19, 20],
-		estres: [1, 6, 8, 11, 12, 14, 18],
-	},
-
-	umbralesDep: {
-		bajo: {min: 5, max: 6, mensaje: 'Depresión leve'},
-		medio: {min: 7, max: 10, mensaje: 'Depresión moderada'},
-		alto: {min: 11, max: 13, mensaje: 'Depresión severa'},
-		muyalto: {min: 14, mensaje: 'Depresión extremadamente severa'},
-	},
-	umbralesAns: {
-		bajo: {min: 4, max: 4, mensaje: 'Ansiedad leve'},
-		medio: {min: 5, max: 7, mensaje: 'Ansiedad moderada'},
-		alto: {min: 8, max: 9, mensaje: 'Ansiedad severa'},
-		muyalto: {min: 10, mensaje: 'Ansiedad extremadamente severa'},
-	},
-	umbralesEstr: {
-		bajo: {min: 8, max: 9, mensaje: 'Estrés leve'},
-		medio: {min: 10, max: 12, mensaje: 'Estrés moderado'},
-		alto: {min: 13, max: 16, mensaje: 'Estrés severo'},
-		muyalto: {min: 17, mensaje: 'Estrés extremadamente severo'},
-	},
 	resPreg: {
 		0: [],
 		1: [],
@@ -83,7 +60,7 @@ const cuestDass21 = {
 
 export const procesarDass21 = async (numeroUsuario, respuestas) => {
 	const tipoTest = 'dass21'
-	const { preguntas, subescalas } = cuestDass21
+	const { preguntas } = cuestDass21
 
 	console.log('Procesando DASS-21 para el usuario:', numeroUsuario)
 
@@ -148,11 +125,9 @@ export const procesarDass21 = async (numeroUsuario, respuestas) => {
 
 		// Verificar si terminamos
 		if (estado.preguntaActual >= preguntas.length) {
-			console.log('🎉 Cuestionario completado, calculando puntajes...')	
+			console.log('🎉 Cuestionario completado, delegando interpretación al sistema RAG...')	
 
-			const puntajes = calcularPuntajesSubescalas(estado.respuestas, subescalas)
-			
-			// Guardar estado y puntaje
+			// Guardar estado y respuestas crudas (sin scoring hardcodeado)
 			await saveEstadoCuestionario(
 				numeroUsuario,
 				estado.preguntaActual,
@@ -163,54 +138,23 @@ export const procesarDass21 = async (numeroUsuario, respuestas) => {
 			await savePuntajeUsuario(
 				numeroUsuario, 
 				tipoTest,
-				puntajes.depresion,
-				puntajes.ansiedad,
-				puntajes.estres,
+				0, // Puntaje crudo, sin calcular
+				0,
+				0,
 				estado.resPreg, 
 			)			
 
-			// Se guarda el resultado en la BD
-			const interpretaciones = await evaluarDASS21( puntajes, {
-				depresion: cuestDass21.umbralesDep,
-				ansiedad: cuestDass21.umbralesAns,
-				estres: cuestDass21.umbralesEstr,
-			});
+			// Se guarda el resultado en la BD (solo respuestas crudas)
+			const datosFormateados = 
+			'*RESPUESTAS DASS-21*' +
+			`\n    Puntaje 0: [${estado.resPreg[0]?.join(', ') || ''}]` +
+			`\n    Puntaje 1: [${estado.resPreg[1]?.join(', ') || ''}]` +
+			`\n    Puntaje 2: [${estado.resPreg[2]?.join(', ') || ''}]` +
+			`\n    Puntaje 3: [${estado.resPreg[3]?.join(', ') || ''}] \n` +
+			'*NOTA: La interpretación se genera mediante el sistema RAG + LLM*';
 
-			const datosFormateados =
-				'*PUNTAJES*' +
-				`\n    Depresión: ${puntajes.depresion}` +
-				`\n    Ansiedad: ${puntajes.ansiedad}` +
-				`\n    Estrés: ${puntajes.estres} \n` +
-				'*RESPUESTAS POR PUNTOS*' +
-				`\n    Puntaje 0: [${estado.resPreg[0]?.join(', ') || ''}]` +
-				`\n    Puntaje 1: [${estado.resPreg[1]?.join(', ') || ''}]` +
-				`\n    Puntaje 2: [${estado.resPreg[2]?.join(', ') || ''}]` +
-				`\n    Puntaje 3: [${estado.resPreg[3]?.join(', ') || ''}] \n` +
-				'*INTERPRETACIONES*' +
-				`\n${interpretaciones};`
+			await guardarResultadoPrueba(numeroUsuario, tipoTest, datosFormateados);
 
-			await guardarResultadoPrueba(numeroUsuario, tipoTest, datosFormateados)
-
-			// await guardarResultadoPrueba(numeroUsuario, tipoTest, {
-			// 	puntaje: puntajes,
-			// 	respuestasPorPuntos: estado.resPreg,
-			// 	interpretacion: await evaluarDASS21(puntajes, {
-			// 		depresion: cuestDass21.umbralesDep,
-			// 		ansiedad: cuestDass21.umbralesAns,
-			// 		estres: cuestDass21.umbralesEstr,
-			// 	})
-			// });
-
-			const resultados = await evaluarDASS21(
-				puntajes,
-				{
-					depresion: cuestDass21.umbralesDep,
-					ansiedad: cuestDass21.umbralesAns,
-					estres: cuestDass21.umbralesEstr,
-				}
-			);
-
-			// Enviar resultados al practicante con PDF
 			try {
 				const telefonoPracticante = await obtenerTelefonoPracticante(numeroUsuario);
 				if (telefonoPracticante) {
@@ -218,65 +162,23 @@ export const procesarDass21 = async (numeroUsuario, respuestas) => {
 					
 					await sendAutonomousMessage(telefonoPracticante, mensajeInicial);
 
-					// Generar PDF
-					const rutaPDF = await generarPDFResultadosDASS21(
-						numeroUsuario,
-						puntajes,
-						estado.resPreg
+					// Delegar interpretación al sistema RAG unificado
+					const resultadoInterpretacion = await interpretPsychologicalTest(
+						'dass21',
+						estado.resPreg,
+						numeroUsuario
 					);
 
-					console.log('PDF DASS-21 generado: ', rutaPDF);
+					await sendAutonomousMessage(
+						telefonoPracticante,
+						`🔔 *🧠 RESULTADOS DASS-21 INTERPRETADOS*\n\n` +
+						`👤 *Paciente:* ${numeroUsuario}\n` +
+						`📊 *Respuestas obtenidas:*\n${datosFormateados}\n\n` +
+						`🤖 *Interpretación Técnica (RAG Unificado):*\n${resultadoInterpretacion.interpretation}\n\n` +
+						`📋 *Documentos consultados:* ${resultadoInterpretacion.metadata.documentos_consultados?.join(', ') || 'No disponible'}`
+					);
 
-					// Enviar PDF al practicante
-					setTimeout(async() => {
-						try {
-							if (globalProvider) {
-								try{
-									// Enviar PDF con sendMedia
-									const numeroCompleto = telefonoPracticante.includes('@') 
-										? telefonoPracticante 
-										: `${telefonoPracticante}@s.whatsapp.net`;
-									
-									await globalProvider.sendMedia(
-										numeroCompleto,
-										rutaPDF,
-										'📊 *Reporte DASS-21*'
-									);									
-
-									// 🔥 NOTIFICAR AL PRACTICANTE QUE EL TEST SE COMPLETÓ
-									setTimeout(async () => {
-										await notificarTestCompletadoAPracticante(numeroUsuario);
-									}, 1000);
-
-									console.log('PDF DASS-21 enviado exitosamente via provider')
-								} catch (providerError) {
-									console.log('Error con provider DASS-21, usando fallback')
-									throw providerError;
-								}
-							} else {
-								throw new Error('Provider no configurado para DASS-21')
-							}
-
-						} catch (error) {
-							console.log('Error al enviar el PDF DASS-21', error)
-							
-							await sendAutonomousMessage(
-								telefonoPracticante,
-								`🔔 *🧠 RESULTADOS DASS-21*\n\n` +
-								`👤 *Paciente:* ${numeroUsuario}\n` +
-								`📊 *Resultados obtenidos:*\n${resultados}`
-							)
-						}
-
-						setTimeout(() => {
-							try {
-								fs.unlinkSync(rutaPDF)
-								console.log('PDF DASS-21 eliminado exitosamente')
-							} catch (error) {
-								console.log('Error al eliminar el PDF DASS-21', error)
-							}
-						}, 30000)
-					}, 3000)
+					await notificarTestCompletadoAPracticante(numeroUsuario);
 
 				} else {
 					console.log('No se pudo obtener teléfono del practicante para DASS-21')
@@ -307,92 +209,12 @@ export const procesarDass21 = async (numeroUsuario, respuestas) => {
 	}
 }
 
-const calcularPuntajesSubescalas = (respuestas, subescalas) => {
-	const puntajes = {}
-
-	console.log('Respuestas recibidas:', respuestas)
-	console.log('Subescalas:', subescalas)
-
-	for (const escala in subescalas) {
-		const indices = subescalas[escala]
-		console.log(`\n=== Procesando ${escala} ===`)
-		console.log('Índices de preguntas:', indices)
-		
-		let puntajeBase = 0
-		
-		indices.forEach(preguntaNum => {
-			const respuesta = Number(respuestas[preguntaNum - 1]) || 0
-			puntajeBase += respuesta
-			console.log(`Pregunta ${preguntaNum}: respuesta = ${respuesta}`)
-		})
-		
-		// Multiplicar por 2 según estándar DASS-21
-		puntajes[escala] = puntajeBase * 1
-		
-		console.log(`${escala}: suma=${puntajeBase}, puntajeFinal=${puntajes[escala]}`)
-	}
-
-	console.log('Puntajes finales calculados:', puntajes)
-	return puntajes
-}
-
-export const evaluarDASS21 = async (puntajes, umbrales) => {
-	const resultado = {}
-
-	console.log('=== EVALUANDO DASS-21 ===')
-	console.log('Puntajes recibidos:', puntajes)
-	console.log('Umbrales recibidos:', umbrales)
-
-	// Verificar que todas las escalas existan
-	const escalasEsperadas = ['depresion', 'ansiedad', 'estres']
-	
-	for (const escala of escalasEsperadas) {
-		if (puntajes[escala] === undefined) {
-			console.error(`❌ FALTA PUNTAJE PARA: ${escala}`)
-			resultado[escala] = { puntaje: 0, nivel: 'Error - datos incompletos' }
-			continue
-		}
-
-		const puntaje = puntajes[escala];
-		const u = umbrales[escala];
-		let nivel = 'Normal';
-
-		console.log(`\nEvaluando ${escala}: puntaje=${puntaje}`)
-
-		// Evaluar desde el más alto al más bajo
-		if (u.muyalto && puntaje >= u.muyalto.min) {
-			nivel = u.muyalto.mensaje;
-			console.log(`-> ${nivel} (>= ${u.muyalto.min})`)
-		} else if (u.alto && puntaje >= u.alto.min && (u.alto.max === undefined || puntaje <= u.alto.max)) {
-			nivel = u.alto.mensaje;
-			console.log(`-> ${nivel} (${u.alto.min}-${u.alto.max || '∞'})`)
-		} else if (u.medio && puntaje >= u.medio.min && (u.medio.max === undefined || puntaje <= u.medio.max)) {
-			nivel = u.medio.mensaje;
-			console.log(`-> ${nivel} (${u.medio.min}-${u.medio.max || '∞'})`)
-		} else if (u.bajo && puntaje >= u.bajo.min && (u.bajo.max === undefined || puntaje <= u.bajo.max)) {
-			nivel = u.bajo.mensaje;
-			console.log(`-> ${nivel} (${u.bajo.min}-${u.bajo.max || '∞'})`)
-		} else {
-			console.log(`-> ${nivel} (< ${u.bajo.min})`)
-		}
-
-		resultado[escala] = { puntaje, nivel };
-	}
-
-	console.log('Resultado final:', resultado)
-
-	return  `    Depresión: ${resultado.depresion.nivel} (${resultado.depresion.puntaje} puntos) \n` +
-			`    Ansiedad: ${resultado.ansiedad.nivel} (${resultado.ansiedad.puntaje} puntos) \n` +
-			`    Estrés:* ${resultado.estres.nivel} (${resultado.estres.puntaje} puntos);`
-}
-
-
 export const DASS21info = () => {
 	return {
 		nombre: 'DASS-21',
 		descripcion: 'Escala de Depresión, Ansiedad y Estrés de 21 ítems',
 		numPreguntas: cuestDass21.preguntas.length,
-		subescalas: Object.keys(cuestDass21.subescalas),
+		subescalas: ['depresion', 'ansiedad', 'estres'], // Información básica sin lógica de scoring
 		tiempoEstimado: '10-15 minutos',
 	}
 }

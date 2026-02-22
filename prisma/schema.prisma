@@ -275,3 +275,16 @@ enum NivelIngresos {
   nivel_3_4_smmlv
   mayor_4_smmlv
 }
+
+// Configuración RAG para tests psicológicos - Sistema Unificado
+model RagPsychologicalConfig {
+  id                  String   @id @default("general")
+  systemInstructions  String   @db.Text
+  promptTemplate      String   @db.Text
+  metadata            Json?
+  version             String   @default("1.0")
+  createdAt           DateTime @default(now()) @db.Timestamp(0)
+  updatedAt           DateTime @updatedAt @db.Timestamp(0)
+
+  @@map("rag_psychological_config")
+}
