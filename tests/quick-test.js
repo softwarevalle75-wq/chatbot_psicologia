@@ -1,6 +1,4 @@
 import { generateAnswer } from '../src/RAG/generator.js'
-import { retrieveImproved } from '../src/RAG/retriever-improved.js'
-import { searchOnly } from '../src/RAG/retriever.js' // Fallback al retrieval original
 
 /**
  * Script de prueba rápida para validar funcionamiento del RAG

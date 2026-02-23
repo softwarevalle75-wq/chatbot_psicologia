@@ -8,9 +8,7 @@ import {
     guardarResultadoPrueba,    
 } from '../../queries/queries.js'
 
-import { generarPDFResultados} from '../tests/testPDF_GHQ12.js'
 import { interpretPsychologicalTest } from '../../RAG/psychological-interpreter.js'
-import fs from 'fs'
 
 const cuestGhq12 = {    
     preguntas: [
@@ -37,14 +35,13 @@ const cuestGhq12 = {
 
 //--------------------------------------------------------------------------------
 
+// eslint-disable-next-line no-unused-vars
 let globalProvider = null;
 
 export const configurarProviderGHQ12 = (provider) => {
     globalProvider = provider;
     console.log('👍 Provider configurado para envío de PDFs')
 }
-
-//--------------------------------------------------------------------------------
 
 export const procesarGHQ12 = async (numeroUsuario, respuestas) => {
     const tipoTest = 'ghq12'

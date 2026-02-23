@@ -47,7 +47,7 @@ testRAGIntegration()
         console.log('✅ Script finalizado correctamente');
         process.exit(0);
     })
-    .catch((error) => {
+    .catch(() => {
         console.error('❌ Script finalizado con error');
         process.exit(1);
     });

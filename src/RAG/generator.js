@@ -94,11 +94,9 @@ export async function generateAnswer(question, retrievedChunks = [], options = {
         
         // Medir chunks enviados
         console.log(`📚 Chunks enviados: ${retrievedChunks.length}`);
-        let totalChunksChars = 0;
         retrievedChunks.forEach((chunk, index) => {
             const chunkContent = typeof chunk === 'string' ? chunk : chunk.content || chunk.text || '';
             const chunkChars = chunkContent.length;
-            totalChunksChars += chunkChars;
             console.log(`   Chunk ${index + 1}: ${chunkChars} caracteres ≈ ${Math.round(chunkChars / 4)} tokens`);
             console.log(`     Preview: ${chunkContent.substring(0, 50)}...`);
         });

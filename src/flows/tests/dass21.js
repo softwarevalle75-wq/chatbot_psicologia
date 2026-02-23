@@ -8,9 +8,7 @@ import {
 	notificarTestCompletadoAPracticante,
 } from '../../queries/queries.js'
 
-import { generarPDFResultadosDASS21 } from './testPDF_DASS21.js'
 import { interpretPsychologicalTest } from '../../RAG/psychological-interpreter.js'
-import fs from 'fs'
 
 const rtasDass21 = () => {
     return '0️⃣ No me ha ocurrido.\n    1️⃣ Me ha ocurrido un poco, o durante parte del tiempo.\n    2️⃣ Me ha ocurrido bastante, o durante una buena parte del tiempo.\n    3️⃣ Me ha ocurrido mucho, o la mayor parte del tiempo'
@@ -18,6 +16,7 @@ const rtasDass21 = () => {
 
 //--------------------------------------------------------------------------------
 
+// eslint-disable-next-line no-unused-vars
 let globalProvider = null;
 
 export const configurarProviderDASS21 = (provider) => {

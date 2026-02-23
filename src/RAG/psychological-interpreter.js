@@ -26,6 +26,108 @@ class PsychologicalInterpretationResult {
 }
 
 /**
+ * Determina el valor óptimo de k para retrieval basado en la complejidad de la query
+ * Arquitectura: Dynamic k - ajustar retrieval según tipo de consulta
+ *
+ * @param {string} query - Query a analizar
+ * @returns {number} Valor de k (5-10)
+ */
+function determineRetrievalK(query) {
+    const normativeKeywords = ['puntos de corte', 'baremos', 'normativos', 'puntuación', 'corte', 'clasificación', 'reglas', 'estructura'];
+    const isNormative = normativeKeywords.some(keyword => query.toLowerCase().includes(keyword));
+    return isNormative ? 10 : 5; // Mayor k para consultas normativas
+}
+
+/**
+ * Genera queries separadas para diferentes aspectos normativos del test
+ * Arquitectura: Multi-Query Strategy - consultas especializadas para mejor recall
+ *
+ * @param {string} testId - ID del test
+ * @returns {Array} Array de objetos {aspect, query}
+ */
+function generateNormativeQueries(testId) {
+    const baseQueries = [];
+
+    if (testId.toLowerCase() === 'ghq12') {
+        baseQueries.push(
+            { aspect: 'reglas_puntuacion', query: 'GHQ-12 reglas de puntuación método GHQ scoring vs Likert' },
+            { aspect: 'puntos_corte', query: 'GHQ-12 puntos de corte clasificación casos probable no caso' },
+            { aspect: 'baremos_normativos', query: 'GHQ-12 baremos normativos rangos percentiles puntuaciones' },
+            { aspect: 'estructura_factorial', query: 'GHQ-12 estructura factorial subescalas factores validados' }
+        );
+    } else if (testId.toLowerCase() === 'dass21') {
+        baseQueries.push(
+            { aspect: 'reglas_puntuacion', query: 'DASS-21 reglas puntuación sumatoria subescalas depresión ansiedad estrés' },
+            { aspect: 'puntos_corte', query: 'DASS-21 puntos corte severidad normal leve moderada severa extrema' },
+            { aspect: 'baremos_normativos', query: 'DASS-21 baremos normativos percentiles rangos referencia' },
+            { aspect: 'estructura_factorial', query: 'DASS-21 estructura factorial subescalas depresión ansiedad estrés validadas' }
+        );
+    }
+
+    return baseQueries;
+}
+
+/**
+ * Construye query inteligente para retrieval de tests psicológicos
+ * Principio: Query Engineering - optimizar para encontrar información relevante
+ *
+ * @param {string} testId - ID del test
+ * @returns {string} Query optimizada
+ */
+function buildPsychologicalQuery(testId) {
+    const testNames = {
+        'ghq12': 'GHQ-12',
+        'dass21': 'DASS-21'
+    };
+
+    return testNames[testId.toLowerCase()] || testId.toUpperCase();
+}
+
+/**
+ * Extrae nombres de documentos únicos de los chunks
+ * Principio: Data Processing - procesamiento limpio de metadatos
+ *
+ * @param {Array} chunks - Chunks recuperados
+ * @returns {Array<string>} Nombres únicos de documentos
+ */
+function extractDocumentNames(chunks) {
+    if (!chunks || !Array.isArray(chunks)) return [];
+
+    const docNames = new Set();
+    chunks.forEach(chunk => {
+        if (chunk.payload?.docName) {
+            docNames.add(chunk.payload.docName);
+        }
+    });
+
+    return Array.from(docNames);
+}
+
+/**
+ * Elimina chunks duplicados basándose en contenido similar
+ * Arquitectura: Deduplication - evitar redundancia en contexto
+ *
+ * @param {Array} chunks - Array de chunks
+ * @returns {Array} Chunks únicos
+ */
+function removeDuplicateChunks(chunks) {
+    if (!chunks || chunks.length === 0) return [];
+
+    const uniqueChunks = [];
+    const seenTexts = new Set();
+
+    for (const chunk of chunks) {
+        const text = chunk.text?.trim();
+        if (text && !seenTexts.has(text)) {
+            seenTexts.add(text);
+            uniqueChunks.push(chunk);
+        }
+    }
+
+    return uniqueChunks;
+}
+
+/**
  * Función principal unificada para interpretación de tests psicológicos
  * Arquitectura: Prompt General + RAG Inteligente
  *
@@ -53,7 +155,7 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
 
         // 3. CONSTRUIR QUERIES NORMATIVAS SEPARADAS
         console.log(`🔍 Generando queries normativas para ${testId}...`);
-        const normativeQueries = generateNormativeQueries(testId, rawResults);
+        const normativeQueries = generateNormativeQueries(testId);
         
         // 4. RETRIEVAL MULTIPLE PARA DIFERENTES ASPECTOS NORMATIVOS
         console.log(`🔎 Ejecutando retrieval múltiple para ${normativeQueries.length} aspectos normativos...`);
@@ -114,6 +216,8 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
             },
             ...retrievalResult.chunks // Chunks del RAG
         ];
+        
+        const query = buildPsychologicalQuery(testId);
         
         const generationResult = await generateAnswer(query, enhancedChunks, {
             systemPrompt: config.systemInstructions, // Rol del sistema
@@ -180,57 +284,6 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
 /**
  * Construye query inteligente para retrieval de tests psicológicos
  * Principio: Query Engineering - optimizar para encontrar información relevante
- *
- * @param {string} testId - ID del test
- * @param {Object} rawResults - Resultados crudos
- * @returns {string} Query optimizada
- */
-function buildPsychologicalQuery(testId, rawResults) {
-    const testNames = {
-        'ghq12': 'GHQ-12',
-        'dass21': 'DASS-21'
-    };
-
-    const testName = testNames[testId.toLowerCase()] || testId.toUpperCase();
-
-    // OPTIMIZACIÓN: Query concisa y dinámica (no JSON completo)
-    let patientProfile = '';
-
-    if (testId.toLowerCase() === 'ghq12') {
-        // Análisis inteligente del perfil GHQ-12
-        const normal = rawResults[0]?.length || 0;      // Mejor que habitual
-        const same = rawResults[1]?.length || 0;         // Igual que habitual
-        const less = rawResults[2]?.length || 0;         // Menos que habitual
-        const muchLess = rawResults[3]?.length || 0;     // Mucho menos que habitual
-
-        const totalItems = normal + same + less + muchLess;
-
-        if (muchLess >= totalItems * 0.5) {
-            patientProfile = `paciente con distress severo (${muchLess}/${totalItems} ítems críticos)`;
-        } else if (muchLess > 0 || less >= totalItems * 0.3) {
-            patientProfile = `paciente con distress moderado (${less + muchLess}/${totalItems} ítems afectados)`;
-        } else if (less > 0) {
-            patientProfile = `paciente con distress leve (${less}/${totalItems} ítems leves)`;
-        } else {
-            patientProfile = `paciente con distress mínimo (${normal}/${totalItems} ítems normales)`;
-        }
-    } else {
-        // Para otros tests, resumen básico
-        const totalResponses = Object.values(rawResults).reduce((sum, arr) => sum + (arr?.length || 0), 0);
-        patientProfile = `paciente con ${totalResponses} respuestas registradas`;
-    }
-
-    // Query minimal: solo identifica el test, RAG analiza todo desde contexto
-    return testName;
-}
-
-/**
- * Extrae nombres de documentos únicos de los chunks
- * Principio: Data Processing - procesamiento limpio de metadatos
- *
- * @param {Array} chunks - Chunks recuperados
- * @returns {Array<string>} Nombres únicos de documentos
- */
 function extractDocumentNames(chunks) {
     if (!chunks || !Array.isArray(chunks)) return [];
 
@@ -261,68 +314,5 @@ export function isSupportedTest(testId) {
  * Principio: Monitoring - métricas para optimización
  */
 export async function getInterpretationStats() {
-    try {
-        // Implementar estadísticas de uso si es necesario
-        return {
-            status: 'not_implemented',
-            message: 'Estadísticas de interpretación no implementadas aún'
-        };
-    } catch (error) {
-        console.error('Error obteniendo estadísticas:', error);
-        return { status: 'error', error: error.message };
-    }
-}
-
-/**
- * Genera queries separadas para diferentes aspectos normativos del test
- * Arquitectura: Multi-Query Strategy - consultas especializadas para mejor recall
- *
- * @param {string} testId - ID del test
- * @param {Object} rawResults - Resultados crudos
- * @returns {Array} Array de objetos {aspect, query}
- */
-function generateNormativeQueries(testId, rawResults) {
-    const baseQueries = [];
-
-    if (testId.toLowerCase() === 'ghq12') {
-        baseQueries.push(
-            { aspect: 'reglas_puntuacion', query: 'GHQ-12 reglas de puntuación método GHQ scoring vs Likert' },
-            { aspect: 'puntos_corte', query: 'GHQ-12 puntos de corte clasificación casos probable no caso' },
-            { aspect: 'baremos_normativos', query: 'GHQ-12 baremos normativos rangos percentiles puntuaciones' },
-            { aspect: 'estructura_factorial', query: 'GHQ-12 estructura factorial subescalas factores validados' }
-        );
-    } else if (testId.toLowerCase() === 'dass21') {
-        baseQueries.push(
-            { aspect: 'reglas_puntuacion', query: 'DASS-21 reglas puntuación sumatoria subescalas depresión ansiedad estrés' },
-            { aspect: 'puntos_corte', query: 'DASS-21 puntos corte severidad normal leve moderada severa extrema' },
-            { aspect: 'baremos_normativos', query: 'DASS-21 baremos normativos percentiles rangos referencia' },
-            { aspect: 'estructura_factorial', query: 'DASS-21 estructura factorial subescalas depresión ansiedad estrés validadas' }
-        );
-    }
-
-    return baseQueries;
-}
-
-/**
- * Elimina chunks duplicados basándose en contenido similar
- * Arquitectura: Deduplication - evitar redundancia en contexto
- *
- * @param {Array} chunks - Array de chunks
- * @returns {Array} Chunks únicos
- */
-function removeDuplicateChunks(chunks) {
-    if (!chunks || chunks.length === 0) return [];
-
-    const uniqueChunks = [];
-    const seenTexts = new Set();
-
-    for (const chunk of chunks) {
-        const text = chunk.text?.trim();
-        if (text && !seenTexts.has(text)) {
-            seenTexts.add(text);
-            uniqueChunks.push(chunk);
-        }
-    }
-
-    return uniqueChunks;
+    throw new Error('Not implemented')
 }

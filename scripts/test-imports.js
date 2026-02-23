@@ -5,15 +5,15 @@ console.log('🔧 Probando imports básicos...');
 
 try {
     console.log('📦 Probando import de generator.js...');
-    const { generateAnswer } = await import('./src/RAG/generator.js');
+    await import('./src/RAG/generator.js');
     console.log('✅ generator.js importado correctamente');
 
     console.log('📦 Probando import de retriever-improved.js...');
-    const { retrieveImproved } = await import('./src/RAG/retriever-improved.js');
+    await import('./src/RAG/retriever-improved.js');
     console.log('✅ retriever-improved.js importado correctamente');
 
     console.log('📦 Probando import de queries.js...');
-    const { getRagPsychologicalConfig } = await import('./src/queries/queries.js');
+    await import('./src/queries/queries.js');
     console.log('✅ queries.js importado correctamente');
 
     console.log('🎯 Todos los imports básicos funcionan correctamente');

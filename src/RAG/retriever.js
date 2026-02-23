@@ -59,7 +59,7 @@ const rebuildContext = async (results, source) => {
 	const seenChunks = new Set()
 	const allChunks = []
 	for (const result of results) {
-		const { docId, chunkIndex, text } = result.payload
+		const { docId, chunkIndex } = result.payload
 		const chunkKey = `${docId}-${chunkIndex}`
 		if (!seenChunks.has(chunkKey)) {
 			seenChunks.add(chunkKey)

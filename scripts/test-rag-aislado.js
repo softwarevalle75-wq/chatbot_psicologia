@@ -4,7 +4,7 @@ import { generateAnswer } from '../src/RAG/generator.js';
 import { getRagPsychologicalConfig } from '../src/queries/queries.js';
 
 // Función optimizada para construir query minimal
-function buildOptimizedQuery(testId, rawResults) {
+function buildOptimizedQuery(testId) {
     const testNames = { 'ghq12': 'GHQ-12', 'dass21': 'DASS-21' };
     return testNames[testId.toLowerCase()] || testId.toUpperCase();
 }
@@ -42,7 +42,7 @@ async function testRAGCompletoAislado() {
 
     try {
         // 1. Construir query ultra-minimal optimizada
-        const query = buildOptimizedQuery(testId, rawResults);
+        const query = buildOptimizedQuery(testId);
 
         console.log('🔍 Query para RAG:');
         console.log(`"${query}"\n`);

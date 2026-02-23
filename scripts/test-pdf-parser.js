@@ -1,6 +1,6 @@
 import fs from 'fs'
 import { createRequire } from 'module'
-import { PdfReader, TableParser } from 'pdfreader'
+import { PdfReader } from 'pdfreader'
 
 const require = createRequire(import.meta.url)
 const pdfParse = require('pdf-parse')

@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { generateAnswer } from '../src/RAG/generator.js'
-import { retrieveImproved, searchOnly, rerankBySemanticSimilarity } from '../src/RAG/retriever-improved.js'
+import { searchOnly, rerankBySemanticSimilarity } from '../src/RAG/retriever-improved.js'
 
 /**
  * Framework de evaluación completo para sistema RAG

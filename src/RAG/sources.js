@@ -30,6 +30,6 @@ export const TEST_SOURCES = {
 }
 export const getEnabledSources = () => {
 	return Object.entries(TEST_SOURCES)
-		.filter(([_, config]) => config.enabled)
+		.filter(([, config]) => config.enabled)
 		.map(([name, config]) => ({ name, ...config }))
 }

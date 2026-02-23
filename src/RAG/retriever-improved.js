@@ -90,7 +90,7 @@ const smartSearch = async (query, options = {}) => {
  * Reconstrucción de contexto mejorada
  * Principio: Builder Pattern - construir contexto paso a paso
  */
-const rebuildContext = async (results, source) => {
+const rebuildContext = async (results) => {
     if (!results || results.length === 0) {
         return { context: '', sources: [], chunks: [] }
     }
@@ -99,7 +99,7 @@ const rebuildContext = async (results, source) => {
     const allChunks = []
     
     for (const result of results) {
-        const { docId, chunkIndex, text } = result.payload || result
+        const { docId, chunkIndex } = result.payload || result
         const chunkKey = `${docId}-${chunkIndex}`
         
         if (!seenChunks.has(chunkKey)) {
@@ -158,7 +158,7 @@ export const retrieveImproved = async (query, options = {}) => {
         const searchResults = await smartSearch(query, { source, k, useReranking: true })
         
         // Reconstrucción de contexto
-        const { context, sources, chunks } = await rebuildContext(searchResults, source)
+        const { context, sources, chunks } = await rebuildContext(searchResults)
         
         return {
             query,

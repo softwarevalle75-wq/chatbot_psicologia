@@ -11,7 +11,7 @@ const CHUNK_SIZE = 1000
 const CHUNK_OVERLAP = 100
 const NORMATIVE_CHUNK_SIZE = 700 // Tamaño reducido para secciones normativas (tablas, puntos de corte, baremos)
 let GLOBAL_CHUNK_ID = 0 // Contador GLOBAL para todos los documentos
-const createHash = (text) => {
+function createHash(text) {
 	return crypto.createHash('sha256').update(text).digest('hex') // ← Hash completo de 64 caracteres
 }
 const parsePDF = async (filePath) => {
@@ -328,15 +328,17 @@ const generateCorrelationDescription = (data) => {
 	return `Correlaciones encontradas: ${descriptions.join('; ')}.`
 }
 
-const generateFactorDescription = (data) => {
-	const descriptions = data.map(item => `Item ${item.item} con carga factorial ${item.loading}`)
+function generateFactorDescription(data) {
+	const descriptions = data.map(item => {
+		let desc = `ítem ${item.item} carga ${item.loading}`
+		return desc
+	})
 	return `Análisis factorial: ${descriptions.join('; ')}.`
 }
 
 const chunkText = (text, metadata) => {
 	const chunks = []
 	let chunkIndex = 0
-	let currentPage = metadata.pageStart || 1
 	let globalChunkCounter = GLOBAL_CHUNK_ID // Inicializar con el contador global
 
 	// Función para detectar si un texto contiene contenido normativo
@@ -470,8 +472,8 @@ const chunkText = (text, metadata) => {
 
 	GLOBAL_CHUNK_ID = globalChunkCounter // Actualizar GLOBAL_CHUNK_ID
 
-	return chunks
-}
+	return chunks;
+};
 
 const indexDocument = async (sourceConfig) => {
 	const client = getQdrantClient()
