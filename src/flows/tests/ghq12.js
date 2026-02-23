@@ -113,36 +113,40 @@ export const procesarGHQ12 = async (numeroUsuario, respuestas) => {
 
             await guardarResultadoPrueba(numeroUsuario, tipoTest, datosFormateados);
 
-            try {
-                const telefonoPracticante = await obtenerTelefonoPracticante(numeroUsuario)
-                if (telefonoPracticante) {
-                    const mensajeInicial = `🔔 *📋 TEST GHQ12 COMPLETADO - GENERANDO REPORTE*\n\n`;
-                    
-                    await sendAutonomousMessage(telefonoPracticante, mensajeInicial);
+            // Always perform RAG interpretation
+            const resultadoInterpretacion = await interpretPsychologicalTest(
+                'ghq12',
+                estado.resPreg,
+                numeroUsuario
+            );
 
-                    // Delegar interpretación al sistema RAG unificado
-                    const resultadoInterpretacion = await interpretPsychologicalTest(
-                        'ghq12',
-                        estado.resPreg,
-                        numeroUsuario
-                    );
+            // Always send report to patient
+            await sendAutonomousMessage(
+                numeroUsuario,
+                `🔔 *RESULTADOS GHQ-12 INTERPRETADOS*\n\n` +
+                `👤 *Paciente:* ${numeroUsuario}\n` +
+                `📊 *Respuestas obtenidas:*\n${datosFormateados}\n\n` +
+                `🤖 *Interpretación Técnica (RAG Unificado):*\n${resultadoInterpretacion.interpretation}\n\n` +
+                `📋 *Documentos consultados:* ${resultadoInterpretacion.metadata.documentos_consultados?.join(', ') || 'No disponible'}`
+            );
 
-                    await sendAutonomousMessage(
-                        telefonoPracticante,
-                        `🔔 *🧠 RESULTADOS GHQ-12 INTERPRETADOS*\n\n` +
-                        `👤 *Paciente:* ${numeroUsuario}\n` +
-                        `📊 *Respuestas obtenidas:*\n${datosFormateados}\n\n` +
-                        `🤖 *Interpretación Técnica (RAG Unificado):*\n${resultadoInterpretacion.interpretation}\n\n` +
-                        `📋 *Documentos consultados:* ${resultadoInterpretacion.metadata.documentos_consultados?.join(', ') || 'No disponible'}`
-                    );
+            // Send to practitioner if assigned
+            const telefonoPracticante = await obtenerTelefonoPracticante(numeroUsuario);
+            if (telefonoPracticante) {
+                const mensajeInicial = `🔔 *📋 TEST GHQ12 COMPLETADO - GENERANDO REPORTE*\n\n`;
+                
+                await sendAutonomousMessage(telefonoPracticante, mensajeInicial);
 
-                    await notificarTestCompletadoAPracticante(numeroUsuario);
+                await sendAutonomousMessage(
+                    telefonoPracticante,
+                    `🔔 *🧠 RESULTADOS GHQ-12 INTERPRETADOS*\n\n` +
+                    `👤 *Paciente:* ${numeroUsuario}\n` +
+                    `📊 *Respuestas obtenidas:*\n${datosFormateados}\n\n` +
+                    `🤖 *Interpretación Técnica (RAG Unificado):*\n${resultadoInterpretacion.interpretation}\n\n` +
+                    `📋 *Documentos consultados:* ${resultadoInterpretacion.metadata.documentos_consultados?.join(', ') || 'No disponible'}`
+                );
 
-                } else {
-                    console.log('No se pudo obtener teléfono del practicante')
-                }
-            } catch (error) {
-                console.error('Error procesando resultados GHQ-12', error)
+                await notificarTestCompletadoAPracticante(numeroUsuario);
             }
 
             return "✅ *Prueba completada con éxito.*\n\nGracias por completar la evaluación. Los resultados han sido enviados a tu practicante asignado."

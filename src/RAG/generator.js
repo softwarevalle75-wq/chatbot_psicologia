@@ -76,7 +76,7 @@ export async function generateAnswer(question, retrievedChunks = [], options = {
         const context = buildContext(retrievedChunks)
         
         // Construcción del prompt (Principio: Dependency Injection)
-        const messages = buildPrompt(question, context, options.systemPrompt, options.userPromptTemplate)
+        const messages = buildPrompt(question, context, options)
 
         // 🧮 AUDITORÍA DE TOKENS - Medición exacta del consumo
         console.log('\n🧮 AUDITORÍA DE TOKENS:');
@@ -192,22 +192,26 @@ function buildContext(chunks) {
  * 
  * @param {string} question - Pregunta del usuario
  * @param {string} context - Contexto construido
- * @param {string} systemPrompt - Prompt del sistema
- * @param {string} userPromptTemplate - Plantilla de prompt para el usuario
+ * @param {Object} options - Opciones adicionales de configuración
  * @returns {Array} Array de mensajes para OpenAI
  */
-function buildPrompt(question, context, systemPrompt, userPromptTemplate) {
-    const system = systemPrompt || GENERATION_CONFIG.systemPrompt
-    const user = userPromptTemplate ? `${userPromptTemplate}\n\nPregunta: ${question}\n\nContexto:\n${context}` : `Pregunta: ${question}\n\nContexto:\n${context}`
+function buildPrompt(question, context, options = {}) {
+    const systemPrompt = options.systemPrompt || GENERATION_CONFIG.systemPrompt
+    const userPromptTemplate = options.userPromptTemplate || `Pregunta: {question}\n\nContexto:\n{context}`
+    
+    // Replace placeholders in userPromptTemplate
+    const userContent = userPromptTemplate
+        .replace('{question}', question)
+        .replace('{context}', context)
     
     return [
         {
             role: 'system',
-            content: system
+            content: systemPrompt
         },
         {
             role: 'user',
-            content: user
+            content: userContent
         }
     ]
 }

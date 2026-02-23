@@ -35,7 +35,7 @@ class PsychologicalInterpretationResult {
 function determineRetrievalK(query) {
     const normativeKeywords = ['puntos de corte', 'baremos', 'normativos', 'puntuación', 'corte', 'clasificación', 'reglas', 'estructura'];
     const isNormative = normativeKeywords.some(keyword => query.toLowerCase().includes(keyword));
-    return isNormative ? 10 : 5; // Mayor k para consultas normativas
+    return isNormative ? 5 : 3; // k reducido para controlar total chunks
 }
 
 /**
@@ -46,16 +46,17 @@ function determineRetrievalK(query) {
  * @returns {Array} Array de objetos {aspect, query}
  */
 function generateNormativeQueries(testId) {
+    const upperTestId = testId.toUpperCase();
     const baseQueries = [];
 
-    if (testId.toLowerCase() === 'ghq12') {
+    if (upperTestId === 'GHQ12') {
         baseQueries.push(
             { aspect: 'reglas_puntuacion', query: 'GHQ-12 reglas de puntuación método GHQ scoring vs Likert' },
             { aspect: 'puntos_corte', query: 'GHQ-12 puntos de corte clasificación casos probable no caso' },
             { aspect: 'baremos_normativos', query: 'GHQ-12 baremos normativos rangos percentiles puntuaciones' },
             { aspect: 'estructura_factorial', query: 'GHQ-12 estructura factorial subescalas factores validados' }
         );
-    } else if (testId.toLowerCase() === 'dass21') {
+    } else if (upperTestId === 'DASS21') {
         baseQueries.push(
             { aspect: 'reglas_puntuacion', query: 'DASS-21 reglas puntuación sumatoria subescalas depresión ansiedad estrés' },
             { aspect: 'puntos_corte', query: 'DASS-21 puntos corte severidad normal leve moderada severa extrema' },
@@ -166,7 +167,6 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
             
             const k = determineRetrievalK(queryObj.query);
             const result = await retrieveImproved(queryObj.query, {
-                source: testId.toUpperCase(),
                 k: k
             });
             

@@ -155,18 +155,29 @@ export const procesarDass21 = async (numeroUsuario, respuestas) => {
 			await guardarResultadoPrueba(numeroUsuario, tipoTest, datosFormateados);
 
 			try {
+				// Always perform RAG interpretation
+				const resultadoInterpretacion = await interpretPsychologicalTest(
+					'dass21',
+					estado.resPreg,
+					numeroUsuario
+				);
+
+				// Always send report to patient
+				await sendAutonomousMessage(
+					numeroUsuario,
+					`🔔 *RESULTADOS DASS-21 INTERPRETADOS*\n\n` +
+					`👤 *Paciente:* ${numeroUsuario}\n` +
+					`📊 *Respuestas obtenidas:*\n${datosFormateados}\n\n` +
+					`🤖 *Interpretación Técnica (RAG Unificado):*\n${resultadoInterpretacion.interpretation}\n\n` +
+					`📋 *Documentos consultados:* ${resultadoInterpretacion.metadata.documentos_consultados?.join(', ') || 'No disponible'}`
+				);
+
+				// Send to practitioner if assigned
 				const telefonoPracticante = await obtenerTelefonoPracticante(numeroUsuario);
 				if (telefonoPracticante) {
 					const mensajeInicial = `🔔 *📋 TEST DASS-21 COMPLETADO - GENERANDO REPORTE*\n\n`;
 					
 					await sendAutonomousMessage(telefonoPracticante, mensajeInicial);
-
-					// Delegar interpretación al sistema RAG unificado
-					const resultadoInterpretacion = await interpretPsychologicalTest(
-						'dass21',
-						estado.resPreg,
-						numeroUsuario
-					);
 
 					await sendAutonomousMessage(
 						telefonoPracticante,
@@ -178,9 +189,6 @@ export const procesarDass21 = async (numeroUsuario, respuestas) => {
 					);
 
 					await notificarTestCompletadoAPracticante(numeroUsuario);
-
-				} else {
-					console.log('No se pudo obtener teléfono del practicante para DASS-21')
 				}
 			} catch (error) {
 				console.error('Error procesando resultados DASS-21', error)

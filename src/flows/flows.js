@@ -707,12 +707,6 @@ export const menuFlow = addKeyword(utils.setEvent('MENU_FLOW'))
         const msg = validarRespuestaMenu(ctx.body, ['1', '2']);
 
         if (msg === '1') {
-          // Verificar asignación de practicante
-          const userFromDB = await obtenerUsuario(ctx.from);
-          if (!userFromDB || !userFromDB.data.practicanteAsignado) {
-            await flowDynamic('🚫 *Debes tener un profesional asignado para realizar cuestionarios.*');
-            return fallBack();
-          } 
           // Hacer cuestionarios
           await flowDynamic(menuCuestionarios());
           await switchFlujo(ctx.from, 'testSelectionFlow') // DESCOMENTADO - ahora funciona
