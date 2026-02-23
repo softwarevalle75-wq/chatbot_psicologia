@@ -1494,7 +1494,7 @@ export const initializeRagPsychologicalConfig = async (systemInstructions, promp
 			}
 		});
 
-		console.log('✅ Configuración RAG inicializada correctamente');
+		console.log('✅ Configuración RAG inicializada exitosamente');
 		return config;
 	} catch (error) {
 		console.error('❌ Error al inicializar configuración RAG:', error);

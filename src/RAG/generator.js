@@ -14,9 +14,9 @@ const openai = new OpenAI({
  * Principio: DRY - evitar valores mágicos en el código
  */
 const GENERATION_CONFIG = {
-    model: 'gpt-5', // Usuario insiste en GPT-5
-    temperature: 0.3, // GPT-5 solo soporta default (1), pero mantengo por compatibilidad
-    maxTokens: 400, // Reducido a 400 para evitar que todo se consuma en reasoning
+    model: 'gpt-5', // GPT-5 funciona con tokens suficientes (mínimo 200)
+    temperature: 0.3, // Reducido para análisis técnicos más deterministas
+    maxTokens: 10000, // Aumentado para asegurar que GPT-5 tenga suficientes tokens
     systemPrompt: `Eres un asistente especializado en psicología que responde preguntas
 basándose únicamente en el contexto proporcionado.
 
@@ -76,7 +76,51 @@ export async function generateAnswer(question, retrievedChunks = [], options = {
         const context = buildContext(retrievedChunks)
         
         // Construcción del prompt (Principio: Dependency Injection)
-        const messages = buildPrompt(question, context, options.customPrompt)
+        const messages = buildPrompt(question, context, options.systemPrompt, options.userPromptTemplate)
+
+        // 🧮 AUDITORÍA DE TOKENS - Medición exacta del consumo
+        console.log('\n🧮 AUDITORÍA DE TOKENS:');
+        console.log('='.repeat(80));
+        
+        // Medir system prompt
+        const systemPromptText = options.systemPrompt || GENERATION_CONFIG.systemPrompt;
+        console.log(`📋 System Prompt: ${systemPromptText.length} caracteres ≈ ${Math.round(systemPromptText.length / 4)} tokens`);
+        console.log(`   Contenido: ${systemPromptText.substring(0, 100)}...`);
+        
+        // Medir user message (query)
+        const userMessage = messages.find(m => m.role === 'user')?.content || '';
+        console.log(`👤 User Query: ${userMessage.length} caracteres ≈ ${Math.round(userMessage.length / 4)} tokens`);
+        console.log(`   Contenido: ${userMessage.substring(0, 100)}...`);
+        
+        // Medir chunks enviados
+        console.log(`📚 Chunks enviados: ${retrievedChunks.length}`);
+        let totalChunksChars = 0;
+        retrievedChunks.forEach((chunk, index) => {
+            const chunkContent = typeof chunk === 'string' ? chunk : chunk.content || chunk.text || '';
+            const chunkChars = chunkContent.length;
+            totalChunksChars += chunkChars;
+            console.log(`   Chunk ${index + 1}: ${chunkChars} caracteres ≈ ${Math.round(chunkChars / 4)} tokens`);
+            console.log(`     Preview: ${chunkContent.substring(0, 50)}...`);
+        });
+        
+        // Medir contexto concatenado
+        console.log(`🔗 Contexto total: ${context.length} caracteres ≈ ${Math.round(context.length / 4)} tokens`);
+        
+        // Verificar duplicación
+        const uniqueChunks = new Set(retrievedChunks.map(c => typeof c === 'string' ? c : c.content || c.text || ''));
+        const hasDuplication = uniqueChunks.size !== retrievedChunks.length;
+        console.log(`🔍 Duplicación detectada: ${hasDuplication ? 'SÍ' : 'NO'}`);
+        
+        // Prompt final completo
+        const fullPrompt = messages.map(m => `${m.role}: ${m.content}`).join('\n\n');
+        console.log(`📄 Prompt final completo: ${fullPrompt.length} caracteres ≈ ${Math.round(fullPrompt.length / 4)} tokens`);
+        
+        // Estimación total input tokens
+        const estimatedInputTokens = Math.round((systemPromptText.length + userMessage.length + context.length) / 4);
+        console.log(`🎯 Estimación total input tokens: ${estimatedInputTokens}`);
+        console.log(`⚠️  Si > 4000 tokens, explica el alto consumo de GPT-5`);
+        
+        console.log('='.repeat(80));
 
         // Llamada a OpenAI con configuración específica
         const completion = await openai.chat.completions.create({
@@ -88,90 +132,7 @@ export async function generateAnswer(question, retrievedChunks = [], options = {
         })
 
         const answer = completion.choices[0]?.message?.content?.trim()
-        
-        // 🐛 ULTRA DEBUG: Log EVERYTHING in the response
-        console.log('\n� ULTRA DEBUG - OpenAI Response Analysis:');
-        console.log('=' .repeat(80));
-        
-        console.log('📊 BASIC INFO:');
-        console.log('   Model:', completion.model);
-        console.log('   Choices length:', completion.choices?.length);
-        console.log('   Usage:', JSON.stringify(completion.usage, null, 2));
-        
-        console.log('\n🔍 COMPLETE RESPONSE OBJECT:');
-        console.log(JSON.stringify(completion, null, 2));
-        
-        console.log('\n🎯 CHOICES ANALYSIS:');
-        if (completion.choices && completion.choices.length > 0) {
-            completion.choices.forEach((choice, index) => {
-                console.log(`   Choice ${index}:`);
-                console.log('     Index:', choice.index);
-                console.log('     Finish reason:', choice.finish_reason);
-                console.log('     Message object:', JSON.stringify(choice.message, null, 2));
-                
-                // Check all possible content fields
-                const message = choice.message;
-                if (message) {
-                    console.log('     🔍 Content fields check:');
-                    console.log('       message.content:', message.content);
-                    console.log('       message.content type:', typeof message.content);
-                    console.log('       message.content length:', message.content?.length);
-                    
-                    // Check for reasoning/thinking fields
-                    console.log('       message.reasoning:', message.reasoning);
-                    console.log('       message.thinking:', message.thinking);
-                    
-                    // Check for tool calls
-                    console.log('       message.tool_calls:', message.tool_calls);
-                    
-                    // Check for function calls (legacy)
-                    console.log('       message.function_call:', message.function_call);
-                    
-                    // Check annotations
-                    console.log('       message.annotations:', message.annotations);
-                    
-                    // Check refusal
-                    console.log('       message.refusal:', message.refusal);
-                }
-            });
-        }
-        
-        console.log('\n🚨 RESPONSE STRUCTURE CHECKS:');
-        console.log('   Has choices:', !!completion.choices);
-        console.log('   Has usage:', !!completion.usage);
-        console.log('   Has model:', !!completion.model);
-        console.log('   Has id:', !!completion.id);
-        console.log('   Has object:', !!completion.object);
-        console.log('   Has created:', !!completion.created);
-        
-        // Check for streaming indicators
-        console.log('   Streaming check - object type:', completion.object);
-        
-        console.log('\n📝 FINAL CONTENT EXTRACTION:');
-        console.log('   Standard path (choices[0].message.content):', completion.choices?.[0]?.message?.content);
-        
-        // Try alternative paths
-        const altPaths = [
-            completion.choices?.[0]?.message?.reasoning,
-            completion.choices?.[0]?.message?.thinking,
-            completion.choices?.[0]?.text, // Legacy
-            completion.text, // Legacy
-            completion.choices?.[0]?.text, // Legacy
-        ];
-        
-        altPaths.forEach((path, index) => {
-            if (path) {
-                console.log(`   Alternative path ${index}:`, path);
-            }
-        });
-        
-        console.log('=' .repeat(80));
-        
-        if (!answer) {
-            console.log('❌ CONCLUSION: No content found in standard path');
-        } else {
-            console.log('✅ CONCLUSION: Content found in standard path');
-        }
+
         
         if (!answer) {
             throw new Error('No se recibió respuesta del modelo')
@@ -233,20 +194,22 @@ function buildContext(chunks) {
  * 
  * @param {string} question - Pregunta del usuario
  * @param {string} context - Contexto construido
- * @param {string} customPrompt - Prompt personalizado opcional
+ * @param {string} systemPrompt - Prompt del sistema
+ * @param {string} userPromptTemplate - Plantilla de prompt para el usuario
  * @returns {Array} Array de mensajes para OpenAI
  */
-function buildPrompt(question, context, customPrompt = null) {
-    const systemPrompt = customPrompt || GENERATION_CONFIG.systemPrompt
+function buildPrompt(question, context, systemPrompt, userPromptTemplate) {
+    const system = systemPrompt || GENERATION_CONFIG.systemPrompt
+    const user = userPromptTemplate ? `${userPromptTemplate}\n\nPregunta: ${question}\n\nContexto:\n${context}` : `Pregunta: ${question}\n\nContexto:\n${context}`
     
     return [
         {
             role: 'system',
-            content: systemPrompt
+            content: system
         },
         {
             role: 'user',
-            content: `Pregunta: ${question}\n\nContexto:\n${context}`
+            content: user
         }
     ]
 }

@@ -9,6 +9,7 @@ const require = createRequire(import.meta.url)
 const pdfParse = require('pdf-parse')
 const CHUNK_SIZE = 1000
 const CHUNK_OVERLAP = 100
+const NORMATIVE_CHUNK_SIZE = 700 // Tamaño reducido para secciones normativas (tablas, puntos de corte, baremos)
 let GLOBAL_CHUNK_ID = 0 // Contador GLOBAL para todos los documentos
 const createHash = (text) => {
 	return crypto.createHash('sha256').update(text).digest('hex') // ← Hash completo de 64 caracteres
@@ -338,6 +339,19 @@ const chunkText = (text, metadata) => {
 	let currentPage = metadata.pageStart || 1
 	let globalChunkCounter = GLOBAL_CHUNK_ID // Inicializar con el contador global
 
+	// Función para detectar si un texto contiene contenido normativo
+	const isNormativeContent = (text) => {
+		const normativePatterns = [
+			'tabla', 'table', 'punto de corte', 'cut-off', 'baremo', 'norma',
+			'coeficiente alfa', 'alpha', 'confiabilidad', 'sensibilidad',
+			'especificidad', 'factor', 'carga factorial', 'percentil',
+			'media', 'desviación', 'correlación', 'r=', 'p=', 'n=',
+			'ítem', 'item', 'subescala', 'factor'
+		]
+		const lowerText = text.toLowerCase()
+		return normativePatterns.some(pattern => lowerText.includes(pattern))
+	}
+
 	// Función para encontrar el mejor punto de corte sin cortar palabras
 	const findBestBreakPoint = (text, maxLength) => {
 		if (text.length <= maxLength) return text.length
@@ -404,9 +418,12 @@ const chunkText = (text, metadata) => {
 	while (remainingText.length > 0) {
 		let chunkText = ''
 
+		// DETERMINAR TAMAÑO DE CHUNK SEGÚN CONTENIDO
+		const chunkSize = isNormativeContent(remainingText.substring(0, 200)) ? NORMATIVE_CHUNK_SIZE : CHUNK_SIZE
+
 		// Si tenemos overlap del chunk anterior, usarlo como inicio
 		if (lastOverlap) {
-			const availableSpace = CHUNK_SIZE - lastOverlap.length
+			const availableSpace = chunkSize - lastOverlap.length
 			if (availableSpace > 50) { // Mínimo espacio para contenido significativo
 				const breakPoint = findBestBreakPoint(remainingText, availableSpace)
 				chunkText = lastOverlap + remainingText.substring(0, breakPoint).trim()
@@ -419,7 +436,7 @@ const chunkText = (text, metadata) => {
 			lastOverlap = ''
 		} else {
 			// Primer chunk o sin overlap
-			const breakPoint = findBestBreakPoint(remainingText, CHUNK_SIZE)
+			const breakPoint = findBestBreakPoint(remainingText, chunkSize)
 			chunkText = remainingText.substring(0, breakPoint).trim()
 			remainingText = remainingText.substring(breakPoint).trim()
 		}
@@ -455,6 +472,7 @@ const chunkText = (text, metadata) => {
 
 	return chunks
 }
+
 const indexDocument = async (sourceConfig) => {
 	const client = getQdrantClient()
 	const collectionName = getCollectionName()

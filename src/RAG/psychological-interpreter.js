@@ -51,16 +51,45 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
         console.log('📚 Cargando configuración RAG general...');
         const config = await getRagPsychologicalConfig();
 
-        // 3. CONSTRUIR QUERY INTELIGENTE PARA RETRIEVAL
-        const query = buildPsychologicalQuery(testId, rawResults);
-        console.log(`🔍 Query construida: ${query.substring(0, 100)}...`);
-
-        // 4. RETRIEVAL INTELIGENTE - Busca automáticamente en documentos del test
-        console.log(`🔎 Ejecutando retrieval para ${testId.toUpperCase()}...`);
-        const retrievalResult = await retrieveImproved(query, {
-            source: testId.toUpperCase(), // Filtra automáticamente por documentos del test
-            k: 20 // Más chunks para contexto completo
-        });
+        // 3. CONSTRUIR QUERIES NORMATIVAS SEPARADAS
+        console.log(`🔍 Generando queries normativas para ${testId}...`);
+        const normativeQueries = generateNormativeQueries(testId, rawResults);
+        
+        // 4. RETRIEVAL MULTIPLE PARA DIFERENTES ASPECTOS NORMATIVOS
+        console.log(`🔎 Ejecutando retrieval múltiple para ${normativeQueries.length} aspectos normativos...`);
+        
+        const allRetrievalResults = [];
+        for (const queryObj of normativeQueries) {
+            console.log(`  📋 Consultando: ${queryObj.aspect} - "${queryObj.query}"`);
+            
+            const k = determineRetrievalK(queryObj.query);
+            const result = await retrieveImproved(queryObj.query, {
+                source: testId.toUpperCase(),
+                k: k
+            });
+            
+            if (result.chunks && result.chunks.length > 0) {
+                allRetrievalResults.push({
+                    aspect: queryObj.aspect,
+                    query: queryObj.query,
+                    chunks: result.chunks,
+                    sources: result.sources
+                });
+                console.log(`    ✅ ${result.chunks.length} chunks recuperados`);
+            }
+        }
+        
+        // COMBINAR TODOS LOS CHUNKS RECUPERADOS
+        const allChunks = allRetrievalResults.flatMap(result => result.chunks);
+        const uniqueChunks = removeDuplicateChunks(allChunks); // Evitar duplicados
+        
+        const retrievalResult = {
+            chunks: uniqueChunks,
+            sources: [...new Set(allRetrievalResults.flatMap(r => r.sources || []))],
+            normativeAspects: allRetrievalResults.map(r => r.aspect)
+        };
+        
+        console.log(`📄 Total chunks únicos: ${uniqueChunks.length} de ${allRetrievalResults.length} aspectos normativos`);
 
         if (!retrievalResult.chunks || retrievalResult.chunks.length === 0) {
             throw new Error(`No se encontraron documentos relevantes para ${testId}`);
@@ -70,8 +99,25 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
 
         // 5. GENERACIÓN CON PROMPT GENERAL
         console.log('🤖 Generando interpretación con prompt general...');
-        const generationResult = await generateAnswer(query, retrievalResult.chunks, {
-            customPrompt: config.systemInstructions, // Prompt general inteligente
+        
+        // Incluir datos del paciente en el contexto para que RAG pueda analizarlos
+        const patientDataContext = `Datos del paciente: ${JSON.stringify(rawResults)}`;
+        const enhancedChunks = [
+            // Agregar chunk virtual con datos del paciente
+            {
+                text: patientDataContext,
+                payload: { 
+                    docName: 'Datos_Paciente',
+                    chunkIndex: 0,
+                    paciente_id: patientId
+                }
+            },
+            ...retrievalResult.chunks // Chunks del RAG
+        ];
+        
+        const generationResult = await generateAnswer(query, enhancedChunks, {
+            systemPrompt: config.systemInstructions, // Rol del sistema
+            userPromptTemplate: config.promptTemplate, // Instrucciones detalladas
             testId: testId,
             temperature: 0.2, // Más determinista para análisis técnicos
             maxTokens: 2000 // Espacio suficiente para análisis detallados
@@ -147,13 +193,35 @@ function buildPsychologicalQuery(testId, rawResults) {
 
     const testName = testNames[testId.toLowerCase()] || testId.toUpperCase();
 
-    // Query estructurada que incluye identificación automática del test
-    return `Interpretar resultados de prueba psicológica.
-Instrumento: ${testName}
-Resultados del paciente: ${JSON.stringify(rawResults)}
-Analizar según criterios técnicos de los manuales disponibles.
-Comparar con baremos, puntos de corte, subescalas y criterios normativos.
-Proporcionar interpretación técnica fundamentada.`;
+    // OPTIMIZACIÓN: Query concisa y dinámica (no JSON completo)
+    let patientProfile = '';
+
+    if (testId.toLowerCase() === 'ghq12') {
+        // Análisis inteligente del perfil GHQ-12
+        const normal = rawResults[0]?.length || 0;      // Mejor que habitual
+        const same = rawResults[1]?.length || 0;         // Igual que habitual
+        const less = rawResults[2]?.length || 0;         // Menos que habitual
+        const muchLess = rawResults[3]?.length || 0;     // Mucho menos que habitual
+
+        const totalItems = normal + same + less + muchLess;
+
+        if (muchLess >= totalItems * 0.5) {
+            patientProfile = `paciente con distress severo (${muchLess}/${totalItems} ítems críticos)`;
+        } else if (muchLess > 0 || less >= totalItems * 0.3) {
+            patientProfile = `paciente con distress moderado (${less + muchLess}/${totalItems} ítems afectados)`;
+        } else if (less > 0) {
+            patientProfile = `paciente con distress leve (${less}/${totalItems} ítems leves)`;
+        } else {
+            patientProfile = `paciente con distress mínimo (${normal}/${totalItems} ítems normales)`;
+        }
+    } else {
+        // Para otros tests, resumen básico
+        const totalResponses = Object.values(rawResults).reduce((sum, arr) => sum + (arr?.length || 0), 0);
+        patientProfile = `paciente con ${totalResponses} respuestas registradas`;
+    }
+
+    // Query minimal: solo identifica el test, RAG analiza todo desde contexto
+    return testName;
 }
 
 /**
@@ -205,5 +273,56 @@ export async function getInterpretationStats() {
     }
 }
 
-// Exportar clase para testing y extensibilidad
-export { PsychologicalInterpretationResult };
+/**
+ * Genera queries separadas para diferentes aspectos normativos del test
+ * Arquitectura: Multi-Query Strategy - consultas especializadas para mejor recall
+ *
+ * @param {string} testId - ID del test
+ * @param {Object} rawResults - Resultados crudos
+ * @returns {Array} Array de objetos {aspect, query}
+ */
+function generateNormativeQueries(testId, rawResults) {
+    const baseQueries = [];
+
+    if (testId.toLowerCase() === 'ghq12') {
+        baseQueries.push(
+            { aspect: 'reglas_puntuacion', query: 'GHQ-12 reglas de puntuación método GHQ scoring vs Likert' },
+            { aspect: 'puntos_corte', query: 'GHQ-12 puntos de corte clasificación casos probable no caso' },
+            { aspect: 'baremos_normativos', query: 'GHQ-12 baremos normativos rangos percentiles puntuaciones' },
+            { aspect: 'estructura_factorial', query: 'GHQ-12 estructura factorial subescalas factores validados' }
+        );
+    } else if (testId.toLowerCase() === 'dass21') {
+        baseQueries.push(
+            { aspect: 'reglas_puntuacion', query: 'DASS-21 reglas puntuación sumatoria subescalas depresión ansiedad estrés' },
+            { aspect: 'puntos_corte', query: 'DASS-21 puntos corte severidad normal leve moderada severa extrema' },
+            { aspect: 'baremos_normativos', query: 'DASS-21 baremos normativos percentiles rangos referencia' },
+            { aspect: 'estructura_factorial', query: 'DASS-21 estructura factorial subescalas depresión ansiedad estrés validadas' }
+        );
+    }
+
+    return baseQueries;
+}
+
+/**
+ * Elimina chunks duplicados basándose en contenido similar
+ * Arquitectura: Deduplication - evitar redundancia en contexto
+ *
+ * @param {Array} chunks - Array de chunks
+ * @returns {Array} Chunks únicos
+ */
+function removeDuplicateChunks(chunks) {
+    if (!chunks || chunks.length === 0) return [];
+
+    const uniqueChunks = [];
+    const seenTexts = new Set();
+
+    for (const chunk of chunks) {
+        const text = chunk.text?.trim();
+        if (text && !seenTexts.has(text)) {
+            seenTexts.add(text);
+            uniqueChunks.push(chunk);
+        }
+    }
+
+    return uniqueChunks;
+}

@@ -1,24 +1,36 @@
 // Test completamente aislado del RAG - sin dependencias de BD ni WhatsApp
-import 'dotenv/config';
-import { generateAnswer } from '../src/RAG/generator.js';
 import { retrieveImproved } from '../src/RAG/retriever-improved.js';
+import { generateAnswer } from '../src/RAG/generator.js';
+import { getRagPsychologicalConfig } from '../src/queries/queries.js';
 
-// Configuración RAG hardcodeada para evitar BD
-const RAG_CONFIG = {
-    systemInstructions: `Actúa como psicólogo clínico y psicometrista especializado en interpretación técnica de pruebas psicológicas basándose exclusivamente en manuales normativos oficiales proporcionados en cada solicitud. Analiza los resultados únicamente con base en los documentos entregados. Está prohibido utilizar conocimiento externo, realizar suposiciones no respaldadas o emitir diagnósticos clínicos definitivos. Solo podrás formular hipótesis diagnósticas tentativas si el manual lo permite explícitamente, indicando el nivel de probabilidad y su fundamento normativo. Tu análisis debe: - Identificar el instrumento aplicado. - Extraer puntos de corte, baremos y criterios interpretativos del manual. - Comparar explícitamente cada puntaje con dichos criterios. - Evaluar coherencia interna del perfil según la estructura del instrumento. - Integrar los hallazgos de forma técnica y prudente. Mantén un lenguaje profesional, objetivo y claro. Evita afirmaciones categóricas o alarmistas. La respuesta debe garantizar que todos los puntajes fueron contrastados con el manual, incluir limitaciones metodológicas cuando corresponda y finalizar con una advertencia ética indicando que la interpretación es orientativa y no sustituye evaluación clínica profesional presencial.`,
-    version: '1.0'
-};
+// Función optimizada para construir query minimal
+function buildOptimizedQuery(testId, rawResults) {
+    const testNames = { 'ghq12': 'GHQ-12', 'dass21': 'DASS-21' };
+    return testNames[testId.toLowerCase()] || testId.toUpperCase();
+}
+
+// Función para crear contexto con datos del paciente
+function buildContextWithPatientData(retrievedChunks, rawResults) {
+    const patientChunk = {
+        text: `Datos del paciente: ${JSON.stringify(rawResults)}`,
+        payload: { docName: 'Datos_Paciente', chunkIndex: 0 }
+    };
+    return [patientChunk, ...retrievedChunks];
+}
+
+// Configuración RAG desde BD
 
 async function testRAGCompletoAislado() {
-    console.log('🧪 Test RAG aislado - Paciente GHQ-12 con máxima severidad...\n');
+    const RAG_CONFIG = await getRagPsychologicalConfig();
+    console.log('🧪 Test RAG aislado - Paciente GHQ-12 con perfil REALISTA...\n');
 
-    // Datos del paciente con máxima severidad (3 en todas las preguntas)
+    // Datos del paciente REALISTA (perfil mixto de distress moderado)
     const testId = 'ghq12';
     const rawResults = {
-        0: [], // Mejor que habitual: 0
+        0: [1, 4, 7, 10], // Mejor que habitual: 4 ítems (respuestas normales)
         1: [], // Igual que habitual: 0
-        2: [], // Menos que habitual: 0
-        3: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] // Mucho menos que habitual: TODAS
+        2: [2, 5, 8, 9, 11, 12], // Menos que habitual: 6 ítems (distress leve-moderado)
+        3: [3, 6] // Mucho menos que habitual: 2 ítems (distress significativo)
     };
 
     console.log('📊 Perfil del paciente:');
@@ -26,19 +38,14 @@ async function testRAGCompletoAislado() {
     console.log(`   - ${rawResults[1].length} respuestas "Igual que habitual"`);
     console.log(`   - ${rawResults[2].length} respuestas "Menos que habitual"`);
     console.log(`   - ${rawResults[3].length} respuestas "Mucho menos que habitual"`);
-    console.log('   → PERFIL DE MÁXIMA SEVERIDAD\n');
+    console.log('   → PERFIL REALISTA: DISTRESS MODERADO\n');
 
     try {
-        // 1. Construir query inteligente
-        const query = `Interpretar resultados de prueba psicológica.
-Instrumento: GHQ-12
-Resultados del paciente: ${JSON.stringify(rawResults)}
-Analizar según criterios técnicos de los manuales disponibles.
-Comparar con baremos, puntos de corte, subescalas y criterios normativos.
-Proporcionar interpretación técnica fundamentada.`;
+        // 1. Construir query ultra-minimal optimizada
+        const query = buildOptimizedQuery(testId, rawResults);
 
         console.log('🔍 Query para RAG:');
-        console.log(query.substring(0, 150) + '...\n');
+        console.log(`"${query}"\n`);
 
         // 2. Retrieval desde Qdrant
         console.log('🔎 Ejecutando retrieval de documentos GHQ-12...');
@@ -57,10 +64,15 @@ Proporcionar interpretación técnica fundamentada.`;
             return;
         }
 
-        // 3. Generar interpretación con OpenAI
-        console.log('\n🤖 Generando interpretación con GPT-5...');
-        const generationResult = await generateAnswer(query, retrievalResult.chunks, {
-            customPrompt: RAG_CONFIG.systemInstructions,
+        // 3. Crear contexto con datos del paciente incluidos
+        console.log('\n🤖 Construyendo contexto con datos del paciente...');
+        const enhancedChunks = buildContextWithPatientData(retrievalResult.chunks, rawResults);
+
+        // 4. Generar interpretación con GPT-5
+        console.log('🤖 Generando interpretación con GPT-5...');
+        const generationResult = await generateAnswer(query, enhancedChunks, {
+            systemPrompt: RAG_CONFIG.systemInstructions,
+            userPromptTemplate: RAG_CONFIG.promptTemplate,
             testId: testId,
             temperature: 0.2,
             maxTokens: 2000
@@ -78,9 +90,10 @@ Proporcionar interpretación técnica fundamentada.`;
         console.log('═'.repeat(80));
 
         console.log('\n📊 Metadatos:');
-        console.log(`   - Modelo usado: ${generationResult.metadata?.model}`);
-        console.log(`   - Chunks utilizados: ${retrievalResult.chunks.length}`);
+        console.log(`   - Modelo usado: ${generationResult.metadata?.model || 'gpt-5'}`);
+        console.log(`   - Chunks utilizados: ${enhancedChunks.length}`);
         console.log(`   - Tokens usados: ${generationResult.metadata?.totalTokens || 'N/A'}`);
+        console.log(`   - Query usado: "${query}"`);
 
         // 5. Verificar calidad de la interpretación
         const respuesta = generationResult.answer.toLowerCase();
