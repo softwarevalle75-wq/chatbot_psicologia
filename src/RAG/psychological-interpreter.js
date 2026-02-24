@@ -1,14 +1,7 @@
-// Sistema Unificado de Interpretación RAG para Tests Psicológicos
-// Arquitectura: Prompt General Inteligente que funciona para todos los tests
-
 import { generateAnswer } from './generator.js';
-import { retrieveImproved } from './retriever-improved.js';
-import { getRagPsychologicalConfig, guardarResultadoPrueba } from '../queries/queries.js';
+import { retrieveImproved } from './retriever.js';
+import { getRagPsychologicalConfig, guardarResultadoPrueba } from './rag-config.js';
 
-/**
- * Resultado de interpretación psicológica
- * Principio: Encapsulation - estructura clara para resultados
- */
 class PsychologicalInterpretationResult {
     constructor(interpretation, success, metadata) {
         this.interpretation = interpretation;
@@ -25,25 +18,16 @@ class PsychologicalInterpretationResult {
     }
 }
 
-/**
- * Determina el valor óptimo de k para retrieval basado en la complejidad de la query
- * Arquitectura: Dynamic k - ajustar retrieval según tipo de consulta
- *
- * @param {string} query - Query a analizar
- * @returns {number} Valor de k (5-10)
- */
-function determineRetrievalK(query) {
-    const normativeKeywords = ['puntos de corte', 'baremos', 'normativos', 'puntuación', 'corte', 'clasificación', 'reglas', 'estructura'];
-    const isNormative = normativeKeywords.some(keyword => query.toLowerCase().includes(keyword));
-    return isNormative ? 5 : 3; // k reducido para controlar total chunks
-}
+// Constantes de retrieval — k=10 por query (carga completa), top 3 por aspecto base → máx 12 al LLM
+const K_CANDIDATES = 10   // chunks a pedir a Qdrant por query
+const K_PER_ASPECT = 3    // chunks a seleccionar por aspecto base → 4 aspectos × 3 = máx 12 total
 
 /**
- * Genera queries separadas para diferentes aspectos normativos del test
- * Arquitectura: Multi-Query Strategy - consultas especializadas para mejor recall
+ * Genera queries bilingues (español + inglés) para los 4 aspectos normativos del test.
+ * Estrategia: Multi-Query Bilingüe — cubre documentos en ambos idiomas sin filtros adicionales.
  *
- * @param {string} testId - ID del test
- * @returns {Array} Array de objetos {aspect, query}
+ * @param {string} testId - ID del test ('ghq12' | 'dass21')
+ * @returns {Array<{aspect: string, query: string}>}
  */
 function generateNormativeQueries(testId) {
     const upperTestId = testId.toUpperCase();
@@ -51,17 +35,31 @@ function generateNormativeQueries(testId) {
 
     if (upperTestId === 'GHQ12') {
         baseQueries.push(
-            { aspect: 'reglas_puntuacion', query: 'GHQ-12 reglas de puntuación método GHQ scoring vs Likert' },
-            { aspect: 'puntos_corte', query: 'GHQ-12 puntos de corte clasificación casos probable no caso' },
-            { aspect: 'baremos_normativos', query: 'GHQ-12 baremos normativos rangos percentiles puntuaciones' },
-            { aspect: 'estructura_factorial', query: 'GHQ-12 estructura factorial subescalas factores validados' }
+            { aspect: 'reglas_puntuacion_en', query: 'GHQ-12 scoring method GHQ Likert binary bimodal score calculation' },
+            { aspect: 'reglas_puntuacion_es', query: 'GHQ-12 método de puntuación reglas Likert puntuación binaria cálculo' },
+
+            { aspect: 'puntos_corte_en', query: 'GHQ-12 cutoff threshold score sensitivity specificity screening classification' },
+            { aspect: 'puntos_corte_es', query: 'GHQ-12 punto de corte umbral sensibilidad especificidad tamizaje clasificación' },
+
+            { aspect: 'baremos_normativos_en', query: 'GHQ-12 normative data percentiles population reference scores ranges' },
+            { aspect: 'baremos_normativos_es', query: 'GHQ-12 baremos normativos percentiles datos poblacionales puntajes de referencia' },
+
+            { aspect: 'estructura_factorial_en', query: 'GHQ-12 factor structure subscales unidimensional validation psychometric' },
+            { aspect: 'estructura_factorial_es', query: 'GHQ-12 estructura factorial subescalas validación unidimensional psicométrico' }
         );
     } else if (upperTestId === 'DASS21') {
         baseQueries.push(
-            { aspect: 'reglas_puntuacion', query: 'DASS-21 reglas puntuación sumatoria subescalas depresión ansiedad estrés' },
-            { aspect: 'puntos_corte', query: 'DASS-21 puntos corte severidad normal leve moderada severa extrema' },
-            { aspect: 'baremos_normativos', query: 'DASS-21 baremos normativos percentiles rangos referencia' },
-            { aspect: 'estructura_factorial', query: 'DASS-21 estructura factorial subescalas depresión ansiedad estrés validadas' }
+            { aspect: 'reglas_puntuacion_en', query: 'DASS-21 scoring subscale sum multiply depression anxiety stress calculation' },
+            { aspect: 'reglas_puntuacion_es', query: 'DASS-21 puntuación subescala suma multiplicar depresión ansiedad estrés cálculo' },
+
+            { aspect: 'puntos_corte_en', query: 'DASS-21 cutoff severity levels normal mild moderate severe extremely severe' },
+            { aspect: 'puntos_corte_es', query: 'DASS-21 punto de corte niveles de severidad normal leve moderado severo extremadamente severo' },
+
+            { aspect: 'baremos_normativos_en', query: 'DASS-21 normative percentiles population reference ranges scores' },
+            { aspect: 'baremos_normativos_es', query: 'DASS-21 baremos normativos percentiles población rangos de referencia puntajes' },
+
+            { aspect: 'estructura_factorial_en', query: 'DASS-21 factor structure three subscales depression anxiety stress validation' },
+            { aspect: 'estructura_factorial_es', query: 'DASS-21 estructura factorial tres subescalas depresión ansiedad estrés validación' }
         );
     }
 
@@ -69,182 +67,165 @@ function generateNormativeQueries(testId) {
 }
 
 /**
- * Construye query inteligente para retrieval de tests psicológicos
- * Principio: Query Engineering - optimizar para encontrar información relevante
- *
- * @param {string} testId - ID del test
- * @returns {string} Query optimizada
- */
-function buildPsychologicalQuery(testId) {
-    const testNames = {
-        'ghq12': 'GHQ-12',
-        'dass21': 'DASS-21'
-    };
-
-    return testNames[testId.toLowerCase()] || testId.toUpperCase();
-}
-
-/**
- * Extrae nombres de documentos únicos de los chunks
- * Principio: Data Processing - procesamiento limpio de metadatos
- *
- * @param {Array} chunks - Chunks recuperados
- * @returns {Array<string>} Nombres únicos de documentos
+ * Extrae nombres de documentos únicos de los chunks recuperados.
  */
 function extractDocumentNames(chunks) {
     if (!chunks || !Array.isArray(chunks)) return [];
-
     const docNames = new Set();
     chunks.forEach(chunk => {
-        if (chunk.payload?.docName) {
-            docNames.add(chunk.payload.docName);
-        }
+        const docName = chunk.payload?.docName || chunk.docName;
+        if (docName) docNames.add(docName);
     });
-
     return Array.from(docNames);
 }
 
 /**
- * Elimina chunks duplicados basándose en contenido similar
- * Arquitectura: Deduplication - evitar redundancia en contexto
- *
- * @param {Array} chunks - Array de chunks
- * @returns {Array} Chunks únicos
+ * Elimina chunks con texto duplicado para no repetir contexto al LLM.
+ * (Conservada por compatibilidad; la deduplicación principal la hace selectTopKPerAspect)
  */
-function removeDuplicateChunks(chunks) {
-    if (!chunks || chunks.length === 0) return [];
+// function removeDuplicateChunks(chunks) {
+//     if (!chunks || chunks.length === 0) return [];
+//     const uniqueChunks = [];
+//     const seenTexts = new Set();
+//     for (const chunk of chunks) {
+//         const text = chunk.text?.trim();
+//         if (text && !seenTexts.has(text)) {
+//             seenTexts.add(text);
+//             uniqueChunks.push(chunk);
+//         }
+//     }
+//     return uniqueChunks;
+// }
 
-    const uniqueChunks = [];
-    const seenTexts = new Set();
+/**
+ * Selecciona los top-K chunks por aspecto base (strip _en/_es suffix).
+ * Agrupa los resultados de las 8 queries bilingues en 4 grupos de aspecto,
+ * ordena por score DESC, deduplica por textHash, y toma los K mejores de cada grupo.
+ * Garantiza cobertura de todos los aspectos con máx 12 chunks al LLM.
+ *
+ * @param {Array<{aspect: string, chunks: Array}>} allRetrievalResults
+ * @param {number} topK - chunks por aspecto base (default K_PER_ASPECT = 3)
+ * @returns {Array} máx topK × 4 chunks únicos con campo `aspectSource`
+ */
+function selectTopKPerAspect(allRetrievalResults, topK = K_PER_ASPECT) {
+    const aspectGroups = {}
+    for (const { aspect, chunks } of allRetrievalResults) {
+        const baseAspect = aspect.replace(/_en$/, '').replace(/_es$/, '')
+        if (!aspectGroups[baseAspect]) aspectGroups[baseAspect] = []
+        aspectGroups[baseAspect].push(...chunks)
+    }
 
-    for (const chunk of chunks) {
-        const text = chunk.text?.trim();
-        if (text && !seenTexts.has(text)) {
-            seenTexts.add(text);
-            uniqueChunks.push(chunk);
+    const selected = []
+    const seenHashes = new Set()
+
+    for (const baseAspect of Object.keys(aspectGroups)) {
+        const sorted = aspectGroups[baseAspect]
+            .sort((a, b) => (b.score || 0) - (a.score || 0))
+
+        let taken = 0
+        for (const chunk of sorted) {
+            if (taken >= topK) break
+            const hash = chunk.textHash || chunk.payload?.textHash || chunk.text || chunk.payload?.text
+            if (!seenHashes.has(hash)) {
+                seenHashes.add(hash)
+                selected.push({ ...chunk, aspectSource: baseAspect })
+                taken++
+            }
         }
     }
 
-    return uniqueChunks;
+    return selected
 }
 
 /**
- * Función principal unificada para interpretación de tests psicológicos
- * Arquitectura: Prompt General + RAG Inteligente
+ * Función principal: interpreta el resultado de un test psicológico usando RAG.
+ * El system prompt y el prompt template se cargan SIEMPRE desde la BD.
  *
- * @param {string} testId - ID del test ('ghq12', 'dass21', etc.)
+ * @param {string} testId - 'ghq12' | 'dass21'
  * @param {Object} rawResults - Resultados crudos del paciente
- * @param {string} patientId - ID del paciente
- * @returns {Promise<PsychologicalInterpretationResult>} Resultado de interpretación
+ * @param {string} patientId - Teléfono / ID del paciente
+ * @returns {Promise<PsychologicalInterpretationResult>}
  */
 export async function interpretPsychologicalTest(testId, rawResults, patientId) {
     try {
-        console.log(`🧠 Iniciando interpretación unificada para ${testId} - Paciente: ${patientId}`);
+        console.log(`🧠 Iniciando interpretación para ${testId} - Paciente: ${patientId}`);
 
-        // 1. VALIDACIÓN DE INPUTS (Fail Fast)
+        // 1. VALIDACIÓN
         if (!testId || !rawResults || !patientId) {
             throw new Error('Parámetros requeridos: testId, rawResults, patientId');
         }
-
         if (!['ghq12', 'dass21'].includes(testId.toLowerCase())) {
             throw new Error(`Test no soportado: ${testId}. Tests soportados: ghq12, dass21`);
         }
 
-        // 2. CARGAR CONFIGURACIÓN GENERAL DEL PROMPT
-        console.log('📚 Cargando configuración RAG general...');
+        // 2. CARGAR CONFIGURACIÓN DESDE BD
+        console.log('📚 Cargando configuración RAG desde BD...');
         const config = await getRagPsychologicalConfig();
 
-        // 3. CONSTRUIR QUERIES NORMATIVAS SEPARADAS
-        console.log(`🔍 Generando queries normativas para ${testId}...`);
+        // 3. RETRIEVAL BILINGÜE — 8 queries (4 aspectos × 2 idiomas)
         const normativeQueries = generateNormativeQueries(testId);
-        
-        // 4. RETRIEVAL MULTIPLE PARA DIFERENTES ASPECTOS NORMATIVOS
-        console.log(`🔎 Ejecutando retrieval múltiple para ${normativeQueries.length} aspectos normativos...`);
-        
+        console.log(`🔎 Ejecutando ${normativeQueries.length} queries bilingues para ${testId}...`);
+
         const allRetrievalResults = [];
         for (const queryObj of normativeQueries) {
-            console.log(`  📋 Consultando: ${queryObj.aspect} - "${queryObj.query}"`);
-            
-            const k = determineRetrievalK(queryObj.query);
-            const result = await retrieveImproved(queryObj.query, {
-                k: k
-            });
-            
+            console.log(`  📋 [${queryObj.aspect}] "${queryObj.query}"`);
+            const result = await retrieveImproved(queryObj.query, { k: K_CANDIDATES });
+
             if (result.chunks && result.chunks.length > 0) {
                 allRetrievalResults.push({
                     aspect: queryObj.aspect,
-                    query: queryObj.query,
                     chunks: result.chunks,
                     sources: result.sources
                 });
                 console.log(`    ✅ ${result.chunks.length} chunks recuperados`);
             }
         }
-        
-        // COMBINAR TODOS LOS CHUNKS RECUPERADOS
-        const allChunks = allRetrievalResults.flatMap(result => result.chunks);
-        const uniqueChunks = removeDuplicateChunks(allChunks); // Evitar duplicados
-        
-        const retrievalResult = {
-            chunks: uniqueChunks,
-            sources: [...new Set(allRetrievalResults.flatMap(r => r.sources || []))],
-            normativeAspects: allRetrievalResults.map(r => r.aspect)
-        };
-        
-        console.log(`📄 Total chunks únicos: ${uniqueChunks.length} de ${allRetrievalResults.length} aspectos normativos`);
 
-        if (!retrievalResult.chunks || retrievalResult.chunks.length === 0) {
+        // 4. TOP-K POR ASPECTO — selecciona los mejores K chunks por grupo de aspecto
+        // Agrupa las 8 queries bilingues en 4 aspectos base, toma top K_PER_ASPECT por grupo
+        const uniqueChunks = selectTopKPerAspect(allRetrievalResults);
+
+        console.log(`📄 Total chunks únicos: ${uniqueChunks.length}`);
+
+        if (uniqueChunks.length === 0) {
             throw new Error(`No se encontraron documentos relevantes para ${testId}`);
         }
 
-        console.log(`📄 Recuperados ${retrievalResult.chunks.length} chunks de ${retrievalResult.sources?.length || 0} documentos`);
-
-        // 5. GENERACIÓN CON PROMPT GENERAL
-        console.log('🤖 Generando interpretación con prompt general...');
-        
-        // Incluir datos del paciente en el contexto para que RAG pueda analizarlos
-        const patientDataContext = `Datos del paciente: ${JSON.stringify(rawResults)}`;
+        // 5. GENERACIÓN — incluye datos del paciente como chunk virtual
+        console.log('🤖 Generando interpretación...');
         const enhancedChunks = [
-            // Agregar chunk virtual con datos del paciente
             {
-                text: patientDataContext,
-                payload: { 
-                    docName: 'Datos_Paciente',
-                    chunkIndex: 0,
-                    paciente_id: patientId
-                }
+                text: `Datos del paciente: ${JSON.stringify(rawResults)}`,
+                payload: { docName: 'Datos_Paciente', chunkIndex: 0, paciente_id: patientId }
             },
-            ...retrievalResult.chunks // Chunks del RAG
+            ...uniqueChunks
         ];
-        
-        const query = buildPsychologicalQuery(testId);
-        
-        const generationResult = await generateAnswer(query, enhancedChunks, {
-            systemPrompt: config.systemInstructions, // Rol del sistema
-            userPromptTemplate: config.promptTemplate, // Instrucciones detalladas
-            testId: testId,
-            temperature: 0.2, // Más determinista para análisis técnicos
-            maxTokens: 2000 // Espacio suficiente para análisis detallados
+
+        const testLabel = testId.toUpperCase().replace('GHQ12', 'GHQ-12').replace('DASS21', 'DASS-21');
+
+        const generationResult = await generateAnswer(testLabel, enhancedChunks, {
+            systemPrompt: config.systemInstructions,
+            userPromptTemplate: config.promptTemplate,
+            maxTokens: 2000
         });
 
         if (!generationResult.success) {
             throw new Error('Error en generación de interpretación');
         }
 
-        // 6. CONSTRUIR METADATOS COMPLETOS PARA TRAZABILIDAD
+        // 6. METADATOS Y GUARDADO
         const interpretationMetadata = {
             paciente_id: patientId,
             test_id: testId,
             prompt_version: config.version,
-            documentos_consultados: extractDocumentNames(retrievalResult.chunks),
-            chunks_utilizados: retrievalResult.chunks.length,
+            documentos_consultados: extractDocumentNames(uniqueChunks),
+            chunks_utilizados: uniqueChunks.length,
             resultados_crudos: rawResults,
             modelo_usado: generationResult.metadata?.model,
             tokens_usados: generationResult.metadata?.totalTokens,
-            estrategia_retrieval: 'unified-rag'
+            estrategia_retrieval: 'multi-query-bilingual'
         };
 
-        // 7. GUARDAR RESULTADO EN HISTORIAL
         console.log('💾 Guardando interpretación en historial...');
         await guardarResultadoPrueba(
             patientId,
@@ -256,7 +237,7 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
             }
         );
 
-        console.log(`✅ Interpretación ${testId} completada exitosamente`);
+        console.log(`✅ Interpretación ${testId} completada — documentos: ${interpretationMetadata.documentos_consultados.join(', ')}`);
 
         return new PsychologicalInterpretationResult(
             generationResult.answer,
@@ -267,7 +248,6 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
     } catch (error) {
         console.error(`❌ Error en interpretación ${testId}:`, error);
 
-        // Retornar resultado de error con metadatos mínimos
         return new PsychologicalInterpretationResult(
             'Lo siento, hubo un error al interpretar los resultados.',
             false,
@@ -279,40 +259,4 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
             }
         );
     }
-}
-
-/**
- * Construye query inteligente para retrieval de tests psicológicos
- * Principio: Query Engineering - optimizar para encontrar información relevante
-function extractDocumentNames(chunks) {
-    if (!chunks || !Array.isArray(chunks)) return [];
-
-    const docNames = new Set();
-    chunks.forEach(chunk => {
-        if (chunk.payload?.docName) {
-            docNames.add(chunk.payload.docName);
-        }
-    });
-
-    return Array.from(docNames);
-}
-
-/**
- * Función de validación para tests soportados
- * Principio: Input Validation - validar antes de procesar
- *
- * @param {string} testId - ID del test a validar
- * @returns {boolean} True si es soportado
- */
-export function isSupportedTest(testId) {
-    const supportedTests = ['ghq12', 'dass21'];
-    return supportedTests.includes(testId.toLowerCase());
-}
-
-/**
- * Función utilitaria para obtener estadísticas de uso
- * Principio: Monitoring - métricas para optimización
- */
-export async function getInterpretationStats() {
-    throw new Error('Not implemented')
 }
