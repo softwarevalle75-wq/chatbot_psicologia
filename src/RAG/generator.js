@@ -209,14 +209,6 @@ function buildPrompt(question, context, options = {}) {
         ].join('\n')
     }
 
-    userContent += [
-        '',
-        'Instrucciones obligatorias de seguridad clinica (cumplimiento estricto):',
-        '- No inventes informacion ni uses conocimiento fuera del contexto normativo recuperado.',
-        '- Cuando los puntajes superen ampliamente los puntos de corte clinicos o indiquen riesgo elevado, recomienda explicitamente remision a una IPS para valoracion clinica presencial, con formulacion prudente y sin diagnostico definitivo.',
-        '- Si hay elevaciones clinicamente relevantes en items vinculados con depresion, ansiedad o tension, recomienda explicitamente aplicar DASS-21 como complemento dimensional.'
-    ].join('\n')
-
     return [
         { role: 'system', content: options.systemPrompt },
         { role: 'user', content: userContent }
