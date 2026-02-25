@@ -2,6 +2,7 @@ import Prisma from '@prisma/client'
 export const prisma = new Prisma.PrismaClient()
 import { adapterProvider } from '../app.js'
 import { ensureJid } from '../helpers/jidHelper.js'
+import fs from 'fs'
 //---------------------------------------------------------------------------------------------------------
 
 export const registrarUsuario = async (
@@ -120,6 +121,85 @@ export const buscarUsuarioPorTelefono = async (numero) => {
     return null;
   }
 };
+
+export const obtenerPerfilPacienteParaInforme = async (numero) => {
+	try {
+		const telefonoLimpio = String(numero || '').replace(/\D/g, '')
+		if (!telefonoLimpio) return null
+
+		const candidatos = [telefonoLimpio]
+		if (!telefonoLimpio.startsWith('57')) candidatos.push(`57${telefonoLimpio}`)
+		if (telefonoLimpio.startsWith('57') && telefonoLimpio.length > 2) {
+			candidatos.push(telefonoLimpio.slice(2))
+		}
+
+		for (const telefono of candidatos) {
+			const user = await prisma.informacionUsuario.findUnique({
+				where: { telefonoPersonal: telefono },
+				select: {
+					primerNombre: true,
+					segundoNombre: true,
+					primerApellido: true,
+					segundoApellido: true,
+					tipoDocumento: true,
+					documento: true,
+					telefonoPersonal: true,
+					segundoTelefono: true,
+					correo: true,
+					fechaNacimiento: true,
+					semestre: true,
+					carrera: true,
+					jornada: true,
+					informacionSociodemografica: {
+						select: {
+							escolaridad: true,
+							ocupacion: true,
+							estadoCivil: true,
+						}
+					}
+				}
+			})
+
+			if (user) {
+				const now = new Date()
+				const birthDate = user.fechaNacimiento ? new Date(user.fechaNacimiento) : null
+				let edad = null
+				if (birthDate) {
+					edad = now.getFullYear() - birthDate.getFullYear()
+					const monthDiff = now.getMonth() - birthDate.getMonth()
+					if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birthDate.getDate())) {
+						edad -= 1
+					}
+				}
+
+				return {
+					nombres: [user.primerNombre, user.segundoNombre].filter(Boolean).join(' ') || 'No disponible',
+					apellidos: [user.primerApellido, user.segundoApellido].filter(Boolean).join(' ') || 'No disponible',
+					tipoDocumento: user.tipoDocumento || 'No disponible',
+					documento: user.documento || 'No disponible',
+					telefonoPrincipal: user.telefonoPersonal || 'No disponible',
+					telefonoAlterno: user.segundoTelefono || 'No disponible',
+					correo: user.correo || 'No disponible',
+					edad: Number.isFinite(edad) && edad >= 0 ? `${edad} años` : 'No disponible',
+					fechaNacimiento: user.fechaNacimiento
+						? new Date(user.fechaNacimiento).toLocaleDateString('es-CO')
+						: 'No disponible',
+					semestre: user.semestre ? `${user.semestre}` : null,
+					carrera: user.carrera || null,
+					jornada: user.jornada || null,
+					escolaridad: user.informacionSociodemografica?.escolaridad || 'No disponible',
+					ocupacion: user.informacionSociodemografica?.ocupacion || 'No disponible',
+					estadoCivil: user.informacionSociodemografica?.estadoCivil || 'No disponible',
+				}
+			}
+		}
+
+		return null
+	} catch (error) {
+		console.error('Error obteniendo perfil del paciente para informe:', error)
+		return null
+	}
+}
 
 // --- NUEVO: resuelve remitente por teléfono (prioriza practicante)
 // export const resolverRemitentePorTelefono = async (numero) => {
@@ -511,6 +591,25 @@ export const sendAutonomousMessage = async (numero, mensaje) => {
 	} catch (error) {
 		console.error('Error enviando mensaje autónomo:', error);
 		throw new Error('Hubo un problema enviando el mensaje autónomo.');
+	}
+}
+
+export const sendAutonomousDocument = async (numero, mensaje, filePath) => {
+	try {
+		if (!filePath || !fs.existsSync(filePath)) {
+			throw new Error(`Archivo no encontrado: ${filePath}`)
+		}
+
+		const numeroLimpio = numero.replace(/\D/g, '')
+		const numeroCompleto = `${numeroLimpio}@s.whatsapp.net`
+		const jid = ensureJid(numeroCompleto)
+
+		await adapterProvider.sendMessage(jid, mensaje, { media: filePath })
+		console.log(`Documento enviado a ${numero}: ${filePath}`)
+		return true
+	} catch (error) {
+		console.error('Error enviando documento autónomo:', error)
+		throw new Error('Hubo un problema enviando el documento autónomo.')
 	}
 }
 

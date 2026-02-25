@@ -3,12 +3,14 @@ import {
 	saveEstadoCuestionario,
 	savePuntajeUsuario,
 	obtenerTelefonoPracticante,
+	obtenerPerfilPacienteParaInforme,
 	guardarResultadoPrueba,
-	sendAutonomousMessage,
+	sendAutonomousDocument,
 	notificarTestCompletadoAPracticante,
 } from '../../queries/queries.js'
 
 import { interpretPsychologicalTest } from '../../RAG/psychological-interpreter.js'
+import { generateInterpretationPdf } from './reportPdf.js'
 
 const rtasDass21 = () => {
     return '0️⃣ No me ha ocurrido.\n    1️⃣ Me ha ocurrido un poco, o durante parte del tiempo.\n    2️⃣ Me ha ocurrido bastante, o durante una buena parte del tiempo.\n    3️⃣ Me ha ocurrido mucho, o la mayor parte del tiempo'
@@ -155,40 +157,65 @@ export const procesarDass21 = async (numeroUsuario, respuestas) => {
 			await guardarResultadoPrueba(numeroUsuario, tipoTest, datosFormateados);
 
 			try {
-				// Always perform RAG interpretation
 				const resultadoInterpretacion = await interpretPsychologicalTest(
 					'dass21',
 					estado.resPreg,
 					numeroUsuario
 				);
 
-				// Always send report to patient
-				await sendAutonomousMessage(
+				const pdfTarget = (process.env.PDF_TARGET || 'patient').toLowerCase();
+				const sendPdfToPatient = pdfTarget === 'patient' || pdfTarget === 'both';
+				const sendPdfToPractitioner = pdfTarget === 'practitioner' || pdfTarget === 'both';
+				const fechaElaboracion = new Date().toLocaleString('es-CO');
+				const patientData = await obtenerPerfilPacienteParaInforme(numeroUsuario);
+				const nombrePaciente = [patientData?.nombres, patientData?.apellidos].filter(Boolean).join(' ').trim() || 'No disponible';
+				const documentoPaciente = patientData?.documento && patientData.documento !== 'No disponible'
+					? `${patientData?.tipoDocumento || 'Doc'} ${patientData.documento}`
+					: 'No disponible';
+				const edadPaciente = patientData?.edad || 'No disponible';
+				const telefonoPaciente = patientData?.telefonoPrincipal || numeroUsuario;
+
+				const pdfPath = await generateInterpretationPdf({
 					numeroUsuario,
-					`🔔 *RESULTADOS DASS-21 INTERPRETADOS*\n\n` +
-					`👤 *Paciente:* ${numeroUsuario}\n` +
-					`📊 *Respuestas obtenidas:*\n${datosFormateados}\n\n` +
-					`🤖 *Interpretación Técnica (RAG Unificado):*\n${resultadoInterpretacion.interpretation}\n\n` +
-					`📋 *Documentos consultados:* ${resultadoInterpretacion.metadata.documentos_consultados?.join(', ') || 'No disponible'}`
-				);
+					testId: 'dass21',
+					interpretation: resultadoInterpretacion.interpretation,
+					metadata: resultadoInterpretacion.metadata,
+					rawResults: estado.resPreg,
+					patientData,
+				});
 
-				// Send to practitioner if assigned
-				const telefonoPracticante = await obtenerTelefonoPracticante(numeroUsuario);
-				if (telefonoPracticante) {
-					const mensajeInicial = `🔔 *📋 TEST DASS-21 COMPLETADO - GENERANDO REPORTE*\n\n`;
-					
-					await sendAutonomousMessage(telefonoPracticante, mensajeInicial);
-
-					await sendAutonomousMessage(
-						telefonoPracticante,
-						`🔔 *🧠 RESULTADOS DASS-21 INTERPRETADOS*\n\n` +
-						`👤 *Paciente:* ${numeroUsuario}\n` +
-						`📊 *Respuestas obtenidas:*\n${datosFormateados}\n\n` +
-						`🤖 *Interpretación Técnica (RAG Unificado):*\n${resultadoInterpretacion.interpretation}\n\n` +
-						`📋 *Documentos consultados:* ${resultadoInterpretacion.metadata.documentos_consultados?.join(', ') || 'No disponible'}`
+				if (sendPdfToPatient) {
+					await sendAutonomousDocument(
+						numeroUsuario,
+						`📄 *Informe técnico generado*\n\n` +
+						`👤 *Paciente:* ${nombrePaciente}\n` +
+						`🪪 *Documento:* ${documentoPaciente}\n` +
+						`🎂 *Edad:* ${edadPaciente}\n` +
+						`📱 *Teléfono:* ${telefonoPaciente}\n` +
+						`🧪 *Prueba:* DASS-21\n` +
+						`🕒 *Fecha y hora:* ${fechaElaboracion}`,
+						pdfPath
 					);
+				}
 
-					await notificarTestCompletadoAPracticante(numeroUsuario);
+				if (sendPdfToPractitioner) {
+					const telefonoPracticante = await obtenerTelefonoPracticante(numeroUsuario);
+					if (telefonoPracticante) {
+						await sendAutonomousDocument(
+							telefonoPracticante,
+							`📄 *Informe técnico disponible*\n\n` +
+							`👤 *Paciente:* ${nombrePaciente}\n` +
+							`🪪 *Documento:* ${documentoPaciente}\n` +
+							`🎂 *Edad:* ${edadPaciente}\n` +
+							`📱 *Teléfono:* ${telefonoPaciente}\n` +
+							`🧪 *Prueba:* DASS-21\n` +
+							`🕒 *Fecha y hora de elaboración:* ${fechaElaboracion}`,
+							pdfPath
+						);
+						await notificarTestCompletadoAPracticante(numeroUsuario);
+					} else {
+						console.warn(`⚠️ PDF_TARGET=${pdfTarget} pero no hay practicante asignado para ${numeroUsuario}`);
+					}
 				}
 			} catch (error) {
 				console.error('Error procesando resultados DASS-21', error)

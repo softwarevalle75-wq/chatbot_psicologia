@@ -65,6 +65,21 @@ import { getRealPhoneFromCtx } from "./helpers/jidHelper.js";
 // inicializar RAG
 import { initializeRAG } from "./RAG/index.js";
 
+const originalConsoleInfo = console.info.bind(console)
+const libsignalNoisePatterns = [
+	/^Closing session:/,
+	/^Removing old closed session:/,
+	/^Opening session:/,
+]
+
+console.info = (...args) => {
+	const firstArg = typeof args[0] === 'string' ? args[0] : ''
+	if (libsignalNoisePatterns.some((pattern) => pattern.test(firstArg))) {
+		return
+	}
+	originalConsoleInfo(...args)
+}
+
 const PORT = process.env.PORT ?? 3000;
 export const adapterProvider = createProvider(Provider, {
 	// Esto envía pings cada 30 segundos, pa mantener activa la conec

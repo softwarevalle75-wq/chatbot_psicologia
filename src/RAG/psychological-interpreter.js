@@ -20,7 +20,7 @@ class PsychologicalInterpretationResult {
 
 // Constantes de retrieval — k=10 por query (carga completa), top 3 por aspecto base → max 12 al LLM
 const K_CANDIDATES = 10
-const K_PER_ASPECT = 3
+const K_PER_ASPECT = 2
 
 function generateNormativeQueries(testId) {
     const upperTestId = testId.toUpperCase();
@@ -180,7 +180,7 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
             patientData,
             rawResults,
             itemScores,
-            maxTokens: 5000
+            maxTokens: 4200
         });
 
         if (!generationResult.success) {

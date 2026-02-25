@@ -161,9 +161,10 @@ function buildPrompt(question, context, options = {}) {
     const replacements = {
         question,
         context,
-        rawResults: formatRawResults(options.rawResults),
+        rawResults: formatRawResults(options.rawResults, question),
         patientData: formatPatientData(options.patientData),
-        itemScores: formatItemScores(options.itemScores)
+        itemScores: formatItemScores(options.itemScores, question),
+        qualityChecks: formatQualityChecks(options.itemScores, question)
     }
 
     let userContent = userPromptTemplate
@@ -175,6 +176,7 @@ function buildPrompt(question, context, options = {}) {
     const hasRawResultsSlot = /\{rawResults\}/.test(userPromptTemplate)
     const hasPatientDataSlot = /\{patientData\}/.test(userPromptTemplate)
     const hasItemScoresSlot = /\{itemScores\}/.test(userPromptTemplate)
+    const hasQualityChecksSlot = /\{qualityChecks\}/.test(userPromptTemplate)
 
     if (!hasContextSlot) {
         userContent += `\n\nContexto normativo recuperado:\n${context}`
@@ -187,6 +189,9 @@ function buildPrompt(question, context, options = {}) {
     }
     if (!hasItemScoresSlot) {
         userContent += `\n\nPuntaje por item:\n${replacements.itemScores}`
+    }
+    if (!hasQualityChecksSlot) {
+        userContent += `\n\nControl de calidad del protocolo:\n${replacements.qualityChecks}`
     }
 
     if (!hasContextSlot && userPromptTemplate.length > 3000) {
@@ -219,41 +224,130 @@ function formatPatientData(patientData) {
     if (!patientData || typeof patientData !== 'object') {
         return 'No disponible.'
     }
+
+    const keyLabels = {
+        paciente_id: 'Paciente',
+        test_id: 'Prueba',
+        total_items_respondidos: 'Total de items respondidos',
+        nombres: 'Nombres',
+        apellidos: 'Apellidos',
+        correo: 'Correo',
+        telefonoPrincipal: 'Telefono',
+        semestre: 'Semestre',
+        carrera: 'Carrera',
+        jornada: 'Jornada',
+        edad: 'Edad',
+        fechaNacimiento: 'Fecha de nacimiento',
+        documento: 'Numero de documento',
+        tipoDocumento: 'Tipo de documento',
+    }
+
     const lines = []
     Object.entries(patientData).forEach(([key, value]) => {
         if (value === undefined || value === null || value === '') return
-        lines.push(`- ${key}: ${value}`)
+        const label = keyLabels[key] || key
+        lines.push(`- ${label}: ${value}`)
     })
     return lines.length > 0 ? lines.join('\n') : 'No disponible.'
 }
 
-function formatRawResults(rawResults) {
+function getResponseLabels(question = '') {
+    const normalized = String(question || '').toLowerCase()
+    if (normalized.includes('dass')) {
+        return {
+            0: 'No me ha ocurrido',
+            1: 'Me ha ocurrido un poco',
+            2: 'Me ha ocurrido bastante',
+            3: 'Me ha ocurrido mucho',
+        }
+    }
+
+    return {
+        0: 'Mejor que lo habitual',
+        1: 'Igual que lo habitual',
+        2: 'Menos que lo habitual',
+        3: 'Mucho menos que lo habitual',
+    }
+}
+
+function formatRawResults(rawResults, question = '') {
     if (!rawResults || typeof rawResults !== 'object') {
         return 'No se recibieron resultados estructurados.'
     }
 
+    const normalized = String(question || '').toLowerCase()
+    const expectedItems = normalized.includes('ghq') ? 12 : normalized.includes('dass') ? 21 : null
+    const labels = getResponseLabels(question)
     const score0 = Array.isArray(rawResults[0]) ? rawResults[0] : []
     const score1 = Array.isArray(rawResults[1]) ? rawResults[1] : []
     const score2 = Array.isArray(rawResults[2]) ? rawResults[2] : []
     const score3 = Array.isArray(rawResults[3]) ? rawResults[3] : []
+    const totalAnswered = score0.length + score1.length + score2.length + score3.length
+
+    const completenessLine = expectedItems
+        ? `- Protocolo respondido: ${totalAnswered}/${expectedItems} ítems (${totalAnswered >= expectedItems ? 'completo' : 'incompleto'}).`
+        : `- Protocolo respondido: ${totalAnswered} ítems.`
 
     return [
-        `- Puntaje 0: [${score0.join(', ')}]`,
-        `- Puntaje 1: [${score1.join(', ')}]`,
-        `- Puntaje 2: [${score2.join(', ')}]`,
-        `- Puntaje 3: [${score3.join(', ')}]`,
-        `- JSON crudo: ${JSON.stringify(rawResults)}`
+        completenessLine,
+        '- Distribucion por categoria de respuesta:',
+        `  - ${labels[0]}: ${score0.length} items [${score0.join(', ')}]`,
+        `  - ${labels[1]}: ${score1.length} items [${score1.join(', ')}]`,
+        `  - ${labels[2]}: ${score2.length} items [${score2.join(', ')}]`,
+        `  - ${labels[3]}: ${score3.length} items [${score3.join(', ')}]`
     ].join('\n')
 }
 
-function formatItemScores(itemScores) {
+function formatItemScores(itemScores, question = '') {
     if (!Array.isArray(itemScores) || itemScores.length === 0) {
         return 'No se pudo reconstruir puntaje por item.'
     }
 
+    const labels = getResponseLabels(question)
     return itemScores
-        .map(({ item, score }) => `- Item ${item}: ${score}`)
+        .map(({ item, score }) => `- Item ${item}: ${score} (${labels[score] || 'No disponible'})`)
         .join('\n')
+}
+
+function formatQualityChecks(itemScores, question = '') {
+    if (!Array.isArray(itemScores) || itemScores.length === 0) {
+        return '- Sin datos suficientes para control de calidad.'
+    }
+
+    const normalized = String(question || '').toLowerCase()
+    const expectedItems = normalized.includes('ghq') ? 12 : normalized.includes('dass') ? 21 : null
+    const allItems = itemScores
+        .map((entry) => Number(entry?.item))
+        .filter((value) => Number.isFinite(value))
+        .sort((a, b) => a - b)
+
+    const counts = new Map()
+    allItems.forEach((item) => counts.set(item, (counts.get(item) || 0) + 1))
+    const duplicatedItems = [...counts.entries()]
+        .filter(([, count]) => count > 1)
+        .map(([item]) => item)
+    const uniqueItems = [...counts.keys()].sort((a, b) => a - b)
+
+    const lines = [
+        `- Total de respuestas registradas: ${allItems.length}.`,
+        `- Total de items unicos: ${uniqueItems.length}.`,
+        duplicatedItems.length > 0
+            ? `- Items duplicados detectados: ${duplicatedItems.join(', ')}.`
+            : '- No se detectan items duplicados.',
+    ]
+
+    if (expectedItems) {
+        const expectedRange = Array.from({ length: expectedItems }, (_, idx) => idx + 1)
+        const missing = expectedRange.filter((item) => !counts.has(item))
+        lines.push(`- Protocolo esperado: ${expectedItems} items.`)
+        lines.push(
+            missing.length > 0
+                ? `- Items faltantes: ${missing.join(', ')}.`
+                : '- No se detectan items faltantes.'
+        )
+    }
+
+    return lines.join('\n')
 }
 
 export function getGenerationConfig() {
