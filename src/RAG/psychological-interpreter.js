@@ -18,17 +18,10 @@ class PsychologicalInterpretationResult {
     }
 }
 
-// Constantes de retrieval — k=10 por query (carga completa), top 3 por aspecto base → máx 12 al LLM
-const K_CANDIDATES = 10   // chunks a pedir a Qdrant por query
-const K_PER_ASPECT = 3    // chunks a seleccionar por aspecto base → 4 aspectos × 3 = máx 12 total
+// Constantes de retrieval — k=10 por query (carga completa), top 3 por aspecto base → max 12 al LLM
+const K_CANDIDATES = 10
+const K_PER_ASPECT = 3
 
-/**
- * Genera queries bilingues (español + inglés) para los 4 aspectos normativos del test.
- * Estrategia: Multi-Query Bilingüe — cubre documentos en ambos idiomas sin filtros adicionales.
- *
- * @param {string} testId - ID del test ('ghq12' | 'dass21')
- * @returns {Array<{aspect: string, query: string}>}
- */
 function generateNormativeQueries(testId) {
     const upperTestId = testId.toUpperCase();
     const baseQueries = [];
@@ -66,9 +59,6 @@ function generateNormativeQueries(testId) {
     return baseQueries;
 }
 
-/**
- * Extrae nombres de documentos únicos de los chunks recuperados.
- */
 function extractDocumentNames(chunks) {
     if (!chunks || !Array.isArray(chunks)) return [];
     const docNames = new Set();
@@ -79,34 +69,6 @@ function extractDocumentNames(chunks) {
     return Array.from(docNames);
 }
 
-/**
- * Elimina chunks con texto duplicado para no repetir contexto al LLM.
- * (Conservada por compatibilidad; la deduplicación principal la hace selectTopKPerAspect)
- */
-// function removeDuplicateChunks(chunks) {
-//     if (!chunks || chunks.length === 0) return [];
-//     const uniqueChunks = [];
-//     const seenTexts = new Set();
-//     for (const chunk of chunks) {
-//         const text = chunk.text?.trim();
-//         if (text && !seenTexts.has(text)) {
-//             seenTexts.add(text);
-//             uniqueChunks.push(chunk);
-//         }
-//     }
-//     return uniqueChunks;
-// }
-
-/**
- * Selecciona los top-K chunks por aspecto base (strip _en/_es suffix).
- * Agrupa los resultados de las 8 queries bilingues en 4 grupos de aspecto,
- * ordena por score DESC, deduplica por textHash, y toma los K mejores de cada grupo.
- * Garantiza cobertura de todos los aspectos con máx 12 chunks al LLM.
- *
- * @param {Array<{aspect: string, chunks: Array}>} allRetrievalResults
- * @param {number} topK - chunks por aspecto base (default K_PER_ASPECT = 3)
- * @returns {Array} máx topK × 4 chunks únicos con campo `aspectSource`
- */
 function selectTopKPerAspect(allRetrievalResults, topK = K_PER_ASPECT) {
     const aspectGroups = {}
     for (const { aspect, chunks } of allRetrievalResults) {
@@ -137,20 +99,32 @@ function selectTopKPerAspect(allRetrievalResults, topK = K_PER_ASPECT) {
     return selected
 }
 
-/**
- * Función principal: interpreta el resultado de un test psicológico usando RAG.
- * El system prompt y el prompt template se cargan SIEMPRE desde la BD.
- *
- * @param {string} testId - 'ghq12' | 'dass21'
- * @param {Object} rawResults - Resultados crudos del paciente
- * @param {string} patientId - Teléfono / ID del paciente
- * @returns {Promise<PsychologicalInterpretationResult>}
- */
+function buildItemScores(rawResults) {
+    const itemScores = []
+    for (const score of [0, 1, 2, 3]) {
+        const items = Array.isArray(rawResults?.[score]) ? rawResults[score] : []
+        for (const item of items) {
+            itemScores.push({ item: Number(item), score })
+        }
+    }
+    return itemScores
+        .filter(entry => Number.isFinite(entry.item))
+        .sort((a, b) => a.item - b.item)
+}
+
+function buildPatientData(patientId, testId, rawResults) {
+    const itemScores = buildItemScores(rawResults)
+    return {
+        paciente_id: patientId,
+        test_id: testId,
+        total_items_respondidos: itemScores.length
+    }
+}
+
 export async function interpretPsychologicalTest(testId, rawResults, patientId) {
     try {
         console.log(`🧠 Iniciando interpretación para ${testId} - Paciente: ${patientId}`);
 
-        // 1. VALIDACIÓN
         if (!testId || !rawResults || !patientId) {
             throw new Error('Parámetros requeridos: testId, rawResults, patientId');
         }
@@ -158,11 +132,9 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
             throw new Error(`Test no soportado: ${testId}. Tests soportados: ghq12, dass21`);
         }
 
-        // 2. CARGAR CONFIGURACIÓN DESDE BD
         console.log('📚 Cargando configuración RAG desde BD...');
         const config = await getRagPsychologicalConfig();
 
-        // 3. RETRIEVAL BILINGÜE — 8 queries (4 aspectos × 2 idiomas)
         const normativeQueries = generateNormativeQueries(testId);
         console.log(`🔎 Ejecutando ${normativeQueries.length} queries bilingues para ${testId}...`);
 
@@ -181,8 +153,6 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
             }
         }
 
-        // 4. TOP-K POR ASPECTO — selecciona los mejores K chunks por grupo de aspecto
-        // Agrupa las 8 queries bilingues en 4 aspectos base, toma top K_PER_ASPECT por grupo
         const uniqueChunks = selectTopKPerAspect(allRetrievalResults);
 
         console.log(`📄 Total chunks únicos: ${uniqueChunks.length}`);
@@ -191,7 +161,6 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
             throw new Error(`No se encontraron documentos relevantes para ${testId}`);
         }
 
-        // 5. GENERACIÓN — incluye datos del paciente como chunk virtual
         console.log('🤖 Generando interpretación...');
         const enhancedChunks = [
             {
@@ -202,18 +171,22 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
         ];
 
         const testLabel = testId.toUpperCase().replace('GHQ12', 'GHQ-12').replace('DASS21', 'DASS-21');
+        const itemScores = buildItemScores(rawResults)
+        const patientData = buildPatientData(patientId, testId, rawResults)
 
         const generationResult = await generateAnswer(testLabel, enhancedChunks, {
             systemPrompt: config.systemInstructions,
             userPromptTemplate: config.promptTemplate,
-            maxTokens: 2000
+            patientData,
+            rawResults,
+            itemScores,
+            maxTokens: 5000
         });
 
         if (!generationResult.success) {
             throw new Error('Error en generación de interpretación');
         }
 
-        // 6. METADATOS Y GUARDADO
         const interpretationMetadata = {
             paciente_id: patientId,
             test_id: testId,

@@ -1,122 +1,93 @@
-// Test completamente aislado del RAG - sin dependencias de BD ni WhatsApp
-import { retrieveImproved } from '../src/RAG/retriever-improved.js';
-import { generateAnswer } from '../src/RAG/generator.js';
-import { getRagPsychologicalConfig } from '../src/queries/queries.js';
+// Test end-to-end del RAG — flujo completo: 8 queries bilingues + generacion GPT
+// Sin dependencias de WhatsApp ni app.js
+import { interpretPsychologicalTest } from '../src/RAG/psychological-interpreter.js'
+import { getRagPsychologicalConfig } from '../src/RAG/rag-config.js'
 
-// Función optimizada para construir query minimal
-function buildOptimizedQuery(testId) {
-    const testNames = { 'ghq12': 'GHQ-12', 'dass21': 'DASS-21' };
-    return testNames[testId.toLowerCase()] || testId.toUpperCase();
+const TEST_ID = 'ghq12'
+const PATIENT_ID = process.env.TEST_PATIENT_ID || 'test-local'
+
+// Perfil realista: distress moderado-alto (puntaje GHQ bimodal = 7/12)
+// Items con respuesta 2 (Menos que habitual) o 3 (Mucho menos que habitual) = positivo en GHQ
+const rawResults = {
+    0: [1, 3, 5],
+    1: [2, 4],
+    2: [7, 9, 11, 12],
+    3: [6, 8, 10]
 }
 
-// Función para crear contexto con datos del paciente
-function buildContextWithPatientData(retrievedChunks, rawResults) {
-    const patientChunk = {
-        text: `Datos del paciente: ${JSON.stringify(rawResults)}`,
-        payload: { docName: 'Datos_Paciente', chunkIndex: 0 }
-    };
-    return [patientChunk, ...retrievedChunks];
-}
-
-// Configuración RAG desde BD
-
-async function testRAGCompletoAislado() {
-    const RAG_CONFIG = await getRagPsychologicalConfig();
-    console.log('🧪 Test RAG aislado - Paciente GHQ-12 con perfil REALISTA...\n');
-
-    // Datos del paciente REALISTA (perfil mixto de distress moderado)
-    const testId = 'ghq12';
-    const rawResults = {
-        0: [1, 4, 7, 10], // Mejor que habitual: 4 ítems (respuestas normales)
-        1: [], // Igual que habitual: 0
-        2: [2, 5, 8, 9, 11, 12], // Menos que habitual: 6 ítems (distress leve-moderado)
-        3: [3, 6] // Mucho menos que habitual: 2 ítems (distress significativo)
-    };
-
-    console.log('📊 Perfil del paciente:');
-    console.log(`   - ${rawResults[0].length} respuestas "Mejor que habitual"`);
-    console.log(`   - ${rawResults[1].length} respuestas "Igual que habitual"`);
-    console.log(`   - ${rawResults[2].length} respuestas "Menos que habitual"`);
-    console.log(`   - ${rawResults[3].length} respuestas "Mucho menos que habitual"`);
-    console.log('   → PERFIL REALISTA: DISTRESS MODERADO\n');
-
-    try {
-        // 1. Construir query ultra-minimal optimizada
-        const query = buildOptimizedQuery(testId);
-
-        console.log('🔍 Query para RAG:');
-        console.log(`"${query}"\n`);
-
-        // 2. Retrieval desde Qdrant
-        console.log('🔎 Ejecutando retrieval de documentos GHQ-12...');
-        const retrievalResult = await retrieveImproved(query, {
-            source: 'GHQ-12', // Corregido: coincide con datos en Qdrant
-            k: 5 // Reducido de 15 a 5 para probar si el contexto grande consume demasiados tokens
-        });
-
-        console.log(`✅ Recuperados ${retrievalResult.chunks?.length || 0} chunks`);
-        if (retrievalResult.sources) {
-            console.log(`📚 Fuentes: ${retrievalResult.sources.join(', ')}`);
+function validateRawResults(results) {
+    const groups = [0, 1, 2, 3]
+    for (const key of groups) {
+        if (!Array.isArray(results[key])) {
+            throw new Error(`rawResults[${key}] debe ser un array`)
         }
-
-        if (!retrievalResult.chunks || retrievalResult.chunks.length === 0) {
-            console.log('❌ No se encontraron documentos relevantes');
-            return;
-        }
-
-        // 3. Crear contexto con datos del paciente incluidos
-        console.log('\n🤖 Construyendo contexto con datos del paciente...');
-        const enhancedChunks = buildContextWithPatientData(retrievalResult.chunks, rawResults);
-
-        // 4. Generar interpretación con GPT-5
-        console.log('🤖 Generando interpretación con GPT-5...');
-        const generationResult = await generateAnswer(query, enhancedChunks, {
-            systemPrompt: RAG_CONFIG.systemInstructions,
-            userPromptTemplate: RAG_CONFIG.promptTemplate,
-            testId: testId,
-            temperature: 0.2,
-            maxTokens: 2000
-        });
-
-        if (!generationResult.success) {
-            console.log('❌ Error en generación de respuesta');
-            return;
-        }
-
-        // 4. Mostrar resultados
-        console.log('\n🎉 ¡INTERPRETACIÓN GENERADA EXITOSAMENTE!\n');
-        console.log('═'.repeat(80));
-        console.log(generationResult.answer);
-        console.log('═'.repeat(80));
-
-        console.log('\n📊 Metadatos:');
-        console.log(`   - Modelo usado: ${generationResult.metadata?.model || 'gpt-5'}`);
-        console.log(`   - Chunks utilizados: ${enhancedChunks.length}`);
-        console.log(`   - Tokens usados: ${generationResult.metadata?.totalTokens || 'N/A'}`);
-        console.log(`   - Query usado: "${query}"`);
-
-        // 5. Verificar calidad de la interpretación
-        const respuesta = generationResult.answer.toLowerCase();
-        const indicadoresSeveridad = [
-            'sever', 'alto', 'significativ', 'preocupante', 'riesgo',
-            'deterioro', 'alteración', 'síntomas', 'intervención'
-        ];
-
-        const severidadDetectada = indicadoresSeveridad.some(indicador =>
-            respuesta.includes(indicador)
-        );
-
-        if (severidadDetectada) {
-            console.log('\n✅ ¡EXCELENTE! La interpretación detecta correctamente la alta severidad');
-            console.log('🎯 El RAG está funcionando perfectamente para casos de alta severidad');
-        } else {
-            console.log('\n⚠️  La interpretación podría no estar detectando la severidad');
-        }
-
-    } catch (error) {
-        console.error('❌ Error en test RAG:', error.message);
-        console.error('Stack trace:', error.stack);
     }
+    const total = groups.reduce((acc, key) => acc + results[key].length, 0)
+    if (total === 0) {
+        throw new Error('rawResults esta vacio: no hay respuestas para interpretar')
+    }
+    return total
 }
 
-testRAGCompletoAislado();
+console.log('══════════════════════════════════════════════════════════')
+console.log('🧪 TEST RAG AISLADO — GHQ-12 perfil distress moderado')
+console.log('══════════════════════════════════════════════════════════')
+console.log('📊 Perfil del paciente:')
+console.log(`   Mejor que habitual:      items [${rawResults[0].join(',')}]`)
+console.log(`   Igual que habitual:       items [${rawResults[1].join(',')}]`)
+console.log(`   Menos que habitual:       items [${rawResults[2].join(',')}]`)
+console.log(`   Mucho menos que habitual: items [${rawResults[3].join(',')}]`)
+console.log('   → Puntaje GHQ bimodal: 7/12 — CASO PROBABLE')
+console.log()
+
+try {
+    const totalItems = validateRawResults(rawResults)
+    const config = await getRagPsychologicalConfig()
+    const hasContextPlaceholder = /\{context\}/.test(config.promptTemplate || '')
+    const hasQuestionPlaceholder = /\{question\}/.test(config.promptTemplate || '')
+
+    console.log('🧩 Config de prompt (BD):')
+    console.log(`   version:             ${config.version}`)
+    console.log(`   tiene {question}:    ${hasQuestionPlaceholder ? 'si' : 'no'}`)
+    console.log(`   tiene {context}:     ${hasContextPlaceholder ? 'si' : 'no'}`)
+    console.log(`   system chars:        ${(config.systemInstructions || '').length}`)
+    console.log(`   template chars:      ${(config.promptTemplate || '').length}`)
+    if (!hasContextPlaceholder) {
+        console.log('   ⚠️ Sin {context}: el LLM no recibira chunks/resultados en el user prompt.')
+    }
+    console.log()
+
+    console.log('📦 Payload enviado a interpretPsychologicalTest:')
+    console.log(`   testId:    ${TEST_ID}`)
+    console.log(`   patientId: ${PATIENT_ID}`)
+    console.log(`   items:     ${totalItems}`)
+    console.log(`   raw:       ${JSON.stringify(rawResults)}`)
+    console.log()
+
+    const result = await interpretPsychologicalTest(TEST_ID, rawResults, PATIENT_ID)
+
+    console.log()
+    console.log('══════════════════════════════════════════════════════════')
+    console.log('📋 INTERPRETACION GENERADA:')
+    console.log('══════════════════════════════════════════════════════════')
+    console.log(result.interpretation)
+    console.log('══════════════════════════════════════════════════════════')
+
+    const lowerInterpretation = (result.interpretation || '').toLowerCase()
+    if (lowerInterpretation.includes('por favor comparta') || lowerInterpretation.includes('necesito que envies')) {
+        console.log()
+        console.log('⚠️ Alerta: la IA pidio datos en vez de usar los resultados del contexto.')
+        console.log('   Revisa el promptTemplate en BD para confirmar que use {context}.')
+    }
+
+    if (result.metadata) {
+        console.log()
+        console.log('📊 Metadatos:')
+        console.log(`   Documentos consultados: ${result.metadata.documentos_consultados?.join(', ')}`)
+        console.log(`   Chunks utilizados:      ${result.metadata.chunks_utilizados}`)
+        console.log(`   Modelo:                 ${result.metadata.modelo_usado}`)
+        console.log(`   Tokens:                 ${result.metadata.tokens_usados}`)
+    }
+} catch (error) {
+    console.error(`❌ Error en interpretacion ${TEST_ID}:`, error)
+}

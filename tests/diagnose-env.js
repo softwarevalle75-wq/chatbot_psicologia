@@ -17,7 +17,7 @@ async function diagnoseEnvironment() {
         'OPENAI_API_KEY',
         'QDRANT_URL', 
         'QDRANT_API_KEY',
-        'QDRANT_COLECTION'
+        'QDRANT_COLLECTION'
     ]
 
     let allVarsPresent = true
@@ -77,7 +77,7 @@ async function diagnoseEnvironment() {
         console.log(`   📚 Colecciones disponibles: ${collections.collections.length}`)
 
         // Verificar colección específica
-        const collectionName = process.env.QDRANT_COLECTION || 'rag-psicologia'
+        const collectionName = process.env.QDRANT_COLLECTION || 'rag-psicologia'
         const collectionExists = collections.collections.some(c => c.name === collectionName)
         console.log(`   ${collectionExists ? '✅' : '❌'} Colección ${collectionName}: ${collectionExists ? 'Existe' : 'No encontrada'}`)
 
@@ -88,7 +88,7 @@ async function diagnoseEnvironment() {
             console.log(`   📊 Puntos totales: ${collectionInfo.points_count || 0}`)
             
             if ((collectionInfo.points_count || 0) === 0) {
-                console.log('   ⚠️  La colección está vacía - ejecuta npm run rag:index')
+                console.log('   ⚠️  La colección está vacía - ejecuta npm run rag:reindex')
             }
         }
 

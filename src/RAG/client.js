@@ -8,7 +8,7 @@ const qdrantClient = new QdrantClient({
 const openai = new OpenAI({
 	apiKey: process.env.OPENAI_API_KEY,
 })
-const COLLECTION_NAME = process.env.QDRANT_COLECTION || 'rag-psicologia'
+const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'rag-psicologia'
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-3-large'
 const EMBEDDING_DIMENSIONS = parseInt(process.env.EMBEDDING_DIMENSIONS) || 1536
 export const getCollectionName = () => COLLECTION_NAME

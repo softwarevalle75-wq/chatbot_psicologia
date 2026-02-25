@@ -17,6 +17,10 @@ function createHash(text) {
 const parsePDF = async (filePath) => {
 	const dataBuffer = fs.readFileSync(filePath)
 	const textData = await pdfParse(dataBuffer)
+	const cleanedProseText = textData.text
+		.split('\n')
+		.filter(line => !line.includes('|'))
+		.join('\n')
 	const rows = {}
 	let tablesText = ''
 	
@@ -49,7 +53,7 @@ const parsePDF = async (filePath) => {
 		if (lastY !== null && Math.abs(y - lastY) > 5 && currentTable.length > 0) {
 			if (currentTable.length >= 2) {
 				const parsedTable = parseIntelligentTable(currentTable)
-				if (parsedTable) {
+				if (parsedTable && !parsedTable.includes('[Tabla]')) {
 					tablesText += '\n' + parsedTable + '\n'
 				}
 			}
@@ -61,13 +65,13 @@ const parsePDF = async (filePath) => {
 	
 	if (currentTable.length >= 2) {
 		const parsedTable = parseIntelligentTable(currentTable)
-		if (parsedTable) {
+		if (parsedTable && !parsedTable.includes('[Tabla]')) {
 			tablesText += '\n' + parsedTable + '\n'
 		}
 	}
 	
 	return {
-		text: textData.text + tablesText,
+		text: cleanedProseText + (tablesText ? '\n\n---\n\n' + tablesText : ''),
 		numPages: textData.numpages,
 	}
 }
@@ -336,122 +340,110 @@ function generateFactorDescription(data) {
 	return `Análisis factorial: ${descriptions.join('; ')}.`
 }
 
-const chunkText = (text, metadata) => {
-	const chunks = []
-	let chunkIndex = 0
-	let globalChunkCounter = GLOBAL_CHUNK_ID // Inicializar con el contador global
+// Detecta si un texto contiene contenido normativo
+const isNormativeContent = (text) => {
+	const normativePatterns = [
+		'tabla', 'table', 'punto de corte', 'cut-off', 'baremo', 'norma',
+		'coeficiente alfa', 'alpha', 'confiabilidad', 'sensibilidad',
+		'especificidad', 'factor', 'carga factorial', 'percentil',
+		'media', 'desviación', 'correlación', 'r=', 'p=', 'n=',
+		'ítem', 'item', 'subescala', 'factor'
+	]
+	const lowerText = text.toLowerCase()
+	return normativePatterns.some(pattern => lowerText.includes(pattern))
+}
 
-	// Función para detectar si un texto contiene contenido normativo
-	const isNormativeContent = (text) => {
-		const normativePatterns = [
-			'tabla', 'table', 'punto de corte', 'cut-off', 'baremo', 'norma',
-			'coeficiente alfa', 'alpha', 'confiabilidad', 'sensibilidad',
-			'especificidad', 'factor', 'carga factorial', 'percentil',
-			'media', 'desviación', 'correlación', 'r=', 'p=', 'n=',
-			'ítem', 'item', 'subescala', 'factor'
-		]
-		const lowerText = text.toLowerCase()
-		return normativePatterns.some(pattern => lowerText.includes(pattern))
+// Encuentra el mejor punto de corte sin cortar palabras
+const findBestBreakPoint = (text, maxLength) => {
+	if (text.length <= maxLength) return text.length
+
+	// 1. Buscar doble salto de línea (\n\n)
+	const doubleNewlines = [...text.matchAll(/\n\n/g)]
+	for (const match of doubleNewlines) {
+		if (match.index < maxLength) {
+			const nextCharIndex = match.index + 2
+			if (nextCharIndex <= maxLength) return nextCharIndex
+		}
 	}
 
-	// Función para encontrar el mejor punto de corte sin cortar palabras
-	const findBestBreakPoint = (text, maxLength) => {
-		if (text.length <= maxLength) return text.length
-
-		// 1. Buscar doble salto de línea (\n\n)
-		const doubleNewlines = [...text.matchAll(/\n\n/g)]
-		for (const match of doubleNewlines) {
-			if (match.index < maxLength) {
-				const nextCharIndex = match.index + 2
-				if (nextCharIndex <= maxLength) return nextCharIndex
-			}
+	// 2. Buscar salto de línea simple (\n)
+	const singleNewlines = [...text.matchAll(/\n/g)]
+	for (const match of singleNewlines.reverse()) {
+		if (match.index < maxLength - 1) {
+			return match.index + 1
 		}
+	}
 
-		// 2. Buscar salto de línea simple (\n)
-		const singleNewlines = [...text.matchAll(/\n/g)]
-		for (const match of singleNewlines.reverse()) { // Buscar desde el final
-			if (match.index < maxLength - 1) { // -1 para no cortar en la última línea
+	// 3. Buscar punto seguido (.)
+	const periods = [...text.matchAll(/\./g)]
+	for (const match of periods.reverse()) {
+		if (match.index < maxLength - 2) {
+			const afterPeriod = text.substring(match.index + 1).trim()
+			if (afterPeriod.length > 0 && afterPeriod[0] === afterPeriod[0].toUpperCase()) {
 				return match.index + 1
 			}
 		}
-
-		// 3. Buscar punto seguido (.)
-		const periods = [...text.matchAll(/\./g)]
-		for (const match of periods.reverse()) { // Buscar desde el final
-			if (match.index < maxLength - 2) { // -2 para dejar espacio después del punto
-				// Verificar que no sea una abreviatura común
-				const afterPeriod = text.substring(match.index + 1).trim()
-				if (afterPeriod.length > 0 && afterPeriod[0] === afterPeriod[0].toUpperCase()) {
-					return match.index + 1
-				}
-			}
-		}
-
-		// 4. Buscar espacio para no cortar palabra
-		const spaces = [...text.matchAll(/ /g)]
-		for (const match of spaces.reverse()) { // Buscar desde el final
-			if (match.index < maxLength - 1) {
-				return match.index
-			}
-		}
-
-		// 5. Último recurso: cortar por longitud (evitar esto si es posible)
-		return maxLength
 	}
 
-	// Función para crear overlap manteniendo continuidad
-	const createOverlap = (text, overlapLength) => {
-		if (text.length <= overlapLength) return text
-
-		// Buscar un buen punto de inicio para el overlap
-		const overlapStart = text.length - overlapLength
-		const firstSpace = text.indexOf(' ', overlapStart)
-
-		if (firstSpace !== -1 && firstSpace < text.length) {
-			return text.substring(firstSpace + 1)
+	// 4. Buscar espacio para no cortar palabra
+	const spaces = [...text.matchAll(/ /g)]
+	for (const match of spaces.reverse()) {
+		if (match.index < maxLength - 1) {
+			return match.index
 		}
-
-		return text.substring(overlapStart)
 	}
 
+	// 5. Último recurso: cortar por longitud
+	return maxLength
+}
+
+// Crea overlap manteniendo continuidad
+const createOverlap = (text, overlapLength) => {
+	if (text.length <= overlapLength) return text
+	const overlapStart = text.length - overlapLength
+	const firstSpace = text.indexOf(' ', overlapStart)
+	if (firstSpace !== -1 && firstSpace < text.length) {
+		return text.substring(firstSpace + 1)
+	}
+	return text.substring(overlapStart)
+}
+
+// Chunkea una sección individual (no muta GLOBAL_CHUNK_ID)
+const chunkSection = (text, metadata, startChunkIndex, startGlobalId) => {
+	const chunks = []
+	let chunkIndex = startChunkIndex
+	let globalChunkCounter = startGlobalId
 	let remainingText = text.trim()
 	let lastOverlap = ''
 
 	while (remainingText.length > 0) {
 		let chunkText = ''
 
-		// DETERMINAR TAMAÑO DE CHUNK SEGÚN CONTENIDO
 		const chunkSize = isNormativeContent(remainingText.substring(0, 200)) ? NORMATIVE_CHUNK_SIZE : CHUNK_SIZE
 
-		// Si tenemos overlap del chunk anterior, usarlo como inicio
 		if (lastOverlap) {
 			const availableSpace = chunkSize - lastOverlap.length
-			if (availableSpace > 50) { // Mínimo espacio para contenido significativo
+			if (availableSpace > 50) {
 				const breakPoint = findBestBreakPoint(remainingText, availableSpace)
 				chunkText = lastOverlap + remainingText.substring(0, breakPoint).trim()
 				remainingText = remainingText.substring(breakPoint).trim()
 			} else {
-				// El overlap es muy grande, usar solo el overlap
 				chunkText = lastOverlap
-				// No consumir texto nuevo en este chunk
 			}
 			lastOverlap = ''
 		} else {
-			// Primer chunk o sin overlap
 			const breakPoint = findBestBreakPoint(remainingText, chunkSize)
 			chunkText = remainingText.substring(0, breakPoint).trim()
 			remainingText = remainingText.substring(breakPoint).trim()
 		}
 
-		// Crear overlap para el siguiente chunk (si queda texto)
 		if (remainingText.length > 0) {
 			lastOverlap = createOverlap(chunkText, CHUNK_OVERLAP)
 		}
 
-		// Agregar chunk si tiene contenido significativo
 		if (chunkText.length > 10) {
 			chunks.push({
-				id: globalChunkCounter++, // USAR CONTADOR GLOBAL
+				id: globalChunkCounter++,
 				vector: null,
 				payload: {
 					docId: metadata.docId,
@@ -470,9 +462,26 @@ const chunkText = (text, metadata) => {
 		}
 	}
 
-	GLOBAL_CHUNK_ID = globalChunkCounter // Actualizar GLOBAL_CHUNK_ID
+	return chunks
+}
 
-	return chunks;
+// Divide el texto en secciones por \n\n---\n\n y chunkea cada una independientemente
+const chunkText = (text, metadata) => {
+	const sections = text.split('\n\n---\n\n').filter(s => s.trim().length > 0)
+
+	let chunkIndex = 0
+	let globalId = GLOBAL_CHUNK_ID
+	const allChunks = []
+
+	for (const section of sections) {
+		const sectionChunks = chunkSection(section.trim(), metadata, chunkIndex, globalId)
+		allChunks.push(...sectionChunks)
+		chunkIndex += sectionChunks.length
+		globalId += sectionChunks.length
+	}
+
+	GLOBAL_CHUNK_ID = globalId
+	return allChunks
 };
 
 const indexDocument = async (sourceConfig) => {
@@ -513,6 +522,22 @@ const indexDocument = async (sourceConfig) => {
 export const initializeRAG = async () => {
 	try {
 		await ensureCollection()
+		const client = getQdrantClient()
+		const collectionName = getCollectionName()
+
+		try {
+			const countResult = await client.count(collectionName, { exact: true })
+			const existingPoints = countResult?.count || 0
+
+			if (existingPoints > 0) {
+				console.log(`⏭️  RAG ya indexado (${existingPoints} chunks). Omitiendo reindex al iniciar.`)
+				console.log('ℹ️  Usa npm run rag:reindex para forzar reindex.')
+				return []
+			}
+		} catch (countError) {
+			console.warn('⚠️ No se pudo consultar el conteo de chunks en Qdrant. Se intentará indexar.', countError?.message || countError)
+		}
+
 		const sources = getEnabledSources()
 		console.log(`🚀 Inicializando RAG con ${sources.length} fuentes...`)
 		const results = []
