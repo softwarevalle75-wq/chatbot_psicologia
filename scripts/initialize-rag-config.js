@@ -79,9 +79,7 @@ Mantén lenguaje técnico, claro, profesional y objetivo. Usa terminología lati
 
 La tarea se considera completa únicamente cuando todos los puntajes han sido analizados, contrastados con los manuales proporcionados e integrados en un perfil coherente con advertencia ética.`;
 
-const PROMPT_TEMPLATE = `Genera la respuesta en Markdown con redacción técnica fluida y usando exactamente este orden de secciones:
-
-# Informe de interpretación técnica
+const PROMPT_TEMPLATE = `Genera la respuesta en Markdown con redacción técnica fluida y usando exactamente este orden de secciones (sin título general al inicio):
 
 ## Aclaración metodológica
 ## Resumen técnico de resultados y clasificación normativa
@@ -103,6 +101,11 @@ Reglas de estilo:
 - Si el protocolo está incompleto, hay ítems faltantes o duplicados, indícalo explícitamente y limita la inferencia normativa.
 - No repitas datos demográficos completos del paciente dentro del cuerpo narrativo; ya van en la ficha del PDF.
 - Conserva el sentido clínico: no inventes datos no presentes en resultados o manuales.
+- En "Ítems respondidos" y en "Agrupaciones descriptivas", reporta valores en código numérico (0-3), no en texto de respuesta.
+- Evita formatos compactos difíciles de leer como "1:0; 2:1; 3:2".
+- Para "Ítems respondidos", usa una línea por ítem en formato: "Ítem 1 = 0".
+- Para agrupaciones descriptivas, usa formato legible: "Funcionamiento cognitivo: ítem 1 (0), ítem 4 (3)".
+- Si falta un ítem, usar "no respondido" en lugar de símbolos como "-".
 
 Reglas de contenido:
 - En "Resumen técnico", incluye método(s) de puntuación, completitud del protocolo, puntaje total válido o motivo de no validez, y aplicabilidad de puntos de corte.
@@ -129,7 +132,7 @@ Contexto normativo recuperado:
 {context}`;
 
 const METADATA = {
-    version: '1.8',
+    version: '2.0',
     supported_tests: ['ghq12', 'dass21'],
     descripcion: 'Sistema unificado de prompts para interpretación de tests psicológicos',
     fecha_creacion: new Date().toISOString(),

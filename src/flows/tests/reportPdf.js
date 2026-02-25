@@ -23,6 +23,7 @@ const sanitizePdfText = (value) => {
 	const normalized = String(value)
 		.normalize('NFKC')
 		.replace(/\r\n/g, '\n')
+		.replace(/[\u2012\u2013\u2014\u2212]/g, '-')
 
 	return Array.from(normalized)
 		.filter((char) => {
@@ -106,7 +107,7 @@ const drawInterpretationContent = (doc, interpretationText) => {
 			continue
 		}
 
-		if (/^\d+[\.)]\s+/.test(line)) {
+		if (/^\d+[.)]\s+/.test(line)) {
 			doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.primary)
 			doc.text(stripMarkdownInline(line), left, doc.y, { width, align: 'left', lineGap: 1 })
 			doc.moveDown(0.15)

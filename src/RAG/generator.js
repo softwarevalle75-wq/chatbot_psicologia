@@ -76,6 +76,8 @@ export async function generateAnswer(question, retrievedChunks = [], options = {
             answer = message.refusal.trim()
         }
 
+        answer = normalizeGeneratedAnswer(answer)
+
         if (!answer) {
             const preview = JSON.stringify({ finish_reason: choice?.finish_reason, message }, null, 2)
             console.error('Respuesta vacia de OpenAI:', preview)
@@ -163,7 +165,7 @@ function buildPrompt(question, context, options = {}) {
         context,
         rawResults: formatRawResults(options.rawResults, question),
         patientData: formatPatientData(options.patientData),
-        itemScores: formatItemScores(options.itemScores, question),
+        itemScores: formatItemScores(options.itemScores),
         qualityChecks: formatQualityChecks(options.itemScores, question)
     }
 
@@ -251,25 +253,6 @@ function formatPatientData(patientData) {
     return lines.length > 0 ? lines.join('\n') : 'No disponible.'
 }
 
-function getResponseLabels(question = '') {
-    const normalized = String(question || '').toLowerCase()
-    if (normalized.includes('dass')) {
-        return {
-            0: 'No me ha ocurrido',
-            1: 'Me ha ocurrido un poco',
-            2: 'Me ha ocurrido bastante',
-            3: 'Me ha ocurrido mucho',
-        }
-    }
-
-    return {
-        0: 'Mejor que lo habitual',
-        1: 'Igual que lo habitual',
-        2: 'Menos que lo habitual',
-        3: 'Mucho menos que lo habitual',
-    }
-}
-
 function formatRawResults(rawResults, question = '') {
     if (!rawResults || typeof rawResults !== 'object') {
         return 'No se recibieron resultados estructurados.'
@@ -277,7 +260,6 @@ function formatRawResults(rawResults, question = '') {
 
     const normalized = String(question || '').toLowerCase()
     const expectedItems = normalized.includes('ghq') ? 12 : normalized.includes('dass') ? 21 : null
-    const labels = getResponseLabels(question)
     const score0 = Array.isArray(rawResults[0]) ? rawResults[0] : []
     const score1 = Array.isArray(rawResults[1]) ? rawResults[1] : []
     const score2 = Array.isArray(rawResults[2]) ? rawResults[2] : []
@@ -291,22 +273,35 @@ function formatRawResults(rawResults, question = '') {
     return [
         completenessLine,
         '- Distribucion por categoria de respuesta:',
-        `  - ${labels[0]}: ${score0.length} items [${score0.join(', ')}]`,
-        `  - ${labels[1]}: ${score1.length} items [${score1.join(', ')}]`,
-        `  - ${labels[2]}: ${score2.length} items [${score2.join(', ')}]`,
-        `  - ${labels[3]}: ${score3.length} items [${score3.join(', ')}]`
+        `  - Categoria 0: ${score0.length} items [${score0.join(', ')}]`,
+        `  - Categoria 1: ${score1.length} items [${score1.join(', ')}]`,
+        `  - Categoria 2: ${score2.length} items [${score2.join(', ')}]`,
+        `  - Categoria 3: ${score3.length} items [${score3.join(', ')}]`
     ].join('\n')
 }
 
-function formatItemScores(itemScores, question = '') {
+function formatItemScores(itemScores) {
     if (!Array.isArray(itemScores) || itemScores.length === 0) {
         return 'No se pudo reconstruir puntaje por item.'
     }
 
-    const labels = getResponseLabels(question)
     return itemScores
-        .map(({ item, score }) => `- Item ${item}: ${score} (${labels[score] || 'No disponible'})`)
+        .map(({ item, score }) => `- Item ${item} = ${score}`)
         .join('\n')
+}
+
+function normalizeGeneratedAnswer(text = '') {
+    if (!text) return text
+
+    const lines = String(text).split('\n')
+    while (lines.length > 0 && lines[0].trim() === '') lines.shift()
+
+    if (lines.length > 0 && /^#\s*informe de interpretaci[oó]n t[eé]cnica\s*$/i.test(lines[0].trim())) {
+        lines.shift()
+        while (lines.length > 0 && lines[0].trim() === '') lines.shift()
+    }
+
+    return lines.join('\n').trim()
 }
 
 function formatQualityChecks(itemScores, question = '') {
