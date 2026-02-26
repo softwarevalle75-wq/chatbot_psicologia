@@ -76,26 +76,28 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
         return gotoFlow(testSelectionFlow);
       }
       if (currentFlow === 'menu') {
-        console.log('🚫 Usuario ya en menú, no interferir con welcomeFlow');
-        return;
+        console.log('🔀 Usuario en menú, redirigiendo a menuFlow');
+        await state.update({ currentFlow: 'menu' });
+        return gotoFlow(menuFlow);
       }
       if (currentFlow === 'esDeUniversidad') {
-        console.log('🚫 Usuario registrando datos universitarios, no interferir con welcomeFlow')
-        return;
+        console.log('🔀 Usuario registrando datos universitarios, redirigiendo a esDeUniversidadFlow')
+        await state.update({ currentFlow: 'esDeUniversidad' })
+        return gotoFlow(esDeUniversidadFlow)
       }
       if (currentFlow === 'agendConfirmarRespuesta') {
-        console.log('🚫 Usuario confirmando cita, no interferir con welcomeFlow')
-        return;
+        console.log('🔀 Usuario confirmando cita, redirigiendo a agendFlow')
+        return gotoFlow(agendFlow)
       }
       if (currentFlow === 'completandoDatos') {
-        console.log('🚫 Practicante completando datos, no interferir con welcomeFlow')
-        return;
+        console.log('🔀 Practicante completando datos, redirigiendo a recolectarGeneroFlow')
+        return gotoFlow(recolectarGeneroFlow)
       }
 
       // 2. ⭐ NUEVO: VERIFICAR SI ES PRACTICANTE PRIMERO (ANTES DE AUTENTICAR)
       if (currentFlow === 'admin'){
-        console.log('Ya esta en flujo admin, se omite verificación de rol')
-        return;
+        console.log('🔀 Ya está en flujo admin, redirigiendo a adminMenuFlow')
+        return gotoFlow(adminMenuFlow)
       }
 
       // Reutilizar cache si ya consultamos el rol en la detección de cambio

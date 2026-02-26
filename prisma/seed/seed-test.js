@@ -8,7 +8,7 @@ const telefono = process.argv[3];
 
 // ==============================================
 // const TELEFONO = process.env.TELEFONO_PRUEBAS;
-const TELEFONO = telefono.includes('57') ? telefono : '573115011014';
+const TELEFONO = telefono.includes('57') ? telefono : `57${telefono}`;
 // ==============================================
 
 if (!comando || !['usuario', 'practicante', 'limpiar', 'practicanteCompleto'].includes(comando)) {
@@ -142,13 +142,24 @@ async function crearPracticanteCompleto() {
 
   console.log('👨‍⚕️ Creando PRACTICANTE COMPLETO...\n');
 
-    // Crear registro en tabla practicante
+  const suffix = TELEFONO.slice(-6)
+  const numeroDocumento = `9${suffix}`
+  const nombrePracticante = `Practicante para pruebas ${suffix}`
+
+  // Crear/actualizar rol como practicante
+  await prisma.rolChat.upsert({
+    where: { telefono: TELEFONO },
+    update: { rol: 'practicante' },
+    create: { telefono: TELEFONO, rol: 'practicante' }
+  });
+
+  // Crear registro en tabla practicante
   await prisma.practicante.create({
     data: {
       idPracticante: uuidv4(),
-      numero_documento: '22222222',
+      numero_documento: numeroDocumento,
       tipo_documento: 'CC',
-      nombre: 'Practicante para pruebas',
+      nombre: nombrePracticante,
       genero: 'M',
       estrato: '3', 
       barrio: 'Chapinero',
@@ -165,6 +176,7 @@ async function crearPracticanteCompleto() {
   });
 
   console.log('  ✅ Practicante completo creado:');
+  console.log(`     Nombre: ${nombrePracticante}`);
   console.log(`     Teléfono: ${TELEFONO}`);
   console.log(`     Rol en rolChat: practicante`);
   console.log(`     Tabla practicante: ✅ LLENA (completo)`);
