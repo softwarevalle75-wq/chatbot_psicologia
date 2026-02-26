@@ -133,10 +133,11 @@ const itemRowsFromRawResults = (rawResults, testId) => {
 	for (const score of [0, 1, 2, 3]) {
 		const items = Array.isArray(rawResults?.[score]) ? rawResults[score] : []
 		for (const item of items) {
+			const itemNumber = Number(item)
 			rows.push({
-				item: Number(item),
+				item: itemNumber,
 				score,
-				etiqueta: responseLabel(testId, score),
+				etiqueta: responseLabel(testId, itemNumber, score),
 			})
 		}
 	}
@@ -145,7 +146,22 @@ const itemRowsFromRawResults = (rawResults, testId) => {
 		.sort((a, b) => a.item - b.item)
 }
 
-const responseLabel = (testId, score) => {
+const GHQ12_ITEM_LABELS = {
+	1: ['Mejor que lo habitual', 'Igual que lo habitual', 'Menos que lo habitual', 'Mucho menos que lo habitual'],
+	2: ['No, en absoluto', 'Igual que lo habitual', 'Mas que lo habitual', 'Mucho mas que lo habitual'],
+	3: ['Mas que lo habitual', 'Igual que lo habitual', 'Menos que lo habitual', 'Mucho menos que lo habitual'],
+	4: ['Mas capaz que lo habitual', 'Igual que lo habitual', 'Menos capaz que lo habitual', 'Mucho menos capaz que lo habitual'],
+	5: ['No, en absoluto', 'Igual que lo habitual', 'Mas que lo habitual', 'Mucho mas que lo habitual'],
+	6: ['No, en absoluto', 'Igual que lo habitual', 'Mas que lo habitual', 'Mucho mas que lo habitual'],
+	7: ['Mas que lo habitual', 'Igual que lo habitual', 'Menos que lo habitual', 'Mucho menos que lo habitual'],
+	8: ['Mas capaz que lo habitual', 'Igual que lo habitual', 'Menos capaz que lo habitual', 'Mucho menos capaz que lo habitual'],
+	9: ['No, en absoluto', 'No mas que lo habitual', 'Mas que lo habitual', 'Mucho mas que lo habitual'],
+	10: ['No, en absoluto', 'No mas que lo habitual', 'Mas que lo habitual', 'Mucho mas que lo habitual'],
+	11: ['No, en absoluto', 'No mas que lo habitual', 'Mas que lo habitual', 'Mucho mas que lo habitual'],
+	12: ['Mas feliz que lo habitual', 'Igual que lo habitual', 'Menos feliz que lo habitual', 'Mucho menos feliz que lo habitual'],
+}
+
+const responseLabel = (testId, item, score) => {
 	const isDass = String(testId || '').toLowerCase() === 'dass21'
 	if (isDass) {
 		return [
@@ -154,6 +170,11 @@ const responseLabel = (testId, score) => {
 			'Me ha ocurrido bastante',
 			'Me ha ocurrido mucho',
 		][score] || 'No disponible'
+	}
+
+	const ghqLabels = GHQ12_ITEM_LABELS[item]
+	if (ghqLabels) {
+		return ghqLabels[score] || 'No disponible'
 	}
 
 	return [
