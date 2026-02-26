@@ -16,6 +16,7 @@
     "test": "vitest run",
     "gen:pdf": "node ./scripts/generatePDF.js",
     "seed-test": "node prisma/seed/seed-test.js",
+    "assign-pract": "node ./scripts/asignar-practicante-prueba.js",
     "rag:reindex": "node ./scripts/reindex-rag.js",
     "test:rag-aislado": "node ./scripts/test-rag-aislado.js",
     "test:chunks": "node ./scripts/test-chunks.js",

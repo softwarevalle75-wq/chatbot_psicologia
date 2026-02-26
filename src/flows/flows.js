@@ -10,6 +10,7 @@ import {
 	guardarPracticanteAsignado,
   perteneceUniversidad,
   verificarRolUsuario,
+  usuarioTienePracticanteAsignado,
 } from '../queries/queries.js'
 //import { apiRegister } from './register/aiRegister.js'
 import { menuCuestionarios, parsearSeleccionTest} from './tests/controlTest.js'
@@ -472,6 +473,17 @@ export const testSelectionFlow = addKeyword(utils.setEvent('TEST_SELECTION_FLOW'
       const msg = ctx.body.trim();
       const tipoTest = parsearSeleccionTest(msg);
 
+      const tienePracticante = await usuarioTienePracticanteAsignado(ctx.from)
+      if (!tienePracticante) {
+        await flowDynamic(
+          '⚠️ *No tienes un practicante asignado.*\n\n' +
+          'No es posible iniciar pruebas hasta que un practicante te asigne seguimiento.'
+        )
+        await state.update({ currentFlow: 'menu' });
+        await switchFlujo(ctx.from, 'menuFlow');
+        return gotoFlow(menuFlow);
+      }
+
       if (!tipoTest) {
         await flowDynamic('❌ Por favor, responde con *1* para GHQ-12 o *2* para DASS-21');
         return fallBack();
@@ -707,6 +719,16 @@ export const menuFlow = addKeyword(utils.setEvent('MENU_FLOW'))
         const msg = validarRespuestaMenu(ctx.body, ['1', '2']);
 
         if (msg === '1') {
+          const tienePracticante = await usuarioTienePracticanteAsignado(ctx.from)
+          if (!tienePracticante) {
+            await flowDynamic(
+              '⚠️ *No tienes un practicante asignado.*\n\n' +
+              'Para realizar pruebas psicológicas primero debes tener un practicante asignado.\n' +
+              'Solicita la asignación con tu psicólogo o soporte.'
+            )
+            return fallBack();
+          }
+
           // Hacer cuestionarios
           await flowDynamic(menuCuestionarios());
           await switchFlujo(ctx.from, 'testSelectionFlow') // DESCOMENTADO - ahora funciona

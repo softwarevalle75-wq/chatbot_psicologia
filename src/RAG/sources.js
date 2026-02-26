@@ -27,6 +27,14 @@ export const TEST_SOURCES = {
 		version: 'v1',
 		enabled: true, // ← ¡ACTIVAR DASS-21!
 	},
+	'DASS-21-2': {
+		manualPath: path.join(__dirname, '../data/manuales/DASS21/dass-21-2.pdf'),
+		docId: 'dass-21-2.pdf',
+		docName: 'dass-21-2.pdf',
+		source: 'DASS-21',
+		version: 'v1',
+		enabled: true,
+	},
 }
 export const getEnabledSources = () => {
 	return Object.entries(TEST_SOURCES)

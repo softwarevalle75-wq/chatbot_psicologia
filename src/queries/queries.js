@@ -644,6 +644,16 @@ export const notificarTestCompletadoAPracticante = async (telefonoPaciente) => {
 	}
 }
 
+export const usuarioTienePracticanteAsignado = async (telefonoPaciente) => {
+	try {
+		const telefonoPracticante = await obtenerTelefonoPracticante(telefonoPaciente)
+		return Boolean(telefonoPracticante)
+	} catch (error) {
+		console.error('Error verificando practicante asignado:', error)
+		return false
+	}
+}
+
 // Función para limpiar el estado de test completado del practicante
 export const limpiarEstadoTestCompletado = async (telefonoPracticante) => {
 	try {

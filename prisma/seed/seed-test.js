@@ -193,7 +193,7 @@ async function main() {
   } catch (error) {
     console.error('❌ Error:', error.message);
     if (error.code === 'P2002') {
-      console.error('   Dato duplicado. Ejecuta primero: node prisma/seed-test.mjs limpiar');
+      console.error('   Dato duplicado. Ejecuta primero: node prisma/seed-test.js limpiar');
     }
   } finally {
     await prisma.$disconnect();

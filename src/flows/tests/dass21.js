@@ -4,7 +4,7 @@ import {
 	savePuntajeUsuario,
 	obtenerTelefonoPracticante,
 	obtenerPerfilPacienteParaInforme,
-	guardarResultadoPrueba,
+	sendAutonomousMessage,
 	sendAutonomousDocument,
 	notificarTestCompletadoAPracticante,
 } from '../../queries/queries.js'
@@ -29,26 +29,29 @@ export const configurarProviderDASS21 = (provider) => {
 const cuestDass21 = {
     preguntas: [
 		'1. Me ha costado mucho descargar la tensión\n    ' + rtasDass21(),
+
+
+		
 		'2. Me di cuenta que tenía la boca seca\n    ' + rtasDass21(),
 		'3. No podía sentir ningún sentimiento positivo\n    ' + rtasDass21(),		
 		'4. Se me hizo difícil respirar\n    ' + rtasDass21(),			
-		// '5. Se me hizo difícil tomar la iniciativa para hacer cosas\n    ' + rtasDass21(),
-		// '6. Reaccioné exageradamente en ciertas situaciones\n    ' + rtasDass21(),
-		// '7. Sentí que mis manos temblaban\n    ' + rtasDass21(),
-		// '8. He sentido que estaba gastando una gran cantidad de energía\n    ' + rtasDass21(),
-		// '9. Estaba preocupado por situaciones en las cuales podía tener pánico o en las que podría hacer el ridículo\n    ' + rtasDass21(),
-		// '10. He sentido que no había nada que me ilusionara\n    ' + rtasDass21(),
-		// '11. Me he sentido inquieto\n    ' + rtasDass21(),
-		// '12. Se me hizo difícil relajarme\n    ' + rtasDass21(),
-		// '13. Me sentí triste y deprimido\n    ' + rtasDass21(),
-		// '14. No toleré nada que no me permitiera continuar con lo que estaba haciendo\n    ' + rtasDass21(),
-		// '15. Sentí que estaba al punto de pánico\n    ' + rtasDass21(),
-		// '16. No me pude entusiasmar por nada\n    ' + rtasDass21(),
-		// '17. Sentí que valía muy poco como persona\n    ' + rtasDass21(),
-		// '18. He tendido a sentirme enfadado con facilidad\n    ' + rtasDass21(),
-		// '19. Sentí los latidos de mi corazón a pesar de no haber hecho ningún esfuerzo físico\n    ' + rtasDass21(),
-		// '20. Tuve miedo sin razón\n    ' + rtasDass21(),
-		// '21. Sentí que la vida no tenía ningún sentido\n    ' + rtasDass21(),	
+		'5. Se me hizo difícil tomar la iniciativa para hacer cosas\n    ' + rtasDass21(),
+		'6. Reaccioné exageradamente en ciertas situaciones\n    ' + rtasDass21(),
+		'7. Sentí que mis manos temblaban\n    ' + rtasDass21(),
+		'8. He sentido que estaba gastando una gran cantidad de energía\n    ' + rtasDass21(),
+		'9. Estaba preocupado por situaciones en las cuales podía tener pánico o en las que podría hacer el ridículo\n    ' + rtasDass21(),
+		'10. He sentido que no había nada que me ilusionara\n    ' + rtasDass21(),
+		'11. Me he sentido inquieto\n    ' + rtasDass21(),
+		'12. Se me hizo difícil relajarme\n    ' + rtasDass21(),
+		'13. Me sentí triste y deprimido\n    ' + rtasDass21(),
+		'14. No toleré nada que no me permitiera continuar con lo que estaba haciendo\n    ' + rtasDass21(),
+		'15. Sentí que estaba al punto de pánico\n    ' + rtasDass21(),
+		'16. No me pude entusiasmar por nada\n    ' + rtasDass21(),
+		'17. Sentí que valía muy poco como persona\n    ' + rtasDass21(),
+		'18. He tendido a sentirme enfadado con facilidad\n    ' + rtasDass21(),
+		'19. Sentí los latidos de mi corazón a pesar de no haber hecho ningún esfuerzo físico\n    ' + rtasDass21(),
+		'20. Tuve miedo sin razón\n    ' + rtasDass21(),
+		'21. Sentí que la vida no tenía ningún sentido\n    ' + rtasDass21(),	
 		],
 
 	resPreg: {
@@ -146,77 +149,8 @@ export const procesarDass21 = async (numeroUsuario, respuestas) => {
 			)			
 
 			// Se guarda el resultado en la BD (solo respuestas crudas)
-			const datosFormateados = 
-			'*RESPUESTAS DASS-21*' +
-			`\n    Puntaje 0: [${estado.resPreg[0]?.join(', ') || ''}]` +
-			`\n    Puntaje 1: [${estado.resPreg[1]?.join(', ') || ''}]` +
-			`\n    Puntaje 2: [${estado.resPreg[2]?.join(', ') || ''}]` +
-			`\n    Puntaje 3: [${estado.resPreg[3]?.join(', ') || ''}] \n` +
-			'*NOTA: La interpretación se genera mediante el sistema RAG + LLM*';
-
-			await guardarResultadoPrueba(numeroUsuario, tipoTest, datosFormateados);
-
 			try {
-				const resultadoInterpretacion = await interpretPsychologicalTest(
-					'dass21',
-					estado.resPreg,
-					numeroUsuario
-				);
-
-				const pdfTarget = (process.env.PDF_TARGET || 'patient').toLowerCase();
-				const sendPdfToPatient = pdfTarget === 'patient' || pdfTarget === 'both';
-				const sendPdfToPractitioner = pdfTarget === 'practitioner' || pdfTarget === 'both';
-				const fechaElaboracion = new Date().toLocaleString('es-CO');
-				const patientData = await obtenerPerfilPacienteParaInforme(numeroUsuario);
-				const nombrePaciente = [patientData?.nombres, patientData?.apellidos].filter(Boolean).join(' ').trim() || 'No disponible';
-				const documentoPaciente = patientData?.documento && patientData.documento !== 'No disponible'
-					? `${patientData?.tipoDocumento || 'Doc'} ${patientData.documento}`
-					: 'No disponible';
-				const edadPaciente = patientData?.edad || 'No disponible';
-				const telefonoPaciente = patientData?.telefonoPrincipal || numeroUsuario;
-
-				const pdfPath = await generateInterpretationPdf({
-					numeroUsuario,
-					testId: 'dass21',
-					interpretation: resultadoInterpretacion.interpretation,
-					metadata: resultadoInterpretacion.metadata,
-					rawResults: estado.resPreg,
-					patientData,
-				});
-
-				if (sendPdfToPatient) {
-					await sendAutonomousDocument(
-						numeroUsuario,
-						`📄 *Informe técnico generado*\n\n` +
-						`👤 *Paciente:* ${nombrePaciente}\n` +
-						`🪪 *Documento:* ${documentoPaciente}\n` +
-						`🎂 *Edad:* ${edadPaciente}\n` +
-						`📱 *Teléfono:* ${telefonoPaciente}\n` +
-						`🧪 *Prueba:* DASS-21\n` +
-						`🕒 *Fecha y hora:* ${fechaElaboracion}`,
-						pdfPath
-					);
-				}
-
-				if (sendPdfToPractitioner) {
-					const telefonoPracticante = await obtenerTelefonoPracticante(numeroUsuario);
-					if (telefonoPracticante) {
-						await sendAutonomousDocument(
-							telefonoPracticante,
-							`📄 *Informe técnico disponible*\n\n` +
-							`👤 *Paciente:* ${nombrePaciente}\n` +
-							`🪪 *Documento:* ${documentoPaciente}\n` +
-							`🎂 *Edad:* ${edadPaciente}\n` +
-							`📱 *Teléfono:* ${telefonoPaciente}\n` +
-							`🧪 *Prueba:* DASS-21\n` +
-							`🕒 *Fecha y hora de elaboración:* ${fechaElaboracion}`,
-							pdfPath
-						);
-						await notificarTestCompletadoAPracticante(numeroUsuario);
-					} else {
-						console.warn(`⚠️ PDF_TARGET=${pdfTarget} pero no hay practicante asignado para ${numeroUsuario}`);
-					}
-				}
+				void generarInformeDASS21Async(numeroUsuario, estado.resPreg)
 			} catch (error) {
 				console.error('Error procesando resultados DASS-21', error)
 			}
@@ -240,6 +174,84 @@ export const procesarDass21 = async (numeroUsuario, respuestas) => {
 	} catch (error) {
 		console.error('Error al procesar DASS-21:', error)
 		return 'Hubo un error al procesar el cuestionario. Por favor, inténtelo de nuevo más tarde.'
+	}
+}
+
+const generarInformeDASS21Async = async (numeroUsuario, rawResults) => {
+	try {
+		const pdfTarget = (process.env.PDF_TARGET || 'practitioner').toLowerCase()
+		const sendPdfToPatient = pdfTarget === 'patient' || pdfTarget === 'both'
+		const sendPdfToPractitioner = pdfTarget === 'practitioner' || pdfTarget === 'both'
+
+		let telefonoPracticante = null
+		if (sendPdfToPractitioner) {
+			telefonoPracticante = await obtenerTelefonoPracticante(numeroUsuario)
+			if (telefonoPracticante) {
+				await sendAutonomousMessage(
+					telefonoPracticante,
+					'⏳ *Generando informe técnico...*\n\nEn breve recibirás el PDF con la interpretación.'
+				)
+			}
+		}
+
+		const resultadoInterpretacion = await interpretPsychologicalTest(
+			'dass21',
+			rawResults,
+			numeroUsuario
+		)
+
+		const fechaElaboracion = new Date().toLocaleString('es-CO')
+		const patientData = await obtenerPerfilPacienteParaInforme(numeroUsuario)
+		const nombrePaciente = [patientData?.nombres, patientData?.apellidos].filter(Boolean).join(' ').trim() || 'No disponible'
+		const documentoPaciente = patientData?.documento && patientData.documento !== 'No disponible'
+			? `${patientData?.tipoDocumento || 'Doc'} ${patientData.documento}`
+			: 'No disponible'
+		const edadPaciente = patientData?.edad || 'No disponible'
+		const telefonoPaciente = patientData?.telefonoPrincipal || numeroUsuario
+
+		const pdfPath = await generateInterpretationPdf({
+			numeroUsuario,
+			testId: 'dass21',
+			interpretation: resultadoInterpretacion.interpretation,
+			metadata: resultadoInterpretacion.metadata,
+			rawResults,
+			patientData,
+		})
+
+		if (sendPdfToPatient) {
+			await sendAutonomousDocument(
+				numeroUsuario,
+				`📄 *Informe técnico generado*\n\n` +
+				`👤 *Paciente:* ${nombrePaciente}\n` +
+				`🪪 *Documento:* ${documentoPaciente}\n` +
+				`🎂 *Edad:* ${edadPaciente}\n` +
+				`📱 *Teléfono:* ${telefonoPaciente}\n` +
+				`🧪 *Prueba:* DASS-21\n` +
+				`🕒 *Fecha y hora de elaboración:* ${fechaElaboracion}`,
+				pdfPath
+			)
+		}
+
+		if (sendPdfToPractitioner) {
+			if (!telefonoPracticante) {
+				console.warn(`⚠️ PDF_TARGET=${pdfTarget} pero no hay practicante asignado para ${numeroUsuario}; no se envía PDF.`)
+			} else {
+				await sendAutonomousDocument(
+					telefonoPracticante,
+					`📄 *Informe técnico disponible*\n\n` +
+					`👤 *Paciente:* ${nombrePaciente}\n` +
+					`🪪 *Documento:* ${documentoPaciente}\n` +
+					`🎂 *Edad:* ${edadPaciente}\n` +
+					`📱 *Teléfono:* ${telefonoPaciente}\n` +
+					`🧪 *Prueba:* DASS-21\n` +
+					`🕒 *Fecha y hora de elaboración:* ${fechaElaboracion}`,
+					pdfPath
+				)
+				await notificarTestCompletadoAPracticante(numeroUsuario)
+			}
+		}
+	} catch (error) {
+		console.error('❌ Error generando/enviando informe DASS-21:', error)
 	}
 }
 

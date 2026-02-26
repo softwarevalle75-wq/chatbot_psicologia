@@ -25,6 +25,20 @@ export const ensureCollection = async () => {
 		})
 		console.log(`✅ Colección '${COLLECTION_NAME}' creada`)
 	}
+
+	try {
+		await qdrantClient.createPayloadIndex(COLLECTION_NAME, {
+			field_name: 'source',
+			field_schema: 'keyword',
+		})
+		console.log(`✅ Índice payload creado para 'source' en '${COLLECTION_NAME}'`)
+	} catch (error) {
+		const message = String(error?.message || error || '')
+		if (!message.toLowerCase().includes('already exists')) {
+			console.warn(`⚠️ No se pudo crear/verificar índice de 'source': ${message}`)
+		}
+	}
+
 	return COLLECTION_NAME
 }
 export const generateEmbedding = async (text) => {

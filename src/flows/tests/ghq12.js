@@ -4,9 +4,9 @@ import {
 	savePuntajeUsuario,
 	obtenerTelefonoPracticante,
 	obtenerPerfilPacienteParaInforme,
+	sendAutonomousMessage,
 	sendAutonomousDocument,
 	notificarTestCompletadoAPracticante,
-    guardarResultadoPrueba,    
 } from '../../queries/queries.js'
 
 import { interpretPsychologicalTest } from '../../RAG/psychological-interpreter.js'
@@ -18,14 +18,14 @@ const cuestGhq12 = {
         '2. ¿Sus preocupaciones le han hecho perder mucho el sueño?\n    0️⃣ No, en absoluto.\n    1️⃣ Igual que lo habitual.\n    2️⃣ Más que lo habitual.\n    3️⃣ Mucho más que lo habitual.',
         '3. ¿Ha sentido que está desempeñando un papel útil en la vida?\n    0️⃣ Más que lo habitual.\n    1️⃣ Igual que lo habitual.\n    2️⃣ Menos que lo habitual.\n    3️⃣ Mucho menos que lo habitual.',        
         '4. ¿Se ha sentido capaz de tomar decisiones?\n    0️⃣ Más capaz que lo habitual.\n    1️⃣ Igual que lo habitual.\n    2️⃣ Menos capaz que lo habitual.\n    3️⃣ Mucho menos capaz que lo habitual.',
-        // '5. ¿Se ha sentido constantemente agobiado y en tensión?\n    0️⃣ No, en absoluto.\n    1️⃣ Igual que lo habitual.\n    2️⃣ Más que lo habitual.\n    3️⃣ Mucho más que lo habitual.',        
-        // '6. ¿Ha sentido que no puede superar sus dificultades?\n    0️⃣ No, en absoluto.\n    1️⃣ Igual que lo habitual.\n    2️⃣ Más que lo habitual.\n    3️⃣ Mucho más que lo habitual.',
-        // '7. ¿Ha sido capaz de disfrutar de sus actividades normales de cada día?\n    0️⃣ Más que lo habitual.\n    1️⃣ Igual que lo habitual.\n    2️⃣ Menos que lo habitual.\n    3️⃣ Mucho menos que lo habitual.',
-        // '8. ¿Ha sido capaz de hacer frente adecuadamente a sus problemas?\n    0️⃣ Más capaz que lo habitual.\n    1️⃣ Igual que lo habitual.\n    2️⃣ Menos capaz que lo habitual.\n    3️⃣ Mucho menos capaz que lo habitual.',
-        // '9. ¿Se ha sentido poco feliz o deprimido/a?\n    0️⃣ No, en absoluto.\n    1️⃣ No más que lo habitual.\n    2️⃣ Más que lo habitual.\n    3️⃣ Mucho más que lo habitual.',
-        // '10. ¿Ha perdido confianza en sí mismo/a?\n    0️⃣ No, en absoluto.\n    1️⃣ No más que lo habitual.\n    2️⃣ Más que lo habitual.\n    3️⃣ Mucho más que lo habitual.',
-        // '11. ¿Ha pensado que usted es una persona que no vale para nada?\n    0️⃣ No, en absoluto.\n    1️⃣ No más que lo habitual.\n    2️⃣ Más que lo habitual.\n    3️⃣ Mucho más que lo habitual.',
-        // '12. ¿Se siente razonablemente feliz considerando todas las circunstancias?\n    0️⃣ Más feliz que lo habitual.\n    1️⃣ Igual que lo habitual.\n    2️⃣ Menos feliz que lo habitual.\n    3️⃣ Mucho menos feliz que lo habitual.',
+        '5. ¿Se ha sentido constantemente agobiado y en tensión?\n    0️⃣ No, en absoluto.\n    1️⃣ Igual que lo habitual.\n    2️⃣ Más que lo habitual.\n    3️⃣ Mucho más que lo habitual.',        
+        '6. ¿Ha sentido que no puede superar sus dificultades?\n    0️⃣ No, en absoluto.\n    1️⃣ Igual que lo habitual.\n    2️⃣ Más que lo habitual.\n    3️⃣ Mucho más que lo habitual.',
+        '7. ¿Ha sido capaz de disfrutar de sus actividades normales de cada día?\n    0️⃣ Más que lo habitual.\n    1️⃣ Igual que lo habitual.\n    2️⃣ Menos que lo habitual.\n    3️⃣ Mucho menos que lo habitual.',
+        '8. ¿Ha sido capaz de hacer frente adecuadamente a sus problemas?\n    0️⃣ Más capaz que lo habitual.\n    1️⃣ Igual que lo habitual.\n    2️⃣ Menos capaz que lo habitual.\n    3️⃣ Mucho menos capaz que lo habitual.',
+        '9. ¿Se ha sentido poco feliz o deprimido/a?\n    0️⃣ No, en absoluto.\n    1️⃣ No más que lo habitual.\n    2️⃣ Más que lo habitual.\n    3️⃣ Mucho más que lo habitual.',
+        '10. ¿Ha perdido confianza en sí mismo/a?\n    0️⃣ No, en absoluto.\n    1️⃣ No más que lo habitual.\n    2️⃣ Más que lo habitual.\n    3️⃣ Mucho más que lo habitual.',
+        '11. ¿Ha pensado que usted es una persona que no vale para nada?\n    0️⃣ No, en absoluto.\n    1️⃣ No más que lo habitual.\n    2️⃣ Más que lo habitual.\n    3️⃣ Mucho más que lo habitual.',
+        '12. ¿Se siente razonablemente feliz considerando todas las circunstancias?\n    0️⃣ Más feliz que lo habitual.\n    1️⃣ Igual que lo habitual.\n    2️⃣ Menos feliz que lo habitual.\n    3️⃣ Mucho menos feliz que lo habitual.',
     ],
     resPreg: {
         0: [],
@@ -104,81 +104,7 @@ export const procesarGHQ12 = async (numeroUsuario, respuestas) => {
             )
             await savePuntajeUsuario(numeroUsuario, tipoTest, estado.Puntaje, estado.resPreg )
 
-            // Se guarda el resultado en la BD (solo respuestas crudas)
-            const datosFormateados = 
-            '*RESPUESTAS GHQ-12*' +
-            `\n    Puntaje 0: [${estado.resPreg[0]?.join(', ') || ''}]` +
-            `\n    Puntaje 1: [${estado.resPreg[1]?.join(', ') || ''}]` +
-            `\n    Puntaje 2: [${estado.resPreg[2]?.join(', ') || ''}]` +
-            `\n    Puntaje 3: [${estado.resPreg[3]?.join(', ') || ''}] \n` +
-            '*NOTA: La interpretación se genera mediante el sistema RAG + LLM*';
-
-            await guardarResultadoPrueba(numeroUsuario, tipoTest, datosFormateados);
-
-            const resultadoInterpretacion = await interpretPsychologicalTest(
-                'ghq12',
-                estado.resPreg,
-                numeroUsuario
-            );
-
-            const pdfTarget = (process.env.PDF_TARGET || 'patient').toLowerCase();
-            const sendPdfToPatient = pdfTarget === 'patient' || pdfTarget === 'both';
-            const sendPdfToPractitioner = pdfTarget === 'practitioner' || pdfTarget === 'both';
-            const fechaElaboracion = new Date().toLocaleString('es-CO');
-            const patientData = await obtenerPerfilPacienteParaInforme(numeroUsuario);
-            const nombrePaciente = [patientData?.nombres, patientData?.apellidos].filter(Boolean).join(' ').trim() || 'No disponible';
-            const documentoPaciente = patientData?.documento && patientData.documento !== 'No disponible'
-                ? `${patientData?.tipoDocumento || 'Doc'} ${patientData.documento}`
-                : 'No disponible';
-            const edadPaciente = patientData?.edad || 'No disponible';
-            const telefonoPaciente = patientData?.telefonoPrincipal || numeroUsuario;
-
-            try {
-                const pdfPath = await generateInterpretationPdf({
-                    numeroUsuario,
-                    testId: 'ghq12',
-                    interpretation: resultadoInterpretacion.interpretation,
-                    metadata: resultadoInterpretacion.metadata,
-                    rawResults: estado.resPreg,
-                    patientData,
-                });
-
-                if (sendPdfToPatient) {
-                    await sendAutonomousDocument(
-                        numeroUsuario,
-                        `📄 *Informe técnico generado*\n\n` +
-                        `👤 *Paciente:* ${nombrePaciente}\n` +
-                        `🪪 *Documento:* ${documentoPaciente}\n` +
-                        `🎂 *Edad:* ${edadPaciente}\n` +
-                        `📱 *Teléfono:* ${telefonoPaciente}\n` +
-                        `🧪 *Prueba:* GHQ-12\n` +
-                        `🕒 *Fecha y hora:* ${fechaElaboracion}`,
-                        pdfPath
-                    );
-                }
-
-                if (sendPdfToPractitioner) {
-                    const telefonoPracticante = await obtenerTelefonoPracticante(numeroUsuario);
-                    if (telefonoPracticante) {
-                        await sendAutonomousDocument(
-                            telefonoPracticante,
-                            `📄 *Informe técnico disponible*\n\n` +
-                            `👤 *Paciente:* ${nombrePaciente}\n` +
-                            `🪪 *Documento:* ${documentoPaciente}\n` +
-                            `🎂 *Edad:* ${edadPaciente}\n` +
-                            `📱 *Teléfono:* ${telefonoPaciente}\n` +
-                            `🧪 *Prueba:* GHQ-12\n` +
-                            `🕒 *Fecha y hora de elaboración:* ${fechaElaboracion}`,
-                            pdfPath
-                        );
-                        await notificarTestCompletadoAPracticante(numeroUsuario);
-                    } else {
-                        console.warn(`⚠️ PDF_TARGET=${pdfTarget} pero no hay practicante asignado para ${numeroUsuario}`);
-                    }
-                }
-            } catch (pdfError) {
-                console.error('❌ Error generando/enviando PDF GHQ-12:', pdfError);
-            }
+            void generarInformeGHQ12Async(numeroUsuario, estado.resPreg)
 
             return "✅ *Prueba completada con éxito.*\n\nGracias por completar la evaluación. Los resultados han sido enviados a tu practicante asignado."
         }
@@ -199,6 +125,84 @@ export const procesarGHQ12 = async (numeroUsuario, respuestas) => {
         console.error('Error al procesar GHQ-12:', error)
         return 'Hubo un error al procesar la prueba. Por favor, inténtelo de nuevo más tarde.'
 
+    }
+}
+
+const generarInformeGHQ12Async = async (numeroUsuario, rawResults) => {
+    try {
+        const pdfTarget = (process.env.PDF_TARGET || 'practitioner').toLowerCase()
+        const sendPdfToPatient = pdfTarget === 'patient' || pdfTarget === 'both'
+        const sendPdfToPractitioner = pdfTarget === 'practitioner' || pdfTarget === 'both'
+
+        let telefonoPracticante = null
+        if (sendPdfToPractitioner) {
+            telefonoPracticante = await obtenerTelefonoPracticante(numeroUsuario)
+            if (telefonoPracticante) {
+                await sendAutonomousMessage(
+                    telefonoPracticante,
+                    '⏳ *Generando informe técnico...*\n\nEn breve recibirás el PDF con la interpretación.'
+                )
+            }
+        }
+
+        const resultadoInterpretacion = await interpretPsychologicalTest(
+            'ghq12',
+            rawResults,
+            numeroUsuario
+        )
+
+        const fechaElaboracion = new Date().toLocaleString('es-CO')
+        const patientData = await obtenerPerfilPacienteParaInforme(numeroUsuario)
+        const nombrePaciente = [patientData?.nombres, patientData?.apellidos].filter(Boolean).join(' ').trim() || 'No disponible'
+        const documentoPaciente = patientData?.documento && patientData.documento !== 'No disponible'
+            ? `${patientData?.tipoDocumento || 'Doc'} ${patientData.documento}`
+            : 'No disponible'
+        const edadPaciente = patientData?.edad || 'No disponible'
+        const telefonoPaciente = patientData?.telefonoPrincipal || numeroUsuario
+
+        const pdfPath = await generateInterpretationPdf({
+            numeroUsuario,
+            testId: 'ghq12',
+            interpretation: resultadoInterpretacion.interpretation,
+            metadata: resultadoInterpretacion.metadata,
+            rawResults,
+            patientData,
+        })
+
+        if (sendPdfToPatient) {
+            await sendAutonomousDocument(
+                numeroUsuario,
+                `📄 *Informe técnico generado*\n\n` +
+                `👤 *Paciente:* ${nombrePaciente}\n` +
+                `🪪 *Documento:* ${documentoPaciente}\n` +
+                `🎂 *Edad:* ${edadPaciente}\n` +
+                `📱 *Teléfono:* ${telefonoPaciente}\n` +
+                `🧪 *Prueba:* GHQ-12\n` +
+                `🕒 *Fecha y hora de elaboración:* ${fechaElaboracion}`,
+                pdfPath
+            )
+        }
+
+        if (sendPdfToPractitioner) {
+            if (!telefonoPracticante) {
+                console.warn(`⚠️ PDF_TARGET=${pdfTarget} pero no hay practicante asignado para ${numeroUsuario}; no se envía PDF.`)
+            } else {
+                await sendAutonomousDocument(
+                    telefonoPracticante,
+                    `📄 *Informe técnico disponible*\n\n` +
+                    `👤 *Paciente:* ${nombrePaciente}\n` +
+                    `🪪 *Documento:* ${documentoPaciente}\n` +
+                    `🎂 *Edad:* ${edadPaciente}\n` +
+                    `📱 *Teléfono:* ${telefonoPaciente}\n` +
+                    `🧪 *Prueba:* GHQ-12\n` +
+                    `🕒 *Fecha y hora de elaboración:* ${fechaElaboracion}`,
+                    pdfPath
+                )
+                await notificarTestCompletadoAPracticante(numeroUsuario)
+            }
+        }
+    } catch (error) {
+        console.error('❌ Error generando/enviando informe GHQ-12:', error)
     }
 }
 

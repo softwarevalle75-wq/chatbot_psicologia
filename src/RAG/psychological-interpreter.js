@@ -121,6 +121,37 @@ function buildPatientData(patientId, testId, rawResults) {
     }
 }
 
+function buildItemScoresCompact(rawResults) {
+    const rows = []
+    for (const score of [0, 1, 2, 3]) {
+        const items = Array.isArray(rawResults?.[score]) ? rawResults[score] : []
+        for (const item of items) {
+            const itemNumber = Number(item)
+            if (Number.isFinite(itemNumber)) rows.push({ item: itemNumber, score })
+        }
+    }
+
+    return rows
+        .sort((a, b) => a.item - b.item)
+        .map(({ item, score }) => `${item}=${score}`)
+        .join(', ')
+}
+
+function compactInterpretation(text, maxLength = 900) {
+    if (!text) return 'Sin interpretación disponible.'
+    const singleLine = String(text)
+        .replace(/\r\n/g, '\n')
+        .replace(/^#+\s*/gm, '')
+        .replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/\*(.*?)\*/g, '$1')
+        .replace(/\n+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+    if (singleLine.length <= maxLength) return singleLine
+    return `${singleLine.slice(0, maxLength - 3).trim()}...`
+}
+
 export async function interpretPsychologicalTest(testId, rawResults, patientId) {
     try {
         console.log(`🧠 Iniciando interpretación para ${testId} - Paciente: ${patientId}`);
@@ -134,6 +165,7 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
 
         console.log('📚 Cargando configuración RAG desde BD...');
         const config = await getRagPsychologicalConfig();
+        const retrievalSource = testId.toLowerCase() === 'ghq12' ? 'GHQ-12' : 'DASS-21'
 
         const normativeQueries = generateNormativeQueries(testId);
         console.log(`🔎 Ejecutando ${normativeQueries.length} queries bilingues para ${testId}...`);
@@ -141,7 +173,7 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
         const allRetrievalResults = [];
         for (const queryObj of normativeQueries) {
             console.log(`  📋 [${queryObj.aspect}] "${queryObj.query}"`);
-            const result = await retrieveImproved(queryObj.query, { k: K_CANDIDATES });
+            const result = await retrieveImproved(queryObj.query, { k: K_CANDIDATES, source: retrievalSource });
 
             if (result.chunks && result.chunks.length > 0) {
                 allRetrievalResults.push({
@@ -200,14 +232,18 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
         };
 
         console.log('💾 Guardando interpretación en historial...');
+        const itemScoresCompact = buildItemScoresCompact(rawResults)
+        const shortInterpretation = compactInterpretation(generationResult.answer)
+
         await guardarResultadoPrueba(
             patientId,
             `interpretacion_${testId}`,
-            {
-                interpretacion_tecnica: generationResult.answer,
-                metadata: interpretationMetadata,
-                fecha_interpretacion: new Date().toISOString()
-            }
+            [
+                `test=${testId}`,
+                `fecha=${new Date().toISOString()}`,
+                `items=${itemScoresCompact}`,
+                `resumen=${shortInterpretation}`
+            ].join('\n')
         );
 
         console.log(`✅ Interpretación ${testId} completada — documentos: ${interpretationMetadata.documentos_consultados.join(', ')}`);
