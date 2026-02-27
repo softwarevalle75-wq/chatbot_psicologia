@@ -457,7 +457,7 @@
             
             const data = {
                 userId: user.id,
-                consentimientoInformado: consentimiento.checked ? 'Si' : 'No'
+                consentimientoInformado: consentimiento.checked ? 'si' : 'no'
             };
             
             // Si es estudiante universitario, validar campos adicionales
@@ -503,7 +503,7 @@
                 
                 if (response.ok) {
                     // Actualizar datos del usuario en localStorage
-                    user.consentimientoInformado = 'Si';
+                    user.consentimientoInformado = 'si';
                     if (data.semestre) user.semestre = data.semestre;
                     if (data.jornada) user.jornada = data.jornada;
                     if (data.carrera) user.carrera = data.carrera;

@@ -728,7 +728,7 @@ export const menuFlow = addKeyword(utils.setEvent('MENU_FLOW'))
               'Para realizar pruebas psicológicas primero debes tener un practicante asignado.\n' +
               'Solicita la asignación con tu psicólogo o soporte.'
             )
-            return fallBack();
+            return gotoFlow(menuFlow);
           }
 
           // Hacer cuestionarios
@@ -809,7 +809,7 @@ export const esDeUniversidadFlow = addKeyword(utils.setEvent('PERTENECE_UNIVERSI
   )
   // capturar semestre
   .addAnswer(
-    'Por último, indica tú semestre:',
+    'Por último, indica tú semestre (1-9):',
     { capture: true },
     async (ctx, { flowDynamic, state, fallBack}) => {
       const semestre = ctx.body.trim();

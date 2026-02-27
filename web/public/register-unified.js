@@ -229,7 +229,7 @@ class RegisterManager {
                 segundoNombre: data.segundoNombre,
                 segundoApellido: data.segundoApellido,
                 correo: data.correo,
-                consentimientoInformado: 'No'
+                consentimientoInformado: 'no'
             };
             
             localStorage.setItem('token', result.token);

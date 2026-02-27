@@ -6,6 +6,30 @@ import { PrismaClient } from '@prisma/client';
 const router = express.Router();
 const prisma = new PrismaClient();
 
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+const isBcryptHash = (value) => typeof value === 'string' && value.startsWith('$2');
+const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
+const canonicalYesNo = (value) => {
+    const text = String(value || '').trim().toLowerCase();
+    return text === 'si' || text === 'sí' ? 'si' : 'no';
+};
+
+const isYes = (value) => canonicalYesNo(value) === 'si';
+
+const buildPhoneCandidates = (value) => {
+    const phone = normalizePhone(value);
+    if (!phone) return [];
+
+    const candidates = [phone];
+    if (phone.startsWith('57') && phone.length > 2) {
+        candidates.push(phone.slice(2));
+    } else {
+        candidates.push(`57${phone}`);
+    }
+
+    return [...new Set(candidates)];
+};
+
 // Registro
 router.post('/register', async (req, res) => {
     try {
@@ -25,6 +49,8 @@ router.post('/register', async (req, res) => {
             password
         } = req.body;
 
+        const correoNormalizado = normalizeEmail(correo);
+
         // Agregar prefijo 57 al teléfono si no lo tiene
         const telefonoConPrefijo = telefonoPersonal.startsWith('57') ? telefonoPersonal : `57${telefonoPersonal}`;
         console.log(`📞 Teléfono original: ${telefonoPersonal} -> Con prefijo: ${telefonoConPrefijo}`);
@@ -34,6 +60,7 @@ router.post('/register', async (req, res) => {
             where: {
                 OR: [
                     { correo: correo },
+                    { correo: correoNormalizado },
                     { telefonoPersonal: telefonoPersonal },
                     { telefonoPersonal: telefonoConPrefijo },
                     ...(documento ? [{ documento: documento }] : [])
@@ -57,12 +84,12 @@ router.post('/register', async (req, res) => {
                 segundoApellido,
                 telefonoPersonal: telefonoConPrefijo, // USAR TELÉFONO CON PREFIJO 57
                 segundoTelefono,
-                correo,
+                correo: correoNormalizado,
                 segundoCorreo,
                 fechaNacimiento: fechaNacimiento ? new Date(fechaNacimiento) : new Date(),
                 perteneceUniversidad,
                 password: hashedPassword,
-                consentimientoInformado: "No",
+                consentimientoInformado: 'no',
                 documento: documento || null,
                 tipoDocumento: tipoDocumento || "CC"
             }
@@ -90,19 +117,54 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
     try {
         const { correo, password } = req.body;
+        const identificador = String(correo || '').trim();
+        const correoNormalizado = normalizeEmail(identificador);
+        const telefonoCandidates = buildPhoneCandidates(identificador);
+        const passwordTexto = String(password || '');
 
-        // Buscar usuario
+        // Buscar usuario por correo (principal/secundario) o por teléfono
         const user = await prisma.informacionUsuario.findFirst({
-            where: { correo: correo }
+            where: {
+                OR: [
+                    { correo: correoNormalizado },
+                    { segundoCorreo: correoNormalizado },
+                    ...(telefonoCandidates.length
+                        ? [{ telefonoPersonal: { in: telefonoCandidates } }, { segundoTelefono: { in: telefonoCandidates } }]
+                        : []),
+                ],
+            },
         });
 
         if (!user || !user.password) {
+            console.log('⚠️ Login fallido: usuario no encontrado o sin contraseña', {
+                identificador: correoNormalizado || identificador,
+                telefonoCandidates,
+            });
             return res.status(401).json({ error: 'Credenciales inválidas' });
         }
 
-        // Verificar contraseña
-        const validPassword = await bcrypt.compare(password, user.password);
+        // Verificar contraseña (soporta hashes bcrypt y contraseñas legacy en texto plano)
+        let validPassword = false;
+        if (isBcryptHash(user.password)) {
+            validPassword = await bcrypt.compare(passwordTexto, user.password);
+        } else {
+            validPassword = user.password === passwordTexto;
+
+            // Migrar contraseña legacy a hash bcrypt tras login exitoso
+            if (validPassword) {
+                const hashedPassword = await bcrypt.hash(passwordTexto, 10);
+                await prisma.informacionUsuario.update({
+                    where: { idUsuario: user.idUsuario },
+                    data: { password: hashedPassword },
+                });
+            }
+        }
+
         if (!validPassword) {
+            console.log('⚠️ Login fallido: contraseña inválida', {
+                userId: user.idUsuario,
+                identificador: correoNormalizado || identificador,
+            });
             return res.status(401).json({ error: 'Credenciales inválidas' });
         }
 
@@ -120,7 +182,7 @@ router.post('/login', async (req, res) => {
                 id: user.idUsuario,
                 primerNombre: user.primerNombre,
                 correo: user.correo,
-                consentimientoInformado: user.consentimientoInformado
+                consentimientoInformado: canonicalYesNo(user.consentimientoInformado)
             }
         });
     } catch (error) {
@@ -136,7 +198,7 @@ router.post('/consent', async (req, res) => {
 
         await prisma.informacionUsuario.update({
             where: { idUsuario: userId },
-            data: { consentimientoInformado: "Si" }
+            data: { consentimientoInformado: 'si' }
         });
 
         res.json({ message: 'Consentimiento registrado' });
@@ -151,12 +213,14 @@ router.post('/consentimiento', async (req, res) => {
     try {
         const { userId, consentimientoInformado, semestre, jornada, carrera } = req.body;
 
+        if (!isYes(consentimientoInformado)) {
+            return res.status(400).json({ error: 'Debes aceptar el consentimiento para continuar' });
+        }
+
         const updateData = {};
         
-        // Siempre actualizar consentimiento si viene en la petición
-        if (consentimientoInformado !== undefined) {
-            updateData.consentimientoInformado = consentimientoInformado;
-        }
+        // Esta ruta solo se guarda cuando el checkbox está aceptado
+        updateData.consentimientoInformado = 'si';
         
         // Solo agregar datos académicos si vienen
         if (semestre) updateData.semestre = semestre;
@@ -324,6 +388,10 @@ router.post('/tratamiento-datos', async (req, res) => {
         const token = req.headers['authorization']?.split(' ')[1];
         const { userId, autorizacionDatos } = req.body;
 
+        if (!isYes(autorizacionDatos)) {
+            return res.status(400).json({ error: 'Debes autorizar el tratamiento de datos para continuar' });
+        }
+
         let usuarioId;
         if (token) {
             try {
@@ -364,13 +432,13 @@ router.post('/tratamiento-datos', async (req, res) => {
         await prisma.informacionUsuario.update({
             where: { idUsuario: usuarioId },
             data: {
-                autorizacionDatos: autorizacionDatos || 'No'
+                autorizacionDatos: 'si'
             }
         });
 
         res.json({
             message: 'Autorización de tratamiento de datos guardada exitosamente',
-            autorizacionDatos: autorizacionDatos
+            autorizacionDatos: 'si'
         });
         console.log('Autorización de tratamiento de datos guardada exitosamente para usuario:', usuarioId);
     } catch (error) {
@@ -399,14 +467,14 @@ router.get('/check-tratamiento-datos', async (req, res) => {
             where: { idUsuario: usuarioId },
             select: {
                 idUsuario: true,
-                autorizacionDatos: "Si"
+                autorizacionDatos: true
             }
         });
 
-        if (usuario && usuario.autorizacionDatos) {
+        if (usuario && isYes(usuario.autorizacionDatos)) {
             res.json({
                 hasTratamientoDatos: true,
-                autorizacionDatos: usuario.autorizacionDatos
+                autorizacionDatos: canonicalYesNo(usuario.autorizacionDatos)
             });
         } else {
             res.json({ hasTratamientoDatos: false });

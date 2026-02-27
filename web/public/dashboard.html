@@ -219,6 +219,8 @@
     </div>
 
     <script>   
+        const isYes = (value) => String(value || '').trim().toLowerCase() === 'si';
+
         // Cargar información del usuario
         window.addEventListener('load', () => {
             const token = localStorage.getItem('token');
@@ -230,7 +232,7 @@
             }
             
             // Si no ha completado el consentimiento, redirigir
-            if (!user.consentimientoInformado) {
+            if (!isYes(user.consentimientoInformado)) {
                 window.location.href = '/consentimiento';
                 return;
             }
@@ -241,12 +243,17 @@
             fetch('/config')
             .then(res => res.json())
             .then(config => {
-                const botPhone = `+57 ${config.numBot}` || 'No disponible';
-                console.log("num cargado: ", botPhone);
+                const rawPhone = String(config.numBot || '').replace(/\D/g, '');
+                const botPhoneDigits = rawPhone.length === 10 ? `57${rawPhone}` : rawPhone;
+                const botPhone = botPhoneDigits ? `+${botPhoneDigits}` : 'No disponible';
+                console.log("num cargado:", botPhone, `(source: ${config.source || 'env'})`);
 
                 
                 document.getElementById('botPhone').textContent = botPhone;
-                document.getElementById('whatsappLink').href = `https://wa.me/${botPhone.replace(/\s+/g, '').replace('+', '')}?text=Hola,%20quiero%20comenzar%20con%20el%20ChatBot%20psicológico`;
+
+                if (botPhoneDigits) {
+                    document.getElementById('whatsappLink').href = `https://wa.me/${botPhoneDigits}?text=Hola,%20quiero%20comenzar%20con%20el%20ChatBot%20psicológico`;
+                }
             })
             .catch(err => {
                 console.error('No se pudo cargar la configuración:', err);

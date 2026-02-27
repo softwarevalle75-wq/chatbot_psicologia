@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import { readBotRuntimePhone } from '../shared/botRuntimeState.js';
 
 // Importar rutas
 import authRoutes from './routes/auth.js';
@@ -20,9 +21,14 @@ const app = express();
 const PORT =  process.env.WEB_PORT || process.env.PORT || 3002;
 const webHost = process.env.WEB_HOST || 'localhost';
 
-app.get('/config', (req, res) => {
+app.get('/config', async (req, res) => {
+    const runtime = await readBotRuntimePhone();
+    const numBot = runtime?.phone || process.env.BOT_NUM || '';
+
     res.json({
-        numBot: process.env.BOT_NUM
+        numBot,
+        source: runtime?.source || 'env',
+        updatedAt: runtime?.updatedAt || null,
     });
 })
 

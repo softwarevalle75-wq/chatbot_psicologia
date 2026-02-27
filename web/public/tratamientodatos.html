@@ -352,7 +352,7 @@
 
             const data = {
                 userId: user.id,
-                autorizacionDatos: autorizacion.checked ? 'Si' : 'No'
+                autorizacionDatos: autorizacion.checked ? 'si' : 'no'
             };
 
             // Mostrar loading
@@ -374,7 +374,7 @@
 
                 if (response.ok) {
                     // Actualizar datos del usuario en localStorage
-                    user.autorizacionDatos = 'Si';
+                    user.autorizacionDatos = 'si';
                     localStorage.setItem('user', JSON.stringify(user));
 
                     successDiv.textContent = 'Autorización guardada exitosamente. Redirigiendo...';

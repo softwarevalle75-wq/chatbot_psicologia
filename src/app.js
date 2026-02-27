@@ -60,7 +60,8 @@ import {
 	getWebCitas,
 	citasPorPaciente,
 } from "./queries/queries.js";
-import { getRealPhoneFromCtx } from "./helpers/jidHelper.js";
+import { getRealPhoneFromCtx, phoneFromAny } from "./helpers/jidHelper.js";
+import { saveBotRuntimePhone } from "../shared/botRuntimeState.js";
 
 // inicializar RAG
 import { initializeRAG } from "./RAG/index.js";
@@ -81,6 +82,59 @@ console.info = (...args) => {
 }
 
 const PORT = process.env.PORT ?? 3000;
+
+const extractPhoneFromUnknown = (value) => {
+	if (!value) return null
+
+	if (typeof value === 'string' || typeof value === 'number') {
+		const asString = String(value)
+		return phoneFromAny(asString)
+	}
+
+	if (typeof value === 'object') {
+		try {
+			const serialized = JSON.stringify(value)
+			if (!serialized) return null
+
+			const jidMatch = serialized.match(/(\d{10,15})(?::\d+)?@s\.whatsapp\.net/)
+			if (jidMatch?.[1]) return jidMatch[1]
+
+			const digitsMatch = serialized.match(/\d{10,15}/)
+			if (digitsMatch?.[0]) return digitsMatch[0]
+		} catch {
+			return null
+		}
+	}
+
+	return null
+}
+
+const publishActiveBotNumber = async (provider, source = 'unknown') => {
+	try {
+		const candidates = [
+			provider?.vendor?.user?.id,
+			provider?.vendor?.user,
+			provider?.vendor?.authState?.creds?.me?.id,
+			provider?.vendor?.authState?.creds?.me?.lid,
+			provider?.vendor?.authState?.creds?.me?.phoneNumber,
+			provider?.vendor?.authState?.creds?.me,
+			provider?.vendor?.authState?.creds,
+		]
+
+		for (const candidate of candidates) {
+			const phone = extractPhoneFromUnknown(candidate)
+			if (!phone) continue
+
+			await saveBotRuntimePhone(phone, source)
+			console.log(`📲 Número activo del bot detectado: ${phone} (${source})`)
+			return phone
+		}
+	} catch (error) {
+		console.error('⚠️ No se pudo publicar número activo del bot:', error?.message || error)
+	}
+
+	return null
+}
 export const adapterProvider = createProvider(Provider, {
 	// Esto envía pings cada 30 segundos, pa mantener activa la conec
 	version: [2, 3000, 1033834674],
@@ -195,6 +249,35 @@ const adapterFlow = createFlow([
 		provider: adapterProvider,
 		database: adapterDB,
 	});
+	let runtimePublished = false
+	const tryPublishRuntimeNumber = async (source) => {
+		if (runtimePublished) return
+		const found = await publishActiveBotNumber(adapterProvider, source)
+		if (found) runtimePublished = true
+	}
+
+	await tryPublishRuntimeNumber('startup')
+
+	const ev = adapterProvider?.vendor?.ev
+	if (ev?.on) {
+		ev.on('connection.update', async (update) => {
+			if (update?.connection === 'open') {
+				await tryPublishRuntimeNumber('connection.open')
+			}
+		})
+	}
+
+	const publishInterval = setInterval(() => {
+		tryPublishRuntimeNumber('polling')
+	}, 3000)
+
+	setTimeout(() => {
+		clearInterval(publishInterval)
+		if (!runtimePublished) {
+			console.warn('⚠️ No se pudo detectar automáticamente el número activo del bot')
+		}
+	}, 60000)
+
 	console.log('✅ Bot creado exitosamente');
 
 	// 🔥 CONFIGURAR PROVIDER PARA ENVÍO DE PDFs
