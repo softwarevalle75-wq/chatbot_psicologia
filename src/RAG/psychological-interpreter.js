@@ -137,21 +137,6 @@ function buildItemScoresCompact(rawResults) {
         .join(', ')
 }
 
-function compactInterpretation(text, maxLength = 900) {
-    if (!text) return 'Sin interpretación disponible.'
-    const singleLine = String(text)
-        .replace(/\r\n/g, '\n')
-        .replace(/^#+\s*/gm, '')
-        .replace(/\*\*(.*?)\*\*/g, '$1')
-        .replace(/\*(.*?)\*/g, '$1')
-        .replace(/\n+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-
-    if (singleLine.length <= maxLength) return singleLine
-    return `${singleLine.slice(0, maxLength - 3).trim()}...`
-}
-
 export async function interpretPsychologicalTest(testId, rawResults, patientId) {
     try {
         console.log(`🧠 Iniciando interpretación para ${testId} - Paciente: ${patientId}`);
@@ -233,7 +218,6 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
 
         console.log('💾 Guardando interpretación en historial...');
         const itemScoresCompact = buildItemScoresCompact(rawResults)
-        const shortInterpretation = compactInterpretation(generationResult.answer)
 
         await guardarResultadoPrueba(
             patientId,
@@ -241,8 +225,7 @@ export async function interpretPsychologicalTest(testId, rawResults, patientId) 
             [
                 `test=${testId}`,
                 `fecha=${new Date().toISOString()}`,
-                `items=${itemScoresCompact}`,
-                `resumen=${shortInterpretation}`
+                `items=${itemScoresCompact}`
             ].join('\n')
         );
 
