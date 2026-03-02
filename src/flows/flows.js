@@ -199,10 +199,13 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
       // 5. ACTUALIZAR ESTADO CON USUARIO
       await state.update({ initialized: true, user: usuarioAutenticado });
 
-      // 6. Verificar si pertenece a la universidad
-      if (authUser.perteneceUniversidad === 'Si'){
-        console.log(`${ctx.from} pertenece a la Universitaria`)
-        
+      // 6. Si pertenece a la universidad, pedir datos académicos solo si faltan
+      const esUniversitario = String(authUser.perteneceUniversidad || '').trim().toLowerCase() === 'si'
+      const faltanDatosAcademicos = !authUser.carrera || !authUser.jornada || !authUser.semestre
+
+      if (esUniversitario && faltanDatosAcademicos) {
+        console.log(`${ctx.from} pertenece a la Universitaria y tiene datos académicos incompletos`)
+
         await switchFlujo(ctx.from, 'esDeUniversidadFlow');
         await state.update({ currentFlow: 'esDeUniversidad' })
         return gotoFlow(esDeUniversidadFlow)
