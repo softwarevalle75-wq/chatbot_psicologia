@@ -631,10 +631,7 @@ export const notificarTestCompletadoAPracticante = async (telefonoPaciente) => {
 		);
 
 		// Cambiar estado de practicante en BD
-		await prisma.informacionUsuario.update({
-			where: { telefonoPersonal: telefonoPracticante },
-			data: { flujo: 'practMenuFlow' }
-		})
+		await switchFlujo(telefonoPracticante, 'practMenuFlow')
 
 		console.log(`✅ Practicante ${telefonoPracticante} notificado del test completado`);
 		return true;
@@ -1311,11 +1308,29 @@ export const obtenerPracticante = async (idPracticante) => {
 export const obtenerTelefonoPracticante = async (telefonoPaciente) => {
 	try {
 		console.log(`🔍 DEBUG: Buscando practicante para paciente: ${telefonoPaciente}`);
-		
-		const paciente = await prisma.informacionUsuario.findUnique({
-			where: { telefonoPersonal: telefonoPaciente },
-			select: { practicanteAsignado: true, primerNombre: true, primerApellido: true }
-		});
+
+		const soloNumeros = String(telefonoPaciente || '').replace(/\D/g, '');
+		if (!soloNumeros) {
+			console.log('❌ DEBUG: teléfonoPaciente vacío o inválido');
+			return null;
+		}
+
+		const telefonoConPrefijo = soloNumeros.startsWith('57') ? soloNumeros : `57${soloNumeros}`;
+		const telefonoSinPrefijo = soloNumeros.startsWith('57') ? soloNumeros.slice(2) : soloNumeros;
+		const candidatos = [...new Set([telefonoConPrefijo, telefonoSinPrefijo])];
+
+		let paciente = null;
+		for (const telefono of candidatos) {
+			paciente = await prisma.informacionUsuario.findUnique({
+				where: { telefonoPersonal: telefono },
+				select: { practicanteAsignado: true, primerNombre: true, primerApellido: true }
+			});
+
+			if (paciente) {
+				console.log(`✅ DEBUG: Paciente encontrado con formato: ${telefono}`);
+				break;
+			}
+		}
 
 		console.log(`🔍 DEBUG: Paciente encontrado:`, paciente);
 
