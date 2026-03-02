@@ -84,14 +84,15 @@ const main = async () => {
 
 		await prisma.informacionUsuario.update({
 			where: { telefonoPersonal: user.telefonoPersonal },
-			data: { practicanteAsignado: practitioner.telefono },
+			data: { practicanteAsignado: practitioner.idPracticante },
 		})
 
 		console.log('✅ Practicante de pruebas asignado correctamente')
 		console.log(`- Usuario: ${user.primerNombre || ''} ${user.primerApellido || ''}`.trim())
 		console.log(`- Teléfono usuario: ${user.telefonoPersonal}`)
 		console.log(`- Practicante: ${practitioner.nombre}`)
-		console.log(`- Teléfono practicante asignado: ${practitioner.telefono}`)
+		console.log(`- Practicante asignado (UUID): ${practitioner.idPracticante}`)
+		console.log(`- Teléfono practicante: ${practitioner.telefono}`)
 	} catch (error) {
 		console.error('❌ Error asignando practicante de pruebas:', error)
 		process.exitCode = 1

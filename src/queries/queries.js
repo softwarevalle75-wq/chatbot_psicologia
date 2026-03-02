@@ -1339,18 +1339,8 @@ export const obtenerTelefonoPracticante = async (telefonoPaciente) => {
 			return null;
 		}
 
-		// Verificar si practicanteAsignado es un número (teléfono) o un ID
+		// Desde ahora practicanteAsignado debe ser SIEMPRE idPracticante
 		const practicanteAsignado = paciente.practicanteAsignado;
-		
-		// Si es un string de solo números, asumir que es un teléfono
-		if (typeof practicanteAsignado === 'string' && /^\d+$/.test(practicanteAsignado)) {
-			console.log(`✅ DEBUG: Teléfono del practicante (directo): ${practicanteAsignado}`);
-			// Agregar prefijo +57 si no lo tiene
-			const telefonoConPrefijo = practicanteAsignado.startsWith('57') ? practicanteAsignado : `57${practicanteAsignado}`;
-			return telefonoConPrefijo;
-		}
-
-		// Si es un número (ID), buscar en la tabla practicante
 		console.log(`🔍 DEBUG: Buscando practicante con ID: ${practicanteAsignado}`);
 
 		const practicante = await prisma.practicante.findUnique({
@@ -1362,11 +1352,10 @@ export const obtenerTelefonoPracticante = async (telefonoPaciente) => {
 
 		if (practicante?.telefono) {
 			console.log(`✅ DEBUG: Teléfono del practicante (desde BD): ${practicante.telefono}`);
-			// Agregar prefijo +57 si no lo tiene
 			const telefonoConPrefijo = practicante.telefono.startsWith('57') ? practicante.telefono : `57${practicante.telefono}`;
 			return telefonoConPrefijo;
 		} else {
-			console.log(`❌ DEBUG: Practicante sin teléfono o no encontrado`);
+			console.log(`❌ DEBUG: Practicante no encontrado por idPracticante o sin teléfono`);
 			return null;
 		}
 	} catch (error) {
@@ -1379,11 +1368,51 @@ export const obtenerTelefonoPracticante = async (telefonoPaciente) => {
 
 export const guardarPracticanteAsignado = async (numeroUsuario, numeroPracticante) => {
 	try {
-		const usuarioActualizado = await prisma.informacionUsuario.update({
-			where: { telefonoPersonal: numeroUsuario },
-			data: { practicanteAsignado: numeroPracticante }
+		const telefonoPracticante = String(numeroPracticante || '').replace(/\D/g, '');
+		if (!telefonoPracticante) {
+			throw new Error('Número de practicante inválido');
+		}
+
+		const telefonoPracticanteConPrefijo = telefonoPracticante.startsWith('57')
+			? telefonoPracticante
+			: `57${telefonoPracticante}`;
+		const telefonoPracticanteSinPrefijo = telefonoPracticanteConPrefijo.slice(2);
+
+		const practicante = await prisma.practicante.findFirst({
+			where: {
+				telefono: {
+					in: [telefonoPracticanteConPrefijo, telefonoPracticanteSinPrefijo],
+				},
+			},
+			select: { idPracticante: true, telefono: true },
 		});
-		return usuarioActualizado;
+
+		if (!practicante) {
+			throw new Error('No se encontró un practicante con ese número');
+		}
+
+		const telefonoUsuario = String(numeroUsuario || '').replace(/\D/g, '');
+		const telefonoUsuarioConPrefijo = telefonoUsuario.startsWith('57') ? telefonoUsuario : `57${telefonoUsuario}`;
+		const telefonoUsuarioSinPrefijo = telefonoUsuarioConPrefijo.slice(2);
+
+		const result = await prisma.informacionUsuario.updateMany({
+			where: {
+				telefonoPersonal: {
+					in: [telefonoUsuarioConPrefijo, telefonoUsuarioSinPrefijo],
+				},
+			},
+			data: { practicanteAsignado: practicante.idPracticante },
+		});
+
+		if (result.count === 0) {
+			throw new Error('No se encontró el usuario para guardar el practicante asignado');
+		}
+
+		return {
+			telefonoUsuario: telefonoUsuarioConPrefijo,
+			idPracticante: practicante.idPracticante,
+			telefonoPracticante: practicante.telefono,
+		};
 	} catch (error) {
 		console.error('Error guardando practicante asignado:', error);
 		throw new Error('Hubo un problema guardando el practicante asignado.');

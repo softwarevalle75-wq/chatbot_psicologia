@@ -1,5 +1,5 @@
 import { addKeyword } from '@builderbot/bot';
-import { setRolTelefono, getRolTelefono, createUsuarioBasico, ensureRolMapping, obtenerUsuario } from '../../queries/queries.js';
+import { setRolTelefono, getRolTelefono, createUsuarioBasico, ensureRolMapping } from '../../queries/queries.js';
 import { 
   validarCambioRolPosible, 
   revertirPracticanteAUsuario 
@@ -52,7 +52,7 @@ export const adminEntryFlow = addKeyword(['admin'])
   });
 
 // ===============================================================================================
-export const adminMenuFlow = addKeyword(['menu'])
+export const adminMenuFlow = addKeyword(['__ADMIN_MENU__'])
   .addAction(async (_, { state }) => {
     await state.update({ currentFlow: 'admin' });
   })
@@ -342,12 +342,21 @@ async function procesarCambioRolConMigracion(telefono, nuevoRol) {
 export const adminMenuMiddleware = addKeyword(['menu'])
   .addAction(async (ctx, { state, gotoFlow, endFlow }) => {
     console.log('📋 Middleware menu - verificando si es admin');
-    const user = state.get('user') || await obtenerUsuario(ctx.from);
-    
-    if (user && user.rol === 'admin') {
+    const stateUser = await state.get('user')
+    const isAdminFromState =
+      stateUser?.data?.rol === 'admin' ||
+      stateUser?.tipo === 'admin' ||
+      stateUser?.rol === 'admin'
+
+    let isAdmin = isAdminFromState
+    if (!isAdmin) {
+      const roleMapping = await getRolTelefono(ctx.from)
+      isAdmin = roleMapping?.rol === 'admin'
+    }
+
+    if (isAdmin) {
       console.log('✅ Usuario es admin, redirigiendo a menú');
       await state.update({ 
-        user: user,
         currentFlow: 'admin'
       });
       return gotoFlow(adminMenuFlow);
