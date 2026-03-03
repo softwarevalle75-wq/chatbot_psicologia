@@ -11,7 +11,7 @@ export async function asignarCita(usuario) {
 		if (practicantesDisponibles.length === 0)
 			throw new Error("No hay practicantes disponibles");
 
-		const practicante = practicantesDisponibles.sort((a, b) => a.sesiones - b.sesiones)[0];
+		const practicante = practicantesDisponibles.sort((a, b) => a.citasProgramadas - b.citasProgramadas)[0];
 		const horario = await encontrarHorarioCompatible(usuario, practicante);
 		if (!horario) {
 			console.error("Horarios posibles no encontrados debido a:");
@@ -43,7 +43,7 @@ export async function asignarCita(usuario) {
 
 		await prisma.practicante.update({
 			where: { idPracticante: practicante.idPracticante },
-			data: { sesiones: { increment: 1 } },
+			data: { citasProgramadas: { increment: 1 } },
 		});
 
 		await prisma.informacionUsuario.update({

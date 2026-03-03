@@ -131,7 +131,7 @@ async function crearPracticantePendiente() {
   console.log(`     Rol en rolChat: practicante`);
   console.log(`     Tabla practicante: ❌ VACÍA (pendiente)`);
   console.log(`\n  📱 Escribe al bot desde este número → te pedirá completar datos`);
-  console.log(`     (género, estrato, barrio, localidad, horarios).\n`);
+  console.log(`     (género, correo, EPS/IPS, clínica, fechas, horarios).\n`);
 }
 
 //  FUNCIÓN PRACTICANTE COMPLETO
@@ -156,22 +156,24 @@ async function crearPracticanteCompleto() {
   // Crear registro en tabla practicante
   await prisma.practicante.create({
     data: {
-      idPracticante: uuidv4(),
+      idPracticante:    uuidv4(),
       numero_documento: numeroDocumento,
-      tipo_documento: 'CC',
-      nombre: nombrePracticante,
-      genero: 'M',
-      estrato: '3', 
-      barrio: 'Chapinero',
-      localidad: 'Chapinero', 
+      tipo_documento:   'CC',
+      nombre:           nombrePracticante,
+      genero:           'M',
+      correo:           null,
+      eps_ips:          null,
+      clinica:          null,
+      fechaInicio:      null,
+      fechaFin:         null,
+      citasProgramadas: 0,
+      telefono:         TELEFONO,
       horarios: {
-          create: [
-              { dia: "LUNES", horaInicio: 1200, horaFin: 1200 },   // 20:00 - 20:00
-              { dia: "DOMINGO", horaInicio: 460, horaFin: 660 }   // 9:00 - 11:00
-          ]
-          },
-      sesiones: 0, 
-      telefono: TELEFONO
+        create: [
+          { dia: 'LUNES',   horaInicio: 480, horaFin: 720 },  // 8:00 - 12:00
+          { dia: 'VIERNES', horaInicio: 780, horaFin: 1020 }, // 13:00 - 17:00
+        ]
+      },
     }
   });
 

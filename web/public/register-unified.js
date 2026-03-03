@@ -68,38 +68,39 @@ class RegisterManager {
             camposPrecargados++;
         }
         
-        if (datos.documento && !document.getElementById('documento')) {
-            this.agregarCamposDocumento(datos);
-            camposPrecargados += 2;
+        // Los campos documento y tipoDocumento ya existen en el HTML de forma permanente.
+        // Si vienen precargados desde la URL, se rellenan y se marcan como readonly.
+        if (datos.documento) {
+            const documentoInput = document.getElementById('documento');
+            const tipoDocumentoSelect = document.getElementById('tipoDocumento');
+
+            if (documentoInput) {
+                documentoInput.value = datos.documento;
+                documentoInput.readOnly = true;
+                documentoInput.style.backgroundColor = '#f8f9fa';
+                documentoInput.style.border = '2px solid #28a745';
+                camposPrecargados++;
+            }
+
+            if (tipoDocumentoSelect && datos.tipoDocumento) {
+                tipoDocumentoSelect.value = datos.tipoDocumento;
+                tipoDocumentoSelect.disabled = true;
+                // Un select disabled no envía su valor por FormData, así que usamos
+                // un input hidden como respaldo para que el dato llegue al backend.
+                const hiddenTipo = document.createElement('input');
+                hiddenTipo.type = 'hidden';
+                hiddenTipo.name = 'tipoDocumento';
+                hiddenTipo.value = datos.tipoDocumento;
+                tipoDocumentoSelect.parentElement.appendChild(hiddenTipo);
+                tipoDocumentoSelect.style.backgroundColor = '#f8f9fa';
+                tipoDocumentoSelect.style.border = '2px solid #28a745';
+                camposPrecargados++;
+            }
         }
         
         if (camposPrecargados > 0) {
             this.actualizarInterfazPrecarga(camposPrecargados);
         }
-    }
-
-    agregarCamposDocumento(datos) {
-        const passwordGroup = document.getElementById('password').parentElement;
-        
-        const documentoRow = document.createElement('div');
-        documentoRow.className = 'form-row';
-        documentoRow.innerHTML = `
-            <div class="form-group">
-                <label for="documento">Número de Documento</label>
-                <input type="text" id="documento" name="documento" value="${datos.documento}" readonly style="background-color: #f8f9fa; border: 2px solid #28a745;">
-            </div>
-            <div class="form-group">
-                <label for="tipoDocumento">Tipo de Documento</label>
-                <select id="tipoDocumento" name="tipoDocumento" readonly style="background-color: #f8f9fa; border: 2px solid #28a745;">
-                    <option value="CC" ${datos.tipoDocumento === 'CC' ? 'selected' : ''}>Cédula de Ciudadanía</option>
-                    <option value="CE" ${datos.tipoDocumento === 'CE' ? 'selected' : ''}>Cédula de Extranjería</option>
-                    <option value="TI" ${datos.tipoDocumento === 'TI' ? 'selected' : ''}>Tarjeta de Identidad</option>
-                    <option value="PA" ${datos.tipoDocumento === 'PA' ? 'selected' : ''}>Pasaporte</option>
-                </select>
-            </div>
-        `;
-        
-        this.form.insertBefore(documentoRow, passwordGroup);
     }
 
     actualizarInterfazPrecarga(camposPrecargados) {
@@ -177,11 +178,16 @@ class RegisterManager {
         const formData = new FormData(this.form);
         const pertenece = document.getElementById('perteneceUniversidad');
         
+        // documento y tipoDocumento siempre están presentes en el formulario.
+        // FormData los recoge directamente (incluyendo el input hidden que se crea
+        // cuando el campo select está disabled por precarga desde URL).
         const data = {
             primerNombre: formData.get('primerNombre'),
             segundoNombre: formData.get('segundoNombre'),
             primerApellido: formData.get('primerApellido'),
             segundoApellido: formData.get('segundoApellido'),
+            tipoDocumento: formData.get('tipoDocumento'),
+            documento: formData.get('documento'),
             correo: formData.get('correo'),
             segundoCorreo: formData.get('segundoCorreo'),
             telefonoPersonal: formData.get('telefonoPersonal'),
@@ -190,12 +196,6 @@ class RegisterManager {
             perteneceUniversidad: pertenece.checked ? 'Si' : 'No',
             password: formData.get('password')
         };
-        
-        const documentoInput = document.getElementById('documento');
-        if (documentoInput) {
-            data.documento = formData.get('documento');
-            data.tipoDocumento = formData.get('tipoDocumento');
-        }
         
         return data;
     }

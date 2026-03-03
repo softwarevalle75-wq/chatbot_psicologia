@@ -125,22 +125,27 @@ model consultorio {
 }
 
 model practicante {
-  idPracticante    String   @id @unique @default(uuid())
-  numero_documento String   @unique
-  tipo_documento   String   @default("CC")
-  nombre           String   @unique
+  idPracticante    String    @id @unique @default(uuid())
+  numero_documento String    @unique
+  tipo_documento   String    @default("CC")
+  nombre           String    @unique
   genero           String
-  estrato          String
-  barrio           String
-  localidad        String
-  sesiones         Int      @default(0)
-  fechaCreacion    DateTime @default(now())  @db.Timestamp(0) // quita los milisegundos, importante el 0 (representa la presición)
-  telefono         String  @unique
+  correo           String?   @unique
+  eps_ips          String?
+  clinica          String?
+  fechaInicio      DateTime? @db.Date
+  fechaFin         DateTime? @db.Date
+  // Campos legacy — opcionales para no romper registros existentes
+  estrato          String?
+  barrio           String?
+  localidad        String?
+  citasProgramadas Int       @default(0)
+  fechaCreacion    DateTime  @default(now()) @db.Timestamp(0)
+  telefono         String    @unique
 
-  citas         cita[] // Relación con cita
+  citas         cita[]
   registroCitas registroCitas[]
-
-  horarios Horario[]
+  horarios      Horario[]
 }
 
 model Horario {

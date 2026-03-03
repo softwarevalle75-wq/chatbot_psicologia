@@ -1,5 +1,7 @@
 // Script para inicializar configuración RAG unificada para tests psicológicos
-import { initializeRagPsychologicalConfig } from '../src/queries/queries.js';
+// Usa PrismaClient directamente para no arrastrar la cadena de imports de app.js
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
 
 const SYSTEM_INSTRUCTIONS = `# Rol profesional
 Actúa como un psicólogo clínico y psicometrista especializado en interpretación técnica de pruebas psicológicas y psicotécnicas, con experiencia en manuales normativos, baremos poblacionales y criterios diagnósticos estructurados.
@@ -139,28 +141,37 @@ const METADATA = {
     autor: 'Sistema RAG Unificado'
 };
 
-async function initializeConfig() {
-    try {
-        console.log('🚀 Inicializando configuración RAG unificada...');
+export async function initializeConfig() {
+    console.log('🚀 Inicializando configuración RAG unificada...');
 
-        const config = await initializeRagPsychologicalConfig(
-            SYSTEM_INSTRUCTIONS,
-            PROMPT_TEMPLATE,
-            METADATA
-        );
+    const config = await prisma.ragPsychologicalConfig.upsert({
+        where:  { id: 'general' },
+        update: {
+            systemInstructions: SYSTEM_INSTRUCTIONS,
+            promptTemplate:     PROMPT_TEMPLATE,
+            metadata:           METADATA,
+            version:            METADATA.version,
+        },
+        create: {
+            id:                 'general',
+            systemInstructions: SYSTEM_INSTRUCTIONS,
+            promptTemplate:     PROMPT_TEMPLATE,
+            metadata:           METADATA,
+            version:            METADATA.version,
+        },
+    });
 
-        console.log('✅ Configuración RAG inicializada exitosamente');
-        console.log('📋 Detalles:', {
-            id: config.id,
-            version: config.version,
-            createdAt: config.createdAt
-        });
-
-        process.exit(0);
-    } catch (error) {
-        console.error('❌ Error inicializando configuración:', error);
-        process.exit(1);
-    }
+    console.log('✅ Configuración RAG inicializada — id:', config.id, '| versión:', config.version);
+    return config;
 }
 
-initializeConfig();
+// Solo ejecuta si se corre directamente (node scripts/initialize-rag-config.js)
+if (process.argv[1]?.includes('initialize-rag-config')) {
+    initializeConfig()
+        .then(() => process.exit(0))
+        .catch((err) => {
+            console.error('❌ Error inicializando configuración:', err);
+            process.exit(1);
+        })
+        .finally(() => prisma.$disconnect());
+}

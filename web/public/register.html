@@ -331,6 +331,23 @@
 
             <div class="form-row">
                 <div class="form-group">
+                    <label for="tipoDocumento" class="required">Tipo de Documento</label>
+                    <select id="tipoDocumento" name="tipoDocumento" required>
+                        <option value="" disabled selected>Seleccione...</option>
+                        <option value="CC">Cédula de Ciudadanía</option>
+                        <option value="CE">Cédula de Extranjería</option>
+                        <option value="TI">Tarjeta de Identidad</option>
+                        <option value="PA">Pasaporte</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="documento" class="required">Número de Documento</label>
+                    <input type="text" id="documento" name="documento" required placeholder="Ej: 1234567890">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
                     <label for="correo" class="required">Correo Electrónico</label>
                     <input type="email" id="correo" name="correo" required>
                 </div>

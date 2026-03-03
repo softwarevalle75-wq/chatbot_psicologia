@@ -286,7 +286,7 @@ export function formatearHorariosDisponibles(practicantes) {
     
     mensaje += `${index + 1}. *${pract.nombre}*\n`;
     mensaje += `   🕐 Horario: ${horaInicio} - ${horaFin}\n`;
-    mensaje += `   📊 Sesiones realizadas: ${pract.sesiones}\n\n`;
+    mensaje += `   📊 Citas programadas: ${pract.citasProgramadas}\n\n`;
   });
 
   return mensaje;

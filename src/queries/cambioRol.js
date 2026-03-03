@@ -84,16 +84,23 @@ export async function migrarUsuarioAPracticante(telefono, datosAdicionales) {
       .join(' ');
 
     const datosPracticante = {
-      nombre: nombreCompleto || 'Sin nombre',
-      telefono: phone,
+      nombre:           nombreCompleto || 'Sin nombre',
+      telefono:         phone,
       numero_documento: usuario.documento || `DOC_${Date.now()}`,
-      tipo_documento: usuario.tipoDocumento || 'CC',
-      genero: datosAdicionales.genero,
-      estrato: String(datosAdicionales.estrato || '1'),
-      barrio: datosAdicionales.barrio || '',
-      localidad: datosAdicionales.localidad || '',
-      sesiones: 0,
-      fechaCreacion: new Date()
+      tipo_documento:   usuario.tipoDocumento || 'CC',
+      genero:           datosAdicionales.genero,
+      // Nuevos campos — opcionales, se completan desde la interfaz web
+      correo:           datosAdicionales.correo     || null,
+      eps_ips:          datosAdicionales.eps_ips    || null,
+      clinica:          datosAdicionales.clinica    || null,
+      fechaInicio:      datosAdicionales.fechaInicio ? new Date(datosAdicionales.fechaInicio) : null,
+      fechaFin:         datosAdicionales.fechaFin   ? new Date(datosAdicionales.fechaFin)    : null,
+      // Campos legacy — ya no se recopilan en el flujo del bot
+      estrato:          datosAdicionales.estrato    || null,
+      barrio:           datosAdicionales.barrio     || null,
+      localidad:        datosAdicionales.localidad  || null,
+      citasProgramadas: 0,
+      fechaCreacion:    new Date()
     };
 
     // Crear practicante

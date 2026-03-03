@@ -651,47 +651,6 @@ export const usuarioTienePracticanteAsignado = async (telefonoPaciente) => {
 	}
 }
 
-// Función para limpiar el estado de test completado del practicante
-export const limpiarEstadoTestCompletado = async (telefonoPracticante) => {
-	try {
-		const telefonoLimpio = telefonoPracticante.replace(/\D/g, '');
-		// Campos testCompletadoReciente y ultimoPacienteTest no existen en el modelo actual
-		await prisma.practicante.update({
-			where: { telefono: telefonoLimpio },
-			data: { 
-				testCompletadoReciente: false,
-				ultimoPacienteTest: null
-			}
-		});
-		console.log(`🧹 Estado de test completado limpiado para practicante: ${telefonoPracticante}`);
-		return true;
-	} catch (error) {
-		console.error('Error limpiando estado de test completado:', error);
-		return false;
-	}
-}
-
-// Función para verificar si un practicante tiene un test completado reciente
-export const verificarTestCompletadoReciente = async (telefonoPracticante) => {
-	try {
-		const telefonoLimpio = telefonoPracticante.replace(/\D/g, '');
-		// Campos testCompletadoReciente y ultimoPacienteTest no existen en el modelo actual
-		const practicante = await prisma.practicante.findUnique({
-			where: { telefono: telefonoLimpio },
-			select: { 
-				testCompletadoReciente: true,
-				ultimoPacienteTest: true
-			}
-		});
-		
-		return practicante?.testCompletadoReciente || false;
-	} catch (error) {
-		console.error('Error verificando test completado reciente:', error);
-		return false;
-	}
-}
-
-
 //---------------------------------------------------------------------------------------------------------
 
 export const getEstadoCuestionario = async(telefono, tipoTest) => {
@@ -1003,7 +962,6 @@ export const getCita = async (id) => {
 	}
 }
 
-// FUNCIÓN DESHABILITADA - Usar sistema web de autenticación
 export const addWebUser = async (
 	nombre,
 	apellido,
@@ -1027,38 +985,6 @@ export const addWebUser = async (
 	} catch (error) {
 		console.error('Error al crear el usuario:', error)
 		throw new Error('Hubo un problema al crear el usuario.')
-	}
-}
-
-//---------------------------------------------------------------------------------------------------------
-
-export const addWebPracticante = async (
-	nombre,
-	documento,
-	tipoDocumento,
-	genero,
-	estrato,
-	barrio,
-	localidad,
-	horario
-) => {
-	try {
-		const pract = await prisma.practicante.create({
-			data: {
-				nombre: nombre,
-				numero_documento: documento,
-				tipo_documento: tipoDocumento,
-				genero: genero,
-				estrato: estrato,
-				barrio: barrio,
-				localidad: localidad,
-				horario: horario,
-			},
-		})
-		return pract
-	} catch (error) {
-		console.error('Error al crear el practicante:', error)
-		throw new Error('Hubo un problema al crear el practicante.')
 	}
 }
 
@@ -1153,38 +1079,6 @@ export const editWebUser = async (
 	} catch (error) {
 		console.error('Error al editar el usuario:', error)
 		throw new Error('Hubo un problema al editar el usuario.')
-	}
-}
-
-//---------------------------------------------------------------------------------------------------------
-
-export const editWebPracticante = async (
-	nombre,
-	documento,
-	tipoDocumento,
-	genero,
-	estrato,
-	barrio,
-	localidad
-) => {
-	try {
-		const pract = await prisma.practicante.update({
-			where: {
-				numero_documento: documento,
-			},
-			data: {
-				nombre: nombre,
-				tipo_documento: tipoDocumento,
-				genero: genero,
-				estrato: estrato,
-				barrio: barrio,
-				localidad: localidad,
-			},
-		})
-		return pract
-	} catch (error) {
-		console.error('Error al editar el practicante:', error)
-		throw new Error('Hubo un problema al editar el practicante.')
 	}
 }
 

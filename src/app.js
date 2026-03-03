@@ -51,9 +51,7 @@ import {
 	getPracticante,
 	getUsuario,
 	addWebUser,
-	addWebPracticante,
 	editWebUser,
-	editWebPracticante,
 	citaWebCheckout,
 	getWebConsultorios,
 	ChangeWebConsultorio,
@@ -419,49 +417,6 @@ const adapterFlow = createFlow([
 	);
 	
 	//---------------------------------------------------------------------------------------------------------
-	
-	adapterProvider.server.post(
-		"/v1/front/addPracticante",
-		handleCtx(async (req, res) => {
-			const {
-				nombre,
-				documento,
-				tipoDocumento,
-				genero,
-				estrato,
-				barrio,
-				localidad,
-				horario,
-			} = req.body;
-			
-			try {
-				const response = await addWebPracticante(
-					nombre,
-					documento,
-					tipoDocumento,
-					genero,
-					estrato,
-					barrio,
-					localidad,
-					horario
-				);
-
-				res.writeHead(200, { "Content-Type": "application/json" });
-				return res.end(JSON.stringify(response));
-			} catch (error) {
-				console.error(error);
-				res.writeHead(500, { "Content-Type": "application/json" });
-				return res.end(
-					JSON.stringify({
-						status: "error",
-						message: "Error al insertar el practicante en la base de datos",
-					})
-				);
-			}
-		})
-	);
-
-	//---------------------------------------------------------------------------------------------------------
 
 	adapterProvider.server.post(
 		"/v1/front/editUser",
@@ -488,49 +443,6 @@ const adapterFlow = createFlow([
 					JSON.stringify({
 						status: "error",
 						message: "Error al editar el usuario en la base de datos",
-					})
-				);
-			}
-		})
-	);
-	
-	//---------------------------------------------------------------------------------------------------------
-	
-	adapterProvider.server.post(
-		"/v1/front/editPracticante",
-		handleCtx(async (req, res) => {
-			const {
-				nombre,
-				documento,
-				tipoDocumento,
-				genero,
-				estrato,
-				barrio,
-				localidad,
-				horario,
-			} = req.body;
-			
-			try {
-				const response = await editWebPracticante(
-					nombre,
-					documento,
-					tipoDocumento,
-					genero,
-					estrato,
-					barrio,
-					localidad,
-					horario
-				);
-				
-				res.writeHead(200, { "Content-Type": "application/json" });
-				return res.end(JSON.stringify(response));
-			} catch (error) {
-				console.error(error);
-				res.writeHead(500, { "Content-Type": "application/json" });
-				return res.end(
-					JSON.stringify({
-						status: "error",
-						message: "Error al editar el practicante en la base de datos",
 					})
 				);
 			}
