@@ -28,10 +28,7 @@ export const configurarProviderDASS21 = (provider) => {
 
 const cuestDass21 = {
     preguntas: [
-		'1. Me ha costado mucho descargar la tensión\n    ' + rtasDass21(),
-
-
-		
+		'1. Me ha costado mucho descargar la tensión\n    ' + rtasDass21(),		
 		'2. Me di cuenta que tenía la boca seca\n    ' + rtasDass21(),
 		'3. No podía sentir ningún sentimiento positivo\n    ' + rtasDass21(),		
 		'4. Se me hizo difícil respirar\n    ' + rtasDass21(),			
