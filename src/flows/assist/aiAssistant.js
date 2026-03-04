@@ -85,7 +85,7 @@ export async function apiAssistant1(numero, msg) {
 
 	try {
 		const response = await aiRegister.chat.completions.create({
-			model: 'gpt-4o-mini',
+			model: 'gpt-5',
 			messages: conversationHistory,
 			tools: tools,
 			tool_choice: 'auto', //* Importante usar tool choice

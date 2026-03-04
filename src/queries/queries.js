@@ -624,14 +624,17 @@ export const notificarTestCompletadoAPracticante = async (telefonoPaciente) => {
 			return false;
 		}
 
-		// Enviar mensaje de notificación al practicante
+		// Borrar el historial del practicante ANTES de mandar el mensaje.
+		// Esto libera el capture activo de practEsperarResultados en BuilderBot,
+		// de modo que cuando el practicante responda, pase por welcomeFlow normalmente.
+		await prisma.$executeRaw`DELETE FROM history WHERE phone = ${telefonoPracticante}`;
+		console.log(`🧹 Historial del practicante ${telefonoPracticante} limpiado`);
+
+		// Notificar al practicante
 		await sendAutonomousMessage(
 			telefonoPracticante,
 			"✅ *Test completado.* Los resultados han sido enviados.\n\n_Escribe cualquier mensaje para regresar al menú._"
 		);
-
-		// Cambiar estado de practicante en BD
-		await switchFlujo(telefonoPracticante, 'practMenuFlow')
 
 		console.log(`✅ Practicante ${telefonoPracticante} notificado del test completado`);
 		return true;

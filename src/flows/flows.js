@@ -76,9 +76,16 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
         return gotoFlow(testSelectionFlow);
       }
       if (currentFlow === 'menu') {
-        console.log('🔀 Usuario en menú, redirigiendo a menuFlow');
-        await state.update({ currentFlow: 'menu' });
-        return gotoFlow(menuFlow);
+        const userBD = await obtenerUsuario(ctx.from);
+        if (userBD?.flujo === 'testFlow') {
+          console.log('🔀 Prueba asignada mientras estaba en menú — redirigiendo a testFlow');
+          await state.update({ currentFlow: null });
+          // continúa hacia handleUserFlow que detecta testFlow en BD
+        } else {
+          console.log('🔀 Usuario en menú, redirigiendo a menuFlow');
+          await state.update({ currentFlow: 'menu' });
+          return gotoFlow(menuFlow);
+        }
       }
       if (currentFlow === 'esDeUniversidad') {
         console.log('🔀 Usuario registrando datos universitarios, redirigiendo a esDeUniversidadFlow')
@@ -712,6 +719,21 @@ export const menuFlow = addKeyword(utils.setEvent('MENU_FLOW'))
           await state.update({ currentFlow: null, user: null, initialized: false });
           await flowDynamic(`🔄 *Tu rol ha cambiado a ${rolActual.rol}.*\n\nPor favor, escribe nuevamente para continuar.`);
           return endFlow();
+        }
+
+        // ⚠️ DETECCIÓN DE PRUEBA ASIGNADA DENTRO DEL MENÚ
+        // El practicante puede asignar una prueba mientras el paciente está en el menú.
+        // Como capture:true intercepta el mensaje antes que welcomeFlow, hay que verificar aquí.
+        const userBD = await obtenerUsuario(ctx.from);
+        if (userBD?.flujo === 'testFlow') {
+          console.log('🔀 Prueba asignada mientras estaba en menú — iniciando testFlow');
+          await state.update({
+            currentFlow: 'test',
+            justInitializedTest: true,
+            testAsignadoPorPracticante: true,
+            user: userBD,
+          });
+          return gotoFlow(testFlow);
         }
 
         // Manejo de inactividad (timeout)

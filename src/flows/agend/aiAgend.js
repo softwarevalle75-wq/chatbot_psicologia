@@ -62,7 +62,7 @@ export async function apiAgend(numero, msg) {
 
 		// Hacer la llamada a la API
 		const response = await aiAgend.chat.completions.create({
-			model: 'gpt-4o-mini',
+			model: 'gpt-5',
 			messages: conversationHistory,
 			tools: tools,
 			tool_choice: 'auto',

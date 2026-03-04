@@ -91,7 +91,7 @@ export async function apiAssistant2(numero, msg, id) {
 
 	try {
 		const response = await aiRegister.chat.completions.create({
-			model: 'gpt-4o-mini',
+			model: 'gpt-5',
 			messages: conversationHistory,
 			tools: tools,
 			tool_choice: 'auto',
@@ -235,7 +235,7 @@ Tono: Profesional, empático, orientado a la acción clínica. Máximo 10-12 lí
 							let analisisCompleto = ''
 							try {
 								const respuesta = await aiRegister.chat.completions.create({
-									model: 'gpt-4o-mini',
+									model: 'gpt-5',
 									messages: [analisisSystem, analisisUser],
 									temperature: 0.2,
 								})
