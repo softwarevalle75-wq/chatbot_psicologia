@@ -164,6 +164,14 @@ export const practOfrecerTestFlow__ElegirTest = addKeyword('__NUNCA__')
         `Cuando el paciente escriba al bot, iniciará el cuestionario.`
       );
 
+      // Marcar en BD que el practicante está esperando resultados.
+      // El capture de practEsperarResultados lee este campo para saber
+      // cuándo puede liberar al practicante hacia el menú.
+      await prisma.practicante.update({
+        where: { telefono: ctx.from },
+        data:  { flujo: 'esperandoResultados' },
+      });
+
       await new Promise(res => setTimeout(res, 500));
       await state.update({ currentFlow: 'esperandoResultados' });
       console.log('🔥 Estado actualizado - currentFlow: esperandoResultados');
@@ -184,17 +192,33 @@ export const practOfrecerTestFlow__ElegirTest = addKeyword('__NUNCA__')
   .addAction(async (_, { state }) => {
     await state.update({ 
       currentFlow: 'esperandoResultados',
-      esperandoResultados: true
-     });
+      esperandoResultados: true,
+    });
     console.log('🔥 Estado actualizado - currentFlow: esperandoResultados');
   })
   .addAnswer(
-    '⏳ Por favor, espera a que el paciente termine su prueba.\n\nCuando termine, *recibirás una notificación*.',   
+    // Este texto se muestra una sola vez al entrar al flow.
+    // En el loop, el callback no envía nada — el practicante simplemente no recibe respuesta
+    // hasta que el test termine, momento en que se libera al menú.
+    '⏳ Por favor, espera a que el paciente termine su prueba.\n\nCuando termine, *recibirás una notificación*.',
     { capture: true },
-    async (_, { flowDynamic}) => {
+    async (ctx, { gotoFlow, state }) => {
+      // Consultar el flujo del practicante directamente en BD.
+      // notificarTestCompletadoAPracticante lo actualiza a 'practMenuFlow'
+      // cuando el paciente termina — esa es la señal de salida del loop.
+      const pract = await prisma.practicante.findUnique({
+        where:  { telefono: ctx.from },
+        select: { flujo: true },
+      });
 
-      await flowDynamic('⏳ Por favor, espera a que el paciente termine su prueba.');
-      return;
+      if (pract?.flujo === 'practMenuFlow') {
+        console.log('✅ Test completado detectado en BD — liberando practicante al menú');
+        await state.update({ currentFlow: 'practicante', esperandoResultados: false });
+        return gotoFlow(practMenuFlow);
+      }
+
+      // Test en curso — no responder nada, solo mantener el capture activo
+      console.log('⏳ Test aún en curso — manteniendo loop de espera');
     }
   )
 

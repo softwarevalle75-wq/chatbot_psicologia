@@ -140,6 +140,7 @@ model practicante {
   barrio           String?
   localidad        String?
   citasProgramadas Int       @default(0)
+  flujo            String    @default("practMenuFlow")
   fechaCreacion    DateTime  @default(now()) @db.Timestamp(0)
   telefono         String    @unique
 

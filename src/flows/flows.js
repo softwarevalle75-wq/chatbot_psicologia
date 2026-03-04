@@ -241,6 +241,20 @@ async function handlePracticanteFlow(ctx, user, state, gotoFlow) {
   const currentFlow = await state.get('currentFlow');
 
   if (esperandoResultados || currentFlow === 'esperandoResultados') {
+    // Verificar en BD si el test ya terminó antes de regresar al loop.
+    // notificarTestCompletadoAPracticante actualiza practicante.flujo a 'practMenuFlow'
+    // cuando el paciente termina — esa es la señal de salida.
+    const pract = await prisma.practicante.findUnique({
+      where:  { telefono: ctx.from },
+      select: { flujo: true },
+    });
+
+    if (pract?.flujo === 'practMenuFlow') {
+      console.log('✅ Test completado (handlePracticanteFlow) — liberando al menú');
+      await state.update({ currentFlow: 'practicante', esperandoResultados: false });
+      return gotoFlow(practMenuFlow);
+    }
+
     console.log('⏳ Practicante esperando resultados...');
     return gotoFlow(practEsperarResultados);
   }
