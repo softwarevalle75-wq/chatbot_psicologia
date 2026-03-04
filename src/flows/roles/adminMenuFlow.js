@@ -339,29 +339,4 @@ async function procesarCambioRolConMigracion(telefono, nuevoRol) {
   }
 }
 
-export const adminMenuMiddleware = addKeyword(['menu'])
-  .addAction(async (ctx, { state, gotoFlow, endFlow }) => {
-    console.log('📋 Middleware menu - verificando si es admin');
-    const stateUser = await state.get('user')
-    const isAdminFromState =
-      stateUser?.data?.rol === 'admin' ||
-      stateUser?.tipo === 'admin' ||
-      stateUser?.rol === 'admin'
 
-    let isAdmin = isAdminFromState
-    if (!isAdmin) {
-      const roleMapping = await getRolTelefono(ctx.from)
-      isAdmin = roleMapping?.rol === 'admin'
-    }
-
-    if (isAdmin) {
-      console.log('✅ Usuario es admin, redirigiendo a menú');
-      await state.update({ 
-        currentFlow: 'admin'
-      });
-      return gotoFlow(adminMenuFlow);
-    }
-    
-    console.log('❌ Usuario no es admin, ignorando');
-    return endFlow();
-  });

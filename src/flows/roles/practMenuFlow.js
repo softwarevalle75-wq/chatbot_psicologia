@@ -274,22 +274,7 @@ export const practOfrecerTestFlow__ElegirTest = addKeyword('__NUNCA__')
   //------------------------------------------------------------------------------------------------------------------------------
   
   
-  // --- Middleware global para manejar "menu" solo cuando estés en flujo practicante
-  export const practMenuMiddleware = addKeyword(['menu'])
-  .addAction(async (ctx, { state, gotoFlow, endFlow }) => {
-    // Permitir 'menu' en cualquier estado si es practicante
-    const user = state.get('user') || await obtenerUsuario(ctx.from);
-    if (user && user.idPracticante) {
-      await state.update({ 
-        user: user,
-        currentFlow: 'practicante',
-        esperandoResultados: false,
-        testCompletadoPorPaciente: false,
-      });
-      return gotoFlow(practMenuFlow);
-    }
-    return endFlow(); // No hacer nada si no es practicante
-  });
+
   
   
   //------------------------------------------------------------------------------------------------------------------------------

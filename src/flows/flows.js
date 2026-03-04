@@ -19,13 +19,7 @@ import { procesarDass21 } from './tests/dass21.js'
 import { procesarGHQ12 } from './tests/ghq12.js'
 // Importar el helper al inicio del archivo
 import { verificarAutenticacionWeb } from '../helpers/auntenticarUsuario.js';
-import { 
-  // adminEntryFlow, 
-  adminMenuFlow,
-  // adminMenuMiddleware,
-  // adminPedirTelefonoFlow,
-  // adminAsignarRolFlow 
-} from './roles/adminMenuFlow.js'
+import { adminMenuFlow } from './roles/adminMenuFlow.js'
 
 import { practMenuFlow, practEsperarResultados } from './roles/practMenuFlow.js'
 import { recolectarGeneroFlow } from './roles/cambioRolFlow.js'

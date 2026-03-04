@@ -27,8 +27,8 @@ import {
 		adminMenuFlow,
 		adminPedirTelefonoFlow,
 		adminAsignarRolFlow,
-		adminMenuMiddleware
 	} from './flows/roles/adminMenuFlow.js'
+	import { menuMiddleware } from './flows/roles/menuMiddleware.js';
 	import { 
 		practMenuFlow, 
 		practOfrecerTestFlow__ElegirTest, 
@@ -183,7 +183,7 @@ const adapterFlow = createFlow([
     adminMenuFlow,
     adminPedirTelefonoFlow,
     adminAsignarRolFlow,
-    adminMenuMiddleware,
+    menuMiddleware,
 
 // Flujos de roles (después de welcome)
     practMenuFlow,
