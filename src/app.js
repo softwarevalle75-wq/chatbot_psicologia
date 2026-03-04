@@ -60,6 +60,7 @@ import {
 } from "./queries/queries.js";
 import { getRealPhoneFromCtx, phoneFromAny } from "./helpers/jidHelper.js";
 import { saveBotRuntimePhone } from "../shared/botRuntimeState.js";
+import { isBotReady, markBotReady, enqueueMessage, flushQueue } from "../shared/startupQueue.js";
 
 // inicializar RAG
 import { initializeRAG } from "./RAG/index.js";
@@ -154,7 +155,13 @@ adapterProvider.on("message", (ctx) => {
 		// Se normaliza ctx.from
 		if (realPhone) ctx.from = realJid
 		if (realJid && ctx?.key) ctx.key.remoteJid = realJid
-		
+
+		// Si el bot aún no está listo, encolar el mensaje para reintentarlo
+		// cuando la conexión esté completamente establecida.
+		if (!isBotReady()) {
+			enqueueMessage(ctx);
+		}
+
 	} catch (e) {
 		console.error('Error en middleware JID:', e)		
 	}
@@ -261,9 +268,27 @@ const adapterFlow = createFlow([
 		ev.on('connection.update', async (update) => {
 			if (update?.connection === 'open') {
 				await tryPublishRuntimeNumber('connection.open')
+
+				// Marcar bot como listo cuando Baileys emite connection.open
+				if (!isBotReady()) {
+					setTimeout(async () => {
+						markBotReady();
+						await flushQueue(adapterProvider);
+					}, 1500);
+				}
 			}
 		})
 	}
+
+	// Timeout de seguridad: si connection.open nunca se emite
+	// (sesión ya activa al reiniciar), marcar listo igualmente.
+	setTimeout(async () => {
+		if (!isBotReady()) {
+			console.log('⚠️ startupQueue: connection.open no se emitió — marcando listo por timeout');
+			markBotReady();
+			await flushQueue(adapterProvider);
+		}
+	}, 5000);
 
 	const publishInterval = setInterval(() => {
 		tryPublishRuntimeNumber('polling')
