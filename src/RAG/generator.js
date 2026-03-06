@@ -6,7 +6,7 @@ const openai = new OpenAI({
 })
 
 const GENERATION_CONFIG = {
-    model: 'gpt-5',
+    model: 'gpt-5-mini',
     maxTokens: 10000,
 }
 
