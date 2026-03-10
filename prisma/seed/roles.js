@@ -958,8 +958,8 @@ async function main() {
         // Horario: Sábados 7:00 am – 10:00 am
         {
             idPracticante:    uuidv4(),
-            numero_documento: '',
-            tipo_documento:   '',
+            numero_documento: '1020304050',
+            tipo_documento:   'CC',
             nombre:           'Geraldine Estupiñan',
             genero:           'F',
             correo:           'geraldine.estupinan.arias@gmail.com',
@@ -969,6 +969,24 @@ async function main() {
             fechaFin:         null,
             citasProgramadas: 0,
             telefono:         '573207603941',
+            horarios: { create: [
+                { dia: 'SABADO',   horaInicio: h(7), horaFin: h(10) },
+            ]},
+        },
+        // 99999 — Practicante prueba
+        {
+            idPracticante:    uuidv4(),
+            numero_documento: '1000616357',
+            tipo_documento:   'CC',
+            nombre:           'Sebastian Riascos',
+            genero:           'M',
+            correo:           'sebastianriascos892@gmail.com',
+            eps_ips:          'Sanitas',
+            clinica:          'clinica',
+            fechaInicio:      new Date('2026-03-03'),
+            fechaFin:         null,
+            citasProgramadas: 0,
+            telefono:         '3007717571',
             horarios: { create: [
                 { dia: 'SABADO',   horaInicio: h(7), horaFin: h(10) },
             ]},

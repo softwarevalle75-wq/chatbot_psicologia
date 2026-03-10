@@ -11,6 +11,7 @@ import {
 	testFlow,
 	agendFlow,
 	pedirNumeroPracticanteAsignadoFlow,
+	pedirDocumentoProfesionalFlow,
 } from "./flows/flows.js";
 
 
@@ -205,7 +206,10 @@ const main = async () => {
 		practConsejosFlow,
 
 		// Flujos de agendamiento
-		agendFlow
+		agendFlow,
+
+		// Flujo para pedir documento del profesional y enviar PDF por correo
+		pedirDocumentoProfesionalFlow,
 	]);
 
 

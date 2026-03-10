@@ -26,7 +26,9 @@
     "test:diagnose": "node ./tests/diagnose-env.js",
     "clear:qdrant": "node ./scripts/reset-collection.js",
     "test:openai": "node ./tests/test-openai.js",
-    "db:migrate-practicante-uuid": "node ./scripts/migrate-practicante-asignado-to-uuid.js"
+    "db:migrate-practicante-uuid": "node ./scripts/migrate-practicante-asignado-to-uuid.js",
+    "k6:quick": "k6 run ./performance/k6/quick.js",
+    "k6:saturation": "k6 run ./performance/k6/saturation.js"
   },
   "prisma": {
     "seed": "node prisma/seed/seed.js"
@@ -46,6 +48,7 @@
     "express": "^4.21.2",
     "fs": "^0.0.1-security",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^8.0.2",
     "openai": "^5.11.0",
     "path": "^0.12.7",
     "pdf-parse": "^1.1.1",

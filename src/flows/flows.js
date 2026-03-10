@@ -10,8 +10,10 @@ import {
   guardarPracticanteAsignado,
   perteneceUniversidad,
   verificarRolUsuario,
-  usuarioTienePracticanteAsignado,
+  buscarPracticantePorDocumento,
+  obtenerPerfilPacienteParaInforme,
 } from '../queries/queries.js'
+import { enviarPdfPorCorreo } from '../helpers/emailHelper.js'
 import { menuCuestionarios, parsearSeleccionTest } from './tests/controlTest.js'
 
 import { procesarDass21 } from './tests/dass21.js'
@@ -28,6 +30,7 @@ import {
   formatearMensajeCita,
   formatearHorariosDisponibles
 } from '../helpers/agendHelper.js';
+import { obtenerRutaPdf, limpiarRutaPdf } from '../helpers/pdfStore.js'
 import Prisma from '@prisma/client'
 export const prisma = new Prisma.PrismaClient()
 //---------------------------------------------------------------------------------------------------------
@@ -88,6 +91,10 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
       if (currentFlow === 'agendConfirmarRespuesta') {
         console.log('🔀 Usuario confirmando cita, redirigiendo a agendFlow')
         return gotoFlow(agendFlow)
+      }
+      if (currentFlow === 'pedirDocumentoProfesional') {
+        console.log('🔀 Usuario ingresando documento del profesional')
+        return gotoFlow(pedirDocumentoProfesionalFlow)
       }
       if (currentFlow === 'completandoDatos') {
         console.log('🔀 Practicante completando datos, redirigiendo a completarPerfilPracticanteFlow')
@@ -437,16 +444,19 @@ export const procesarRespuestaTest = async (ctx, { flowDynamic, gotoFlow, state,
     await flowDynamic(resultado);
 
     if (resultado.includes('completada')) {
-      console.log('🎉 Test completado, limpiando estado');
+      console.log('🎉 Test completado, redirigiendo a pedir documento del profesional');
+      const testCompletado = testActual === 'ghq12' ? 'GHQ-12' : 'DASS-21';
       await state.update({
         user: user,
-        currentFlow: 'menu',
+        currentFlow: 'pedirDocumentoProfesional',
         justInitializedTest: false,
-        testActual: null,
-        waitingForTestResponse: false
+        testCompletado: testCompletado,
+        testActualCompletado: testActual,
+        waitingForTestResponse: false,
+        intentosDocumento: 0,
       });
-      await switchFlujo(ctx.from, 'menuFlow'); // DESCOMENTADO - ahora funciona
-      return gotoFlow(menuFlow);
+      await switchFlujo(ctx.from, 'menuFlow');
+      return gotoFlow(pedirDocumentoProfesionalFlow);
     }
   }
 }
@@ -469,16 +479,7 @@ export const testSelectionFlow = addKeyword(utils.setEvent('TEST_SELECTION_FLOW'
       const msg = ctx.body.trim();
       const tipoTest = parsearSeleccionTest(msg);
 
-      const tienePracticante = await usuarioTienePracticanteAsignado(ctx.from)
-      if (!tienePracticante) {
-        await flowDynamic(
-          '⚠️ *No tienes un practicante asignado.*\n\n' +
-          'No es posible iniciar pruebas hasta que un practicante te asigne seguimiento.'
-        )
-        await state.update({ currentFlow: 'menu' });
-        await switchFlujo(ctx.from, 'menuFlow');
-        return gotoFlow(menuFlow);
-      }
+      // Ya no se requiere practicante asignado para iniciar pruebas
 
       if (!tipoTest) {
         await flowDynamic('❌ Por favor, responde con *1* para GHQ-12 o *2* para DASS-21');
@@ -688,9 +689,8 @@ export const menuFlow = addKeyword(utils.setEvent('MENU_FLOW'))
   })
   .addAnswer(
     '¡Perfecto! Ahora puedes elegir qué hacer:\n\n' +
-    '🔹 1 - Realizar cuestionarios psicológicos\n' +
-    '🔹 2 - Agendar cita con profesional\n\n' +
-    'Responde con 1 o 2.',
+    '🔹 1 - Realizar cuestionarios psicológicos\n\n' +
+    'Responde con 1.',
     { capture: true, idle: 600000 }, // Timeout de 10 minutos
     async (ctx, { flowDynamic, gotoFlow, fallBack, endFlow, state }) => {
       try {
@@ -727,44 +727,187 @@ export const menuFlow = addKeyword(utils.setEvent('MENU_FLOW'))
         } // sirve para hacer un timeout de 10 mins
 
         console.log('🟢 MENU_FLOW: Recibido mensaje:', ctx.body);
-        const msg = validarRespuestaMenu(ctx.body, ['1', '2']);
+        const msg = validarRespuestaMenu(ctx.body, ['1']);
 
         if (msg === '1') {
-          const tienePracticante = await usuarioTienePracticanteAsignado(ctx.from)
-          if (!tienePracticante) {
-            await flowDynamic(
-              '⚠️ *No tienes un practicante asignado.*\n\n' +
-              'Para realizar pruebas psicológicas primero debes tener un practicante asignado.\n' +
-              'Solicita la asignación con tu psicólogo o soporte.'
-            )
-            return gotoFlow(menuFlow);
-          }
-
-          // Hacer cuestionarios
+          // Hacer cuestionarios - ya no requiere practicante asignado
           await flowDynamic(menuCuestionarios());
-          await switchFlujo(ctx.from, 'testSelectionFlow') // DESCOMENTADO - ahora funciona
-          await state.update({ currentFlow: 'testSelection' }); // ACTUALIZAR ESTADO
+          await switchFlujo(ctx.from, 'testSelectionFlow')
+          await state.update({ currentFlow: 'testSelection' });
           return gotoFlow(testSelectionFlow, { body: '' });
-
-        } else if (msg === '2') {
-          //await flowDynamic('🛠 Lo sentimos! esta opción no esta disponible en este momento. \n\n*Pero, puedes realizar una prueba*')
-          await switchFlujo(ctx.from, 'agendFlow');
-          await flowDynamic('Te ayudaré a agendar tu cita. Por favor, dime qué día te gustaría agendar.');
-          return gotoFlow(agendFlow);
-          //return fallBack();
-          //--
-          //Agendar cita
 
         } else {
           // Opción inválida
           await flowDynamic('❌ Opción no válida. Por favor responde con:\n' +
-            '🔹 1 - Para realizar cuestionarios\n' +
-            '🔹 2 - Para agendar cita');
+            '🔹 1 - Para realizar cuestionarios');
           return fallBack();
         }
       } catch (error) {
         console.error('❌ Error en menuFlow.addAnswer:', error);
         await flowDynamic('⚠️ Ocurrió un error de conexión. Por favor, intenta enviar tu mensaje de nuevo.');
+      }
+    }
+  );
+
+//---------------------------------------------------------------------------------------------------------
+
+// Flujo para pedir el documento del profesional que aplicó el test y enviar el PDF por correo
+export const pedirDocumentoProfesionalFlow = addKeyword(utils.setEvent('PEDIR_DOCUMENTO_PROFESIONAL'))
+  .addAction(async (ctx, { state }) => {
+    await state.update({ currentFlow: 'pedirDocumentoProfesional' });
+    console.log('🟢 PEDIR_DOCUMENTO_PROFESIONAL: Inicializado para:', ctx.from);
+  })
+  .addAnswer(
+    '📋 Para enviar el informe al profesional que te aplicó el test, por favor ingresa su *número de documento* (cédula):',
+    { capture: true, idle: 300000 },
+    async (ctx, { flowDynamic, gotoFlow, state, fallBack, endFlow }) => {
+      try {
+        // Timeout por inactividad
+        if (ctx?.idleFallBack) {
+          await flowDynamic('Te demoraste en responder. Escribe otra vez para empezar.');
+          await state.update({ currentFlow: null, intentosDocumento: 0 });
+          return endFlow();
+        }
+
+        const documento = ctx.body.trim();
+        let intentos = (await state.get('intentosDocumento')) || 0;
+
+        // Validar que el input sea un número de documento razonable
+        if (!documento || documento.length < 5 || !/^\d+$/.test(documento)) {
+          intentos++;
+          await state.update({ intentosDocumento: intentos });
+
+          if (intentos >= 3) {
+            await flowDynamic(
+              '❌ Se han agotado los intentos.\n\n' +
+              'El informe se generó correctamente pero no se pudo enviar por correo.\n' +
+              'Regresando al menú principal...'
+            );
+            await state.update({ currentFlow: 'menu', intentosDocumento: 0, testActual: null });
+            limpiarRutaPdf(ctx.from);
+            await switchFlujo(ctx.from, 'menuFlow');
+            return gotoFlow(menuFlow);
+          }
+
+          await flowDynamic(
+            `❌ Documento no válido. Ingresa solo números.\n\n` +
+            `Intentos restantes: ${3 - intentos}`
+          );
+          return fallBack();
+        }
+
+        // Buscar practicante por documento
+        const practicante = await buscarPracticantePorDocumento(documento);
+
+        if (!practicante) {
+          intentos++;
+          await state.update({ intentosDocumento: intentos });
+
+          if (intentos >= 3) {
+            await flowDynamic(
+              '❌ Se han agotado los intentos. No se encontró un profesional con ese documento.\n\n' +
+              'El informe se generó correctamente pero no se pudo enviar por correo.\n' +
+              'Regresando al menú principal...'
+            );
+            await state.update({ currentFlow: 'menu', intentosDocumento: 0, testActual: null });
+            limpiarRutaPdf(ctx.from);
+            await switchFlujo(ctx.from, 'menuFlow');
+            return gotoFlow(menuFlow);
+          }
+
+          await flowDynamic(
+            `⚠️ No se encontró un profesional con el documento *${documento}*.\n\n` +
+            `Verifica el número e intenta de nuevo.\n` +
+            `Intentos restantes: ${3 - intentos}`
+          );
+          return fallBack();
+        }
+
+        // Practicante encontrado, correo obligatorio
+        if (!practicante.correo || !String(practicante.correo).trim()) {
+          intentos++;
+          await state.update({ intentosDocumento: intentos });
+
+          if (intentos >= 3) {
+            await flowDynamic(
+              '❌ Se encontró el profesional pero no tiene correo registrado.\n\n' +
+              'No fue posible enviar el informe. Regresando al menú principal...'
+            );
+            await state.update({ currentFlow: 'menu', intentosDocumento: 0, testActual: null });
+            limpiarRutaPdf(ctx.from);
+            await switchFlujo(ctx.from, 'menuFlow');
+            return gotoFlow(menuFlow);
+          }
+
+          await flowDynamic(
+            `⚠️ El profesional *${practicante.nombre}* no tiene correo registrado.\n\n` +
+            `Ingresa el documento de otro profesional.\n` +
+            `Intentos restantes: ${3 - intentos}`
+          );
+          return fallBack();
+        }
+
+        await flowDynamic(`✅ Profesional encontrado: *${practicante.nombre}*\n⏳ Preparando el informe para envío por correo...`);
+
+        // Esperar hasta 60 segundos por el PDF (se genera en background)
+        let pdfListo = obtenerRutaPdf(ctx.from);
+        for (let i = 0; i < 12 && !pdfListo?.pdfPath; i++) {
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          pdfListo = obtenerRutaPdf(ctx.from);
+        }
+
+        if (!pdfListo?.pdfPath) {
+          await flowDynamic(
+            '⚠️ No se encontró el PDF del informe para enviar por correo.\n\n' +
+            'Intenta nuevamente en unos segundos escribiendo *menu*.'
+          );
+          await state.update({ currentFlow: 'menu', intentosDocumento: 0, testActual: null });
+          await switchFlujo(ctx.from, 'menuFlow');
+          return gotoFlow(menuFlow);
+        }
+
+        const testCompletado = await state.get('testCompletado') || 'Test psicológico';
+        const patientData = await obtenerPerfilPacienteParaInforme(ctx.from);
+        const nombrePaciente = [patientData?.nombres, patientData?.apellidos].filter(Boolean).join(' ').trim() || 'No disponible';
+        const documentoPaciente = patientData?.documento && patientData.documento !== 'No disponible'
+          ? `${patientData?.tipoDocumento || 'Doc'} ${patientData.documento}`
+          : 'No disponible';
+
+        const resultadoEnvio = await enviarPdfPorCorreo(practicante.correo, pdfListo.pdfPath, {
+          nombrePaciente,
+          documentoPaciente,
+          telefonoPaciente: patientData?.telefonoPrincipal || ctx.from,
+          testNombre: testCompletado,
+          fecha: new Date().toLocaleString('es-CO'),
+          nombrePracticante: practicante.nombre,
+        });
+
+        if (resultadoEnvio.success) {
+          await flowDynamic(
+            `✅ *Informe enviado exitosamente*\n\n` +
+            `📧 Enviado a: *${practicante.correo}*\n` +
+            `📨 Copia enviada a: *chatbotpsicologia@gmail.com*\n\n` +
+            'Regresando al menú principal...'
+          );
+        } else {
+          await flowDynamic(
+            `⚠️ No se pudo enviar el correo: ${resultadoEnvio.message}\n\n` +
+            'Regresando al menú principal...'
+          );
+        }
+
+        limpiarRutaPdf(ctx.from);
+        await state.update({ currentFlow: 'menu', intentosDocumento: 0, testActual: null });
+        await switchFlujo(ctx.from, 'menuFlow');
+        return gotoFlow(menuFlow);
+
+      } catch (error) {
+        console.error('❌ Error en pedirDocumentoProfesionalFlow:', error);
+        await flowDynamic('⚠️ Ocurrió un error. Regresando al menú principal...');
+        await state.update({ currentFlow: 'menu', intentosDocumento: 0 });
+        limpiarRutaPdf(ctx.from);
+        await switchFlujo(ctx.from, 'menuFlow');
+        return gotoFlow(menuFlow);
       }
     }
   );

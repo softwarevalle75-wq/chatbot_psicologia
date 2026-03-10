@@ -2,15 +2,12 @@ import {
 	getEstadoCuestionario,
 	saveEstadoCuestionario,
 	savePuntajeUsuario,
-	obtenerTelefonoPracticante,
 	obtenerPerfilPacienteParaInforme,
-	sendAutonomousMessage,
-	sendAutonomousDocument,
-	notificarTestCompletadoAPracticante,
 } from '../../queries/queries.js'
 
 import { interpretPsychologicalTest } from '../../RAG/psychological-interpreter.js'
 import { generateInterpretationPdf } from './reportPdf.js'
+import { guardarRutaPdf } from '../../helpers/pdfStore.js'
 
 const cuestGhq12 = {    
     preguntas: [
@@ -106,7 +103,7 @@ export const procesarGHQ12 = async (numeroUsuario, respuestas) => {
 
             void generarInformeGHQ12Async(numeroUsuario, estado.resPreg)
 
-            return "✅ *Prueba completada con éxito.*\n\nGracias por completar la evaluación. Los resultados han sido enviados a tu practicante asignado."
+            return "✅ *Prueba completada con éxito.*\n\nGracias por completar la evaluación."
         }
 
         // Siguiente pregunta
@@ -130,35 +127,13 @@ export const procesarGHQ12 = async (numeroUsuario, respuestas) => {
 
 const generarInformeGHQ12Async = async (numeroUsuario, rawResults) => {
     try {
-        const pdfTarget = (process.env.PDF_TARGET || 'practitioner').toLowerCase()
-        const sendPdfToPatient = pdfTarget === 'patient' || pdfTarget === 'both'
-        const sendPdfToPractitioner = pdfTarget === 'practitioner' || pdfTarget === 'both'
-
-        let telefonoPracticante = null
-        if (sendPdfToPractitioner) {
-            telefonoPracticante = await obtenerTelefonoPracticante(numeroUsuario)
-            if (telefonoPracticante) {
-                await sendAutonomousMessage(
-                    telefonoPracticante,
-                    '⏳ *Generando informe técnico...*\n\nEn breve recibirás el PDF con la interpretación.'
-                )
-            }
-        }
-
         const resultadoInterpretacion = await interpretPsychologicalTest(
             'ghq12',
             rawResults,
             numeroUsuario
         )
 
-        const fechaElaboracion = new Date().toLocaleString('es-CO')
         const patientData = await obtenerPerfilPacienteParaInforme(numeroUsuario)
-        const nombrePaciente = [patientData?.nombres, patientData?.apellidos].filter(Boolean).join(' ').trim() || 'No disponible'
-        const documentoPaciente = patientData?.documento && patientData.documento !== 'No disponible'
-            ? `${patientData?.tipoDocumento || 'Doc'} ${patientData.documento}`
-            : 'No disponible'
-        const edadPaciente = patientData?.edad || 'No disponible'
-        const telefonoPaciente = patientData?.telefonoPrincipal || numeroUsuario
 
         const pdfPath = await generateInterpretationPdf({
             numeroUsuario,
@@ -169,38 +144,8 @@ const generarInformeGHQ12Async = async (numeroUsuario, rawResults) => {
             patientData,
         })
 
-        if (sendPdfToPatient) {
-            await sendAutonomousDocument(
-                numeroUsuario,
-                `📄 *Informe técnico generado*\n\n` +
-                `👤 *Paciente:* ${nombrePaciente}\n` +
-                `🪪 *Documento:* ${documentoPaciente}\n` +
-                `🎂 *Edad:* ${edadPaciente}\n` +
-                `📱 *Teléfono:* ${telefonoPaciente}\n` +
-                `🧪 *Prueba:* GHQ-12\n` +
-                `🕒 *Fecha y hora de elaboración:* ${fechaElaboracion}`,
-                pdfPath
-            )
-        }
-
-        if (sendPdfToPractitioner) {
-            if (!telefonoPracticante) {
-                console.warn(`⚠️ PDF_TARGET=${pdfTarget} pero no hay practicante asignado para ${numeroUsuario}; no se envía PDF.`)
-            } else {
-                await sendAutonomousDocument(
-                    telefonoPracticante,
-                    `📄 *Informe técnico disponible*\n\n` +
-                    `👤 *Paciente:* ${nombrePaciente}\n` +
-                    `🪪 *Documento:* ${documentoPaciente}\n` +
-                    `🎂 *Edad:* ${edadPaciente}\n` +
-                    `📱 *Teléfono:* ${telefonoPaciente}\n` +
-                    `🧪 *Prueba:* GHQ-12\n` +
-                    `🕒 *Fecha y hora de elaboración:* ${fechaElaboracion}`,
-                    pdfPath
-                )
-                await notificarTestCompletadoAPracticante(numeroUsuario)
-            }
-        }
+        // Guardar ruta del PDF para envío por correo desde el flujo de documento
+        guardarRutaPdf(numeroUsuario, pdfPath, 'ghq12')
     } catch (error) {
         console.error('❌ Error generando/enviando informe GHQ-12:', error)
     }

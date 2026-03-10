@@ -1573,3 +1573,29 @@ export const updateRagPsychologicalConfigVersion = async (newVersion) => {
 		throw new Error('Error al actualizar versión de configuración RAG.');
 	}
 };
+
+//---------------------------------------------------------------------------------------------------------
+
+/**
+ * Busca un practicante por su número de documento.
+ * @param {string} documento - Número de documento del practicante
+ * @returns {Promise<object|null>} Practicante encontrado o null
+ */
+export const buscarPracticantePorDocumento = async (documento) => {
+	try {
+		const practicante = await prisma.practicante.findUnique({
+			where: { numero_documento: documento },
+			select: {
+				idPracticante: true,
+				numero_documento: true,
+				nombre: true,
+				correo: true,
+				telefono: true,
+			},
+		})
+		return practicante
+	} catch (error) {
+		console.error('❌ Error buscando practicante por documento:', error)
+		return null
+	}
+};

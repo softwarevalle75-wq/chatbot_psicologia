@@ -2,15 +2,12 @@ import {
 	getEstadoCuestionario,
 	saveEstadoCuestionario,
 	savePuntajeUsuario,
-	obtenerTelefonoPracticante,
 	obtenerPerfilPacienteParaInforme,
-	sendAutonomousMessage,
-	sendAutonomousDocument,
-	notificarTestCompletadoAPracticante,
 } from '../../queries/queries.js'
 
 import { interpretPsychologicalTest } from '../../RAG/psychological-interpreter.js'
 import { generateInterpretationPdf } from './reportPdf.js'
+import { guardarRutaPdf } from '../../helpers/pdfStore.js'
 
 const rtasDass21 = () => {
     return '0️⃣ No me ha ocurrido.\n    1️⃣ Me ha ocurrido un poco, o durante parte del tiempo.\n    2️⃣ Me ha ocurrido bastante, o durante una buena parte del tiempo.\n    3️⃣ Me ha ocurrido mucho, o la mayor parte del tiempo'
@@ -152,7 +149,7 @@ export const procesarDass21 = async (numeroUsuario, respuestas) => {
 				console.error('Error procesando resultados DASS-21', error)
 			}
 
-			return "✅ *Prueba completada con éxito.*\n\nGracias por completar la evaluación. Los resultados han sido enviados a tu practicante asignado."
+			return "✅ *Prueba completada con éxito.*\n\nGracias por completar la evaluación."
 		}
 
 		console.log('🔍 Guardando estado en BD:', JSON.stringify(estado, null, 2))
@@ -176,35 +173,13 @@ export const procesarDass21 = async (numeroUsuario, respuestas) => {
 
 const generarInformeDASS21Async = async (numeroUsuario, rawResults) => {
 	try {
-		const pdfTarget = (process.env.PDF_TARGET || 'practitioner').toLowerCase()
-		const sendPdfToPatient = pdfTarget === 'patient' || pdfTarget === 'both'
-		const sendPdfToPractitioner = pdfTarget === 'practitioner' || pdfTarget === 'both'
-
-		let telefonoPracticante = null
-		if (sendPdfToPractitioner) {
-			telefonoPracticante = await obtenerTelefonoPracticante(numeroUsuario)
-			if (telefonoPracticante) {
-				await sendAutonomousMessage(
-					telefonoPracticante,
-					'⏳ *Generando informe técnico...*\n\nEn breve recibirás el PDF con la interpretación.'
-				)
-			}
-		}
-
 		const resultadoInterpretacion = await interpretPsychologicalTest(
 			'dass21',
 			rawResults,
 			numeroUsuario
 		)
 
-		const fechaElaboracion = new Date().toLocaleString('es-CO')
 		const patientData = await obtenerPerfilPacienteParaInforme(numeroUsuario)
-		const nombrePaciente = [patientData?.nombres, patientData?.apellidos].filter(Boolean).join(' ').trim() || 'No disponible'
-		const documentoPaciente = patientData?.documento && patientData.documento !== 'No disponible'
-			? `${patientData?.tipoDocumento || 'Doc'} ${patientData.documento}`
-			: 'No disponible'
-		const edadPaciente = patientData?.edad || 'No disponible'
-		const telefonoPaciente = patientData?.telefonoPrincipal || numeroUsuario
 
 		const pdfPath = await generateInterpretationPdf({
 			numeroUsuario,
@@ -215,38 +190,8 @@ const generarInformeDASS21Async = async (numeroUsuario, rawResults) => {
 			patientData,
 		})
 
-		if (sendPdfToPatient) {
-			await sendAutonomousDocument(
-				numeroUsuario,
-				`📄 *Informe técnico generado*\n\n` +
-				`👤 *Paciente:* ${nombrePaciente}\n` +
-				`🪪 *Documento:* ${documentoPaciente}\n` +
-				`🎂 *Edad:* ${edadPaciente}\n` +
-				`📱 *Teléfono:* ${telefonoPaciente}\n` +
-				`🧪 *Prueba:* DASS-21\n` +
-				`🕒 *Fecha y hora de elaboración:* ${fechaElaboracion}`,
-				pdfPath
-			)
-		}
-
-		if (sendPdfToPractitioner) {
-			if (!telefonoPracticante) {
-				console.warn(`⚠️ PDF_TARGET=${pdfTarget} pero no hay practicante asignado para ${numeroUsuario}; no se envía PDF.`)
-			} else {
-				await sendAutonomousDocument(
-					telefonoPracticante,
-					`📄 *Informe técnico disponible*\n\n` +
-					`👤 *Paciente:* ${nombrePaciente}\n` +
-					`🪪 *Documento:* ${documentoPaciente}\n` +
-					`🎂 *Edad:* ${edadPaciente}\n` +
-					`📱 *Teléfono:* ${telefonoPaciente}\n` +
-					`🧪 *Prueba:* DASS-21\n` +
-					`🕒 *Fecha y hora de elaboración:* ${fechaElaboracion}`,
-					pdfPath
-				)
-				await notificarTestCompletadoAPracticante(numeroUsuario)
-			}
-		}
+		// Guardar ruta del PDF para envío por correo desde el flujo de documento
+		guardarRutaPdf(numeroUsuario, pdfPath, 'dass21')
 	} catch (error) {
 		console.error('❌ Error generando/enviando informe DASS-21:', error)
 	}
