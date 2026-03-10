@@ -71,6 +71,7 @@ async function crearUsuario() {
       segundoApellido: 'Dev',
       telefonoPersonal: TELEFONO,
       correo: `test_${Date.now()}@example.com`,
+      genero: 'Masculino',
       documento: `TEST_${Date.now()}`,
       tipoDocumento: 'CC',
       fechaNacimiento: new Date('2000-01-15'),

@@ -2,19 +2,18 @@
 
 import { addKeyword, utils, EVENTS } from '@builderbot/bot'
 import {
-	obtenerUsuario,
-	changeTest,
+  obtenerUsuario,
+  changeTest,
   resetearEstadoPrueba,
-	switchFlujo,
-	//switchAyudaPsicologica,
-	guardarPracticanteAsignado,
+  switchFlujo,
+  //switchAyudaPsicologica,
+  guardarPracticanteAsignado,
   perteneceUniversidad,
   verificarRolUsuario,
   usuarioTienePracticanteAsignado,
 } from '../queries/queries.js'
-//import { apiRegister } from './register/aiRegister.js'
-import { menuCuestionarios, parsearSeleccionTest} from './tests/controlTest.js'
-//import { apiAgend } from './agend/aiAgend.js'
+import { menuCuestionarios, parsearSeleccionTest } from './tests/controlTest.js'
+
 import { procesarDass21 } from './tests/dass21.js'
 import { procesarGHQ12 } from './tests/ghq12.js'
 // Importar el helper al inicio del archivo
@@ -22,12 +21,12 @@ import { verificarAutenticacionWeb } from '../helpers/auntenticarUsuario.js';
 import { adminMenuFlow } from './roles/adminMenuFlow.js'
 
 import { practMenuFlow, practEsperarResultados } from './roles/practMenuFlow.js'
-import { recolectarGeneroFlow } from './roles/cambioRolFlow.js'
-import { 
-  buscarPracticanteDisponible, 
-  guardarCita, 
-  formatearMensajeCita, 
-  formatearHorariosDisponibles 
+import { completarPerfilPracticanteFlow } from './roles/cambioRolFlow.js'
+import {
+  buscarPracticanteDisponible,
+  guardarCita,
+  formatearMensajeCita,
+  formatearHorariosDisponibles
 } from '../helpers/agendHelper.js';
 import Prisma from '@prisma/client'
 export const prisma = new Prisma.PrismaClient()
@@ -40,7 +39,7 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
       // console.log('ctx.from:', ctx.from)
       // console.log('ctx.key:', JSON.stringify(ctx.key, null, 2))
       // console.log('🔍 ==============================')
-      
+
       // 1. VERIFICAR FLUJOS ACTIVOS CRÍTICOS (prioridad máxima)
       let currentFlow = await state.get('currentFlow');
 
@@ -91,14 +90,15 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
         return gotoFlow(agendFlow)
       }
       if (currentFlow === 'completandoDatos') {
-        console.log('🔀 Practicante completando datos, redirigiendo a recolectarGeneroFlow')
-        return gotoFlow(recolectarGeneroFlow)
+        console.log('🔀 Practicante completando datos, redirigiendo a completarPerfilPracticanteFlow')
+        return gotoFlow(completarPerfilPracticanteFlow)
       }
 
-      // 2. ⭐ NUEVO: VERIFICAR SI ES PRACTICANTE PRIMERO (ANTES DE AUTENTICAR)
-      if (currentFlow === 'admin'){
-        console.log('🔀 Ya está en flujo admin, redirigiendo a adminMenuFlow')
-        return gotoFlow(adminMenuFlow)
+      // 2. ⭐ NUEVO: VERIFICAR SI ES PRACTICANTE/ADMIN PRIMERO (ANTES DE AUTENTICAR)
+      if (currentFlow && currentFlow.startsWith('admin')) {
+        // Si ya está en cualquiera de los flujos admin (menu, edición, asignación), no interferir.
+        console.log(`🔀 Usuario en flujo admin (${currentFlow}), no redirigir.`);
+        return;
       }
 
       // Reutilizar cache si ya consultamos el rol en la detección de cambio
@@ -132,71 +132,72 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
               currentFlow: 'completandoDatos',
               cambioRol: { telefono: ctx.from, nuevoRol: 'practicante' }
             });
-
-            return gotoFlow(recolectarGeneroFlow);
+            return gotoFlow(completarPerfilPracticanteFlow);
           }
 
           const usuarioPracticante = {
             tipo: 'practicante',
-            data: { 
+            data: {
               idPracticante: practicanteCompleto.idPracticante, // Ahora siempre existe
               nombre: practicanteCompleto.nombre || 'Sin nombre',
-              telefono: ctx.from, 
-              rol: 'practicante' 
+              telefono: ctx.from,
+              rol: 'practicante'
             },
             flujo: 'practMenuFlow'
           };
 
           console.log('👨‍⚕️ Practicante encontrado:', JSON.stringify(usuarioPracticante, null, 2));
-          
-          await state.update({ 
-            initialized: true, 
-            user: usuarioPracticante 
+
+          await state.update({
+            initialized: true,
+            user: usuarioPracticante
           });
-          
+
           return await handlePracticanteFlow(ctx, usuarioPracticante, state, gotoFlow, flowDynamic);
         }
 
         // ===== ADMINISTRADOR =====
         if (rolInfo.rol === 'admin') {
-          console.log('👑 Administrador detectado -> Enviando a flujo de admin SIN autenticación');
+          // Solo redirigir al menú si no estamos ya en un flujo administrativo
+          if (currentFlow && currentFlow.startsWith('admin')) {
+            console.log(`🔀 Admin ya en flujo (${currentFlow}), ignorando redirección de welcomeFlow.`);
+            return;
+          }
 
+          console.log('👑 Administrador detectado -> Enviando a flujo de admin SIN autenticación');
           const usuarioAdmin = {
             tipo: 'admin',
-            data: { 
-              telefono: ctx.from, 
+            data: {
+              telefono: ctx.from,
               rol: 'admin',
               nombre: 'Administrador'
             },
             flujo: 'adminMenuFlow'
           };
 
-          // console.log('👑 Admin a guardar:', JSON.stringify(usuarioAdmin, null, 2));
-          
-          await state.update({ 
-            initialized: true, 
+          await state.update({
+            initialized: true,
             user: usuarioAdmin,
-            currentFlow: 'admin'
+            currentFlow: 'admin_menu'
           });
-          
-          console.log('🔀 Llamando handleAdminFlow...'); 
-          const resultado = await handleAdminFlow(ctx, usuarioAdmin, state, gotoFlow, flowDynamic);
-          return resultado;
+
+          console.log('🔀 Redirigiendo a adminMenuFlow...');
+          return gotoFlow(adminMenuFlow);
         }
       }
 
       // 3. VERIFICAR AUTENTICACIÓN WEB SOLO PARA USUARIOS NORMALES      
       const authUser = await verificarAutenticacionWeb(ctx.from, flowDynamic);
       if (!authUser) return; // Si no está autenticado, parar aquí
-      
+
       // 4. CREAR OBJETO USER CON DATOS AUTENTICADOS
       const usuarioAutenticado = {
         tipo: 'usuario',
         data: authUser,
         flujo: authUser.flujo || 'menuFlow'
       };
-      console.log('👤 Usuario autenticado:', usuarioAutenticado);      
-      
+      console.log('👤 Usuario autenticado:', usuarioAutenticado);
+
       // 5. ACTUALIZAR ESTADO CON USUARIO
       await state.update({ initialized: true, user: usuarioAutenticado });
 
@@ -218,7 +219,7 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
       // await switchFlujo(ctx.from, 'menuFlow');
       // await state.update({ currentFlow: 'menu' });
       // return gotoFlow(menuFlow);
-      
+
     } catch (e) {
       console.error('❌ welcomeFlow error:', e);
       return gotoFlow(menuFlow);
@@ -239,7 +240,7 @@ async function handlePracticanteFlow(ctx, user, state, gotoFlow) {
     // notificarTestCompletadoAPracticante actualiza practicante.flujo a 'practMenuFlow'
     // cuando el paciente termina — esa es la señal de salida.
     const pract = await prisma.practicante.findUnique({
-      where:  { telefono: ctx.from },
+      where: { telefono: ctx.from },
       select: { flujo: true },
     });
 
@@ -259,57 +260,32 @@ async function handlePracticanteFlow(ctx, user, state, gotoFlow) {
 }
 
 //--------------------------------------------------------------------------------------------------------------
-// Función auxiliar para manejar flujo de administradores
-//--------------------------------------------------------------------------------------------------------------
-
-async function handleAdminFlow(ctx, user, state, gotoFlow) {
-
-  // await state.update({ 
-  //   currentFlow: 'admin',
-  //   user: user  // ← Asegurarse de guardar el user
-  // });
-
-  // const currentFlow = await state.get('currentFlow');
-  
-  console.log('🔑 Admin detectado -> adminEntryFlow');
-  await state.update({ currentFlow: 'admin', user: user });
-
-  // if (currentFlow === 'admin') {
-  //   console.log('🚫 Admin ya en menú, no interferir con welcomeFlow');
-  //   return;
-  // }
-
-  return gotoFlow(adminMenuFlow);
-}
-
-
-//--------------------------------------------------------------------------------------------------------------
 // Función auxiliar para manejar flujo de usuarios normales
 //--------------------------------------------------------------------------------------------------------------
 
 
 async function handleUserFlow(ctx, user, state, gotoFlow) {
   console.log('📋 Flujo BD:', user.flujo);
-  
+
   switch (user.flujo) {
     // case 'register':
     //   console.log('📝 Usuario en registro -> registerFlow');
     //   await state.update({ currentFlow: 'register' });
     //   return gotoFlow(registerFlow);
-      
+
     // case 'consentimiento_rechazado':
     //   console.log('❌ Usuario rechazó consentimiento -> reconsentFlow');
     //   return gotoFlow(reconsentFlow);
-      
+
     case 'menuFlow':
       console.log('📋 -> menuFlow');
       await state.update({ currentFlow: 'menu' });
       return gotoFlow(menuFlow);
-      
+
     case 'testFlow':
       if (await state.get('currentFlow') !== 'test') {
         console.log('📝 -> testFlow (desde welcomeFlow)');
-        await state.update({ 
+        await state.update({
           currentFlow: 'test',
           justInitializedTest: true,
           user: user,
@@ -320,12 +296,12 @@ async function handleUserFlow(ctx, user, state, gotoFlow) {
         console.log('🔄 Ya estamos en testFlow, no redirigir');
         return;
       }
-      
+
     case 'agendFlow':
       console.log('📅 -> agendFlow');
       await state.update({ currentFlow: 'agenda' });
       return gotoFlow(agendFlow);
-      
+
     case 'testSelectionFlow':
       if (await state.get('currentFlow') !== 'testSelection') {
         console.log('🎯 -> testSelectionFlow');
@@ -355,7 +331,7 @@ export const testFlow = addKeyword(EVENTS.ACTION)
     const justInitialized = state.get('justInitializedTest');
     const testActualFromState = state.get('testActual');
     const currentFlow = state.get('currentFlow');
-    
+
     console.log('🔥 TESTFLOW INIT - Current flow:', currentFlow);
     console.log('🔥 TESTFLOW INIT - Just initialized:', justInitialized);
 
@@ -390,18 +366,18 @@ export const testFlow = addKeyword(EVENTS.ACTION)
     if (justInitialized) {
       console.log('🚀 Enviando primera pregunta del test');
       await state.update({ justInitializedTest: false });
-      
+
       let primeraPregunta;
       if (testActual === 'dass21') {
         primeraPregunta = await procesarDass21(ctx.from, null);
       } else if (testActual === 'ghq12') {
         primeraPregunta = await procesarGHQ12(ctx.from, null);
       }
-      
+
       if (primeraPregunta?.trim()) {
         console.log('📤 Primera pregunta enviada');
         await flowDynamic(primeraPregunta);
-        
+
         // 🔥 CONFIGURAR LISTENER PARA CUALQUIER MENSAJE
         await state.update({ waitingForTestResponse: true });
       }
@@ -424,9 +400,9 @@ export const testResponseFlow = addKeyword(['0', '1', '2', '3'])
   .addAction(async (ctx, { flowDynamic, gotoFlow, state }) => {
     const currentFlow = await state.get('currentFlow');
     const waitingForResponse = await state.get('waitingForTestResponse');
-    
+
     console.log('🔥 TESTRESPONSE - Flow:', currentFlow, 'Waiting:', waitingForResponse);
-    
+
     if (currentFlow === 'test' && waitingForResponse) {
       console.log('🔄 Procesando respuesta de test:', ctx.body);
       await procesarRespuestaTest(ctx, { flowDynamic, gotoFlow, state });
@@ -437,7 +413,7 @@ export const testResponseFlow = addKeyword(['0', '1', '2', '3'])
 export const procesarRespuestaTest = async (ctx, { flowDynamic, gotoFlow, state, provider }) => {
   const user = state.get('user');
   const testActual = user?.testActual || state.get('testActual');
-  
+
   if (!testActual) {
     console.log('❌ No hay test en curso');
     await flowDynamic('❌ Error: no hay test activo.');
@@ -460,7 +436,7 @@ export const procesarRespuestaTest = async (ctx, { flowDynamic, gotoFlow, state,
   if (typeof resultado === 'string') {
     await flowDynamic(resultado);
 
-    if(resultado.includes('completada')) {
+    if (resultado.includes('completada')) {
       console.log('🎉 Test completado, limpiando estado');
       await state.update({
         user: user,
@@ -516,27 +492,27 @@ export const testSelectionFlow = addKeyword(utils.setEvent('TEST_SELECTION_FLOW'
 
         // Resetear estado prueba
         await resetearEstadoPrueba(ctx.from, tipoTest)
-        
+
         // Configurar test en BD
         await changeTest(ctx.from, tipoTest);
-        
+
         // Actualizar estados
         user.testActual = tipoTest;
-        await state.update({ 
+        await state.update({
           user: user,
           currentFlow: 'test',
           testActual: tipoTest,
-          justInitializedTest: true 
+          justInitializedTest: true
         });
-        
+
         // Cambiar flujo en BD
         await switchFlujo(ctx.from, 'testFlow');
 
         await flowDynamic(`✅ Iniciando cuestionario ${testName}...`);
         console.log('🚀 Redirigiendo a testFlow con bandera activa');
-        
+
         return gotoFlow(testFlow);
-        
+
       } catch (error) {
         console.error('❌ Error en testSelectionFlow:', error);
         await flowDynamic('❌ Error. Regresando al menú...');
@@ -553,17 +529,17 @@ export const testSelectionFlow = addKeyword(utils.setEvent('TEST_SELECTION_FLOW'
 //     console.log('🔵 ctx.body:', ctx.body);
 //     const registerResponse = await apiRegister(ctx.from, ctx.body)
 //     await flowDynamic(registerResponse)
-    
+
 //     // Si el registro fue exitoso, ir al flujo de tratamiento de datos
 //     if (registerResponse.includes('Registrado')) {
 // 	console.log('🔵 registerResponse:', registerResponse);
-      
+
 //       // Actualizar estado para tratamiento de datos
 //       await state.update({ 
 //         currentFlow: 'dataConsent',
 //         user: { ...await state.get('user'), flujo: 'dataConsentFlow' }
 //       });
-      
+
 //       return gotoFlow(dataConsentFlow)
 //     }
 //   }
@@ -580,23 +556,23 @@ export const pedirNumeroPracticanteAsignadoFlow = addKeyword(utils.setEvent('PED
     'Por favor, proporciona el número de tu psicologo asignado \n\nSi no tienes el número, puedes solicitarlo a tu psicologo.',
     { capture: true },
     async (ctx, { flowDynamic, gotoFlow, state, fallBack }) => {
-      const numeroPracticanteAsignado = (ctx.body || '').replace(/\D/g, '');  
-      
+      const numeroPracticanteAsignado = (ctx.body || '').replace(/\D/g, '');
+
       console.log('🔵 numeroPracticanteAsignado:', numeroPracticanteAsignado);
-      
-      if (numeroPracticanteAsignado.length < 8){
+
+      if (numeroPracticanteAsignado.length < 8) {
         await flowDynamic('El número debe tener al menos 8 dígitos.');
         return fallBack();
-      } 
-      
+      }
+
       try {
         // Guardar el número del practicante asignado
         await guardarPracticanteAsignado(ctx.from, numeroPracticanteAsignado);
-        
+
         await flowDynamic('✅ Número de practicante asignado guardado correctamente.');
-        
+
         await switchFlujo(ctx.from, 'menuFlow');
-        await state.update({ 
+        await state.update({
           currentFlow: 'menu',
           user: { ...await state.get('user'), flujo: 'menuFlow' }
         });
@@ -628,37 +604,37 @@ export const dataConsentFlow = addKeyword(utils.setEvent('DATA_CONSENT_FLOW'))
     { capture: true },
     async (ctx, { flowDynamic, gotoFlow, state, endFlow }) => {
       const respuesta = ctx.body.trim().toLowerCase();
-      
+
       if (respuesta === 'si') {
         // Usuario acepta el tratamiento de datos
-        await state.update({ 
+        await state.update({
           currentFlow: 'numeroPracticanteAsignado',
           user: { ...await state.get('user'), flujo: 'pedirNumeroPracticanteAsignadoFlow' }
         });
-        
+
         // Actualizar flujo del usuario en BD
         await switchFlujo(ctx.from, 'pedirNumeroPracticanteAsignadoFlow');
-        
+
         await flowDynamic('✅ *Consentimiento aceptado*\n\nGracias por aceptar el tratamiento de datos. Ahora puedes acceder a todos nuestros servicios.');
-        
+
         return gotoFlow(pedirNumeroPracticanteAsignadoFlow);
-        
+
       } else if (respuesta === 'no') {
         // Usuario rechaza el tratamiento de datos
         // Marcar en BD que rechazó el consentimiento
         await switchFlujo(ctx.from, 'consentimiento_rechazado');
-        
+
         await flowDynamic('❌ *Lo sentimos, pero no puedes continuar si no aceptas el tratamiento de datos.*\n\nSi cambias de opinión, puedes escribirnos nuevamente en cualquier momento.\n\n¡Que tengas un buen día! 👋');
-        
+
         return endFlow();
-        
+
       } else {
         // Respuesta inválida
         await flowDynamic('❌ Por favor responde únicamente *"si"* para aceptar o *"no"* para rechazar el tratamiento de datos.');
         return gotoFlow(dataConsentFlow);
       }
     }
-)
+  )
 //---------------------------------------------------------------------------------------------------------
 
 // Flujo para usuarios que rechazaron consentimiento y quieren reconsiderar
@@ -673,24 +649,24 @@ export const reconsentFlow = addKeyword(utils.setEvent('RECONSENT_FLOW'))
     { capture: true },
     async (ctx, { flowDynamic, gotoFlow, state, endFlow }) => {
       const respuesta = ctx.body.trim().toLowerCase();
-      
+
       if (respuesta === 'acepto') {
         // Usuario acepta ahora
-        await state.update({ 
+        await state.update({
           currentFlow: 'numeroPracticanteAsignado',
           user: { ...await state.get('user'), flujo: 'pedirNumeroPracticanteAsignadoFlow' }
         });
-        
+
         await switchFlujo(ctx.from, 'pedirNumeroPracticanteAsignadoFlow');
-        
+
         await flowDynamic('✅ *Consentimiento aceptado*\n\nGracias por aceptar el tratamiento de datos. Ahora puedes acceder a todos nuestros servicios.');
-        
+
         return gotoFlow(pedirNumeroPracticanteAsignadoFlow);
-        
+
       } else {
         // Cualquier otra respuesta = rechaza de nuevo
         await flowDynamic('❌ *Debes escribir "acepto" para continuar.*\n\nSi no deseas aceptar el tratamiento de datos, no podrás usar nuestros servicios.\n\n¡Que tengas un buen día! 👋');
-        
+
         return endFlow();
       }
     }
@@ -699,8 +675,8 @@ export const reconsentFlow = addKeyword(utils.setEvent('RECONSENT_FLOW'))
 //---------------------------------------------------------------------------------------------------------
 
 const validarRespuestaMenu = (respuesta, opcionesValidas) => {
-    const resp = respuesta?.toString().trim();
-    return opcionesValidas.includes(resp) ? resp : null;
+  const resp = respuesta?.toString().trim();
+  return opcionesValidas.includes(resp) ? resp : null;
 };
 
 export const menuFlow = addKeyword(utils.setEvent('MENU_FLOW'))
@@ -778,12 +754,12 @@ export const menuFlow = addKeyword(utils.setEvent('MENU_FLOW'))
           //return fallBack();
           //--
           //Agendar cita
-          
+
         } else {
           // Opción inválida
           await flowDynamic('❌ Opción no válida. Por favor responde con:\n' +
-          '🔹 1 - Para realizar cuestionarios\n' +
-          '🔹 2 - Para agendar cita');        
+            '🔹 1 - Para realizar cuestionarios\n' +
+            '🔹 2 - Para agendar cita');
           return fallBack();
         }
       } catch (error) {
@@ -799,8 +775,8 @@ export const menuFlow = addKeyword(utils.setEvent('MENU_FLOW'))
 export const esDeUniversidadFlow = addKeyword(utils.setEvent('PERTENECE_UNIVERSIDAD'))
   .addAction(async (ctx, { state }) => {
     console.log("(me cago en la puta)")
-    await switchFlujo (ctx.from, 'esDeUniversidadFlow')
-    await state.update({ currentFlow: 'esDeUniversidad' });    
+    await switchFlujo(ctx.from, 'esDeUniversidadFlow')
+    await state.update({ currentFlow: 'esDeUniversidad' });
     console.log('🟢 esDeUniversidadFlow Inicializado para:', ctx.from);
   })
   .addAnswer(
@@ -815,7 +791,7 @@ export const esDeUniversidadFlow = addKeyword(utils.setEvent('PERTENECE_UNIVERSI
       const carrera = ctx.body.trim();
       console.log(ctx.body)
 
-      if(!carrera || carrera.length < 4 && carrera.length > 50){
+      if (!carrera || carrera.length < 4 && carrera.length > 50) {
         await flowDynamic('❌ Debes ingresar una *carrera válida*')
         return fallBack();
       }
@@ -828,15 +804,15 @@ export const esDeUniversidadFlow = addKeyword(utils.setEvent('PERTENECE_UNIVERSI
   .addAnswer(
     'Ahora, indica tú jornada:',
     { capture: true },
-    async (ctx, { flowDynamic, state, fallBack}) => {
+    async (ctx, { flowDynamic, state, fallBack }) => {
       const jornada = ctx.body.trim();
 
-      if(!jornada || jornada.length < 4 && jornada.length > 50){
+      if (!jornada || jornada.length < 4 && jornada.length > 50) {
         await flowDynamic('❌ Debes ingresar una *jornada válida* _(diurna / nocturna)_')
         return fallBack();
       }
 
-      await state.update ({ jornada });
+      await state.update({ jornada });
       console.log(`✅ Jornada capturada para: ${ctx.from}`)
     }
   )
@@ -844,10 +820,10 @@ export const esDeUniversidadFlow = addKeyword(utils.setEvent('PERTENECE_UNIVERSI
   .addAnswer(
     'Por último, indica tú semestre (1-9):',
     { capture: true },
-    async (ctx, { flowDynamic, state, fallBack}) => {
+    async (ctx, { flowDynamic, state, fallBack }) => {
       const semestre = ctx.body.trim();
 
-      if(!semestre || isNaN(semestre) || parseInt(semestre) < 1 || parseInt(semestre) > 9){
+      if (!semestre || isNaN(semestre) || parseInt(semestre) < 1 || parseInt(semestre) > 9) {
         await flowDynamic('❌ Debes ingresar un *semestre válido* _(1-9)_ ')
         return fallBack();
       }
@@ -865,7 +841,7 @@ export const esDeUniversidadFlow = addKeyword(utils.setEvent('PERTENECE_UNIVERSI
         semestre: await state.get('semestre'),
       };
 
-      try{
+      try {
         // Aqui se guarda en BD
         await perteneceUniversidad(ctx.from, datosUsuario);
 
@@ -891,17 +867,11 @@ export const esDeUniversidadFlow = addKeyword(utils.setEvent('PERTENECE_UNIVERSI
         console.error('❌ Error al guardar datos:', error)
         await flowDynamic('❌ Hubo un problema al guardar tus datos, intenta nuevamente')
       }
-  })
+    })
 
 //---------------------------------------------------------------------------------------------------------
 
-export const assistantFlow = addKeyword(utils.setEvent('ASSISTANT_FLOW')).addAction(
-	async (ctx, { gotoFlow }) => {
-		console.log('assistantFlow depreciado - redirigiendo a menuFlow')
-		await switchFlujo(ctx.from, 'menuFlow')
-		return gotoFlow(menuFlow)
-	}
-)
+
 
 export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
   .addAction(async (ctx, { state }) => {
@@ -923,12 +893,12 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
     async (ctx, { flowDynamic, state, fallBack }) => {
       const diaSeleccionado = ctx.body.trim();
       const diasValidos = ['1', '2', '3', '4', '5', '6'];
-      
+
       if (!diasValidos.includes(diaSeleccionado)) {
         await flowDynamic('❌ Opción no válida. Por favor selecciona un número del 1 al 6.');
         return fallBack();
       }
-      
+
       const mapaDias = {
         '1': 'LUNES',
         '2': 'MARTES',
@@ -937,14 +907,14 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
         '5': 'VIERNES',
         '6': 'SABADO'
       };
-      
+
       const diaNombre = mapaDias[diaSeleccionado];
-      
-      await state.update({ 
+
+      await state.update({
         diaSeleccionado: diaNombre,
         diaSeleccionadoNumero: diaSeleccionado
       });
-      
+
       console.log('📅 Día seleccionado:', diaNombre);
     }
   )
@@ -967,12 +937,12 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
       console.log('🕐 Horario recibido:', ctx.body);
       const horarioSeleccionado = ctx.body.trim();
       const horariosValidos = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
-      
+
       if (!horariosValidos.includes(horarioSeleccionado)) {
         await flowDynamic('❌ Opción no válida. Por favor selecciona un número del 1 al 9.');
         return fallBack();
       }
-      
+
       const mapaHorarios = {
         '1': { inicio: 8, fin: 9, nombre: '8:00 - 9:00 AM', minInicio: 480, minFin: 540 },
         '2': { inicio: 9, fin: 10, nombre: '9:00 - 10:00 AM', minInicio: 540, minFin: 600 },
@@ -984,31 +954,31 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
         '8': { inicio: 15, fin: 16, nombre: '3:00 - 4:00 PM', minInicio: 900, minFin: 960 },
         '9': { inicio: 16, fin: 17, nombre: '4:00 - 5:00 PM', minInicio: 960, minFin: 1020 }
       };
-      
+
       const horario = mapaHorarios[horarioSeleccionado];
-      
-      await state.update({ 
+
+      await state.update({
         horarioInicio: horario.inicio,
         horarioFin: horario.fin,
         horarioNombre: horario.nombre,
         minInicio: horario.minInicio,
         minFin: horario.minFin
       });
-      
+
       console.log('🕐 Horario guardado:', horario);
     }
   )
   // PASO 3: BUSCAR DISPONIBILIDAD
   .addAction(async (ctx, { flowDynamic, gotoFlow, state }) => {
     console.log('🔵 Iniciando búsqueda integrada...');
-    
+
     const diaSeleccionado = await state.get('diaSeleccionado');
     const horarioInicio = await state.get('horarioInicio');
     const horarioFin = await state.get('horarioFin');
     const horarioNombre = await state.get('horarioNombre');
     const fechaSolicitada = await state.get('fechaSolicitada');
     const diaNumero = await state.get('diaSeleccionadoNumero');
-    
+
     console.log('📊 Estado completo:', { diaSeleccionado, horarioInicio, horarioFin, diaNumero });
     const mapaDiasTexto = {
       '1': 'Lunes',
@@ -1018,34 +988,34 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
       '5': 'Viernes',
       '6': 'Sábado'
     };
-    
+
     const diaTexto = mapaDiasTexto[diaNumero];
-    
+
     try {
       await flowDynamic('🔍 Buscando disponibilidad...');
       console.log('🔎 Llamando buscarPracticanteDisponible...');
-      
+
       const practicantesDisponibles = await buscarPracticanteDisponible(
-        diaSeleccionado, 
-        horarioInicio, 
+        diaSeleccionado,
+        horarioInicio,
         horarioFin,
         fechaSolicitada
       );
-      
+
       console.log('✅ Resultado búsqueda:', practicantesDisponibles?.length || 0);
-      
+
       if (practicantesDisponibles && practicantesDisponibles.length > 0) {
         console.log('✅ HAY DISPONIBILIDAD');
-        
-        await state.update({ 
+
+        await state.update({
           practicantesDisponibles: practicantesDisponibles,
           practicanteSeleccionado: practicantesDisponibles[0],
           hayDisponibilidad: true
         });
-        
+
         const mensajeHorarios = formatearHorariosDisponibles(practicantesDisponibles);
         await flowDynamic(mensajeHorarios);
-        
+
         await flowDynamic(
           '📋 *RESUMEN DE TU CITA*\n\n' +
           `📅 *Día:* ${diaTexto}\n` +
@@ -1056,14 +1026,14 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
           '❌ *2* - No, volver al menú\n' +
           '📅 *3* - Cambiar día/horario'
         );
-        
+
       } else {
         console.log('❌ NO HAY DISPONIBILIDAD');
-        
-        await state.update({ 
+
+        await state.update({
           hayDisponibilidad: false
         });
-        
+
         await flowDynamic(
           '❌ Lo sentimos, no hay psicólogos disponibles en este horario.\n\n' +
           '¿Qué deseas hacer?\n\n' +
@@ -1071,7 +1041,7 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
           '🔹 2 - Volver al menú principal'
         );
       }
-      
+
     } catch (error) {
       console.error('❌ ERROR:', error);
       console.error('Stack:', error.stack);
@@ -1088,27 +1058,27 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
     async (ctx, { flowDynamic, gotoFlow, state, fallBack }) => {
       const respuesta = ctx.body.trim();
       const hayDisponibilidad = await state.get('hayDisponibilidad');
-      
+
       console.log('📥 Respuesta recibida:', respuesta, '| Disponibilidad:', hayDisponibilidad);
-      
+
       if (hayDisponibilidad) {
         // ==== CASO: HAY DISPONIBILIDAD (opciones 1, 2, 3) ====
-        
+
         if (respuesta === '1') {
           // ✅ CONFIRMAR CITA
           try {
             await flowDynamic('💾 Guardando tu cita...');
-            
+
             const diaSeleccionado = await state.get('diaSeleccionado');
             const horarioInicio = await state.get('horarioInicio');
             const horarioFin = await state.get('horarioFin');
             const fechaSolicitada = await state.get('fechaSolicitada');
             const practicanteSeleccionado = await state.get('practicanteSeleccionado');
-            
+
             if (!practicanteSeleccionado) {
               throw new Error('No hay practicante seleccionado');
             }
-            
+
             // Guardar la cita en BD
             const citaData = await guardarCita(
               ctx.from,
@@ -1118,19 +1088,19 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
               horarioFin,
               fechaSolicitada
             );
-            
+
             // Formatear y enviar mensaje de confirmación
             const mensajeConfirmacion = formatearMensajeCita(citaData);
             await flowDynamic(mensajeConfirmacion);
-            
+
             await flowDynamic(
               '\n¿Qué deseas hacer ahora?\n\n' +
               '🔹 1 - Realizar cuestionarios psicológicos\n' +
               '🔹 2 - Volver al menú principal'
             );
-            
+
             // Actualizar estado para capturar siguiente respuesta
-            await state.update({ 
+            await state.update({
               citaConfirmada: true,
               diaSeleccionado: null,
               horarioInicio: null,
@@ -1139,7 +1109,7 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
               practicantesDisponibles: null,
               hayDisponibilidad: null
             });
-            
+
           } catch (error) {
             console.error('❌ Error guardando cita:', error);
 
@@ -1157,19 +1127,19 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
 
             await flowDynamic(
               '❌ Error al guardar la cita.\n\n' +
-              (error.message === 'Usuario no encontrado' 
-                ? 'No se encontró tu información. Por favor, regístrate primero.' 
+              (error.message === 'Usuario no encontrado'
+                ? 'No se encontró tu información. Por favor, regístrate primero.'
                 : 'Ocurrió un error. Por favor, intenta nuevamente.')
             );
             await state.update({ currentFlow: 'menu' });
             await switchFlujo(ctx.from, 'menuFlow');
             return gotoFlow(menuFlow);
           }
-          
+
         } else if (respuesta === '2') {
           // ❌ CANCELAR - Volver al menú
           await flowDynamic('👋 Entendido. Volviendo al menú principal...');
-          await state.update({ 
+          await state.update({
             currentFlow: 'menu',
             diaSeleccionado: null,
             horarioInicio: null,
@@ -1180,7 +1150,7 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
           });
           await switchFlujo(ctx.from, 'menuFlow');
           return gotoFlow(menuFlow);
-          
+
         } else if (respuesta === '3') {
           // 🔄 CAMBIAR - Reiniciar proceso
           await state.update({
@@ -1194,19 +1164,19 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
           await flowDynamic('🔄 Perfecto. Selecciona nuevamente el día y horario...');
           await switchFlujo(ctx.from, 'agendFlow');
           return gotoFlow(agendFlow);
-          
+
         } else {
           await flowDynamic('❌ Opción no válida. Por favor selecciona 1, 2 o 3.');
           return fallBack();
         }
-        
+
       } else {
         // ==== CASO: NO HAY DISPONIBILIDAD (opciones 1, 2) ====
-        
+
         if (respuesta === '1') {
           // ✅ Seleccionar otro horario
           console.log('🔄 Usuario elige cambiar día/horario');
-          
+
           await state.update({
             diaSeleccionado: null,
             horarioInicio: null,
@@ -1215,18 +1185,18 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
             practicantesDisponibles: null,
             hayDisponibilidad: null
           });
-          
+
           await flowDynamic('🔄 Perfecto. Selecciona nuevamente el día y horario...');
           await switchFlujo(ctx.from, 'agendFlow');
           return gotoFlow(agendFlow);
-          
+
         } else if (respuesta === '2') {
           // ✅ Volver al menú
           console.log('👋 Usuario vuelve al menú');
-          
+
           await flowDynamic('👋 Volviendo al menú principal...');
-          
-          await state.update({ 
+
+          await state.update({
             currentFlow: 'menu',
             diaSeleccionado: null,
             horarioInicio: null,
@@ -1235,10 +1205,10 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
             practicantesDisponibles: null,
             hayDisponibilidad: null
           });
-          
+
           await switchFlujo(ctx.from, 'menuFlow');
           return gotoFlow(menuFlow);
-          
+
         } else {
           await flowDynamic('❌ Opción no válida. Por favor selecciona 1 o 2.');
           return fallBack();
@@ -1252,34 +1222,34 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
     { capture: true },
     async (ctx, { flowDynamic, gotoFlow, state, fallBack }) => {
       const citaConfirmada = await state.get('citaConfirmada');
-      
+
       // Solo procesar si hay una cita confirmada
       if (!citaConfirmada) {
         return;
       }
-      
+
       const msg = ctx.body.trim();
-      
+
       if (msg === '1') {
         // Hacer cuestionarios
         await flowDynamic(menuCuestionarios());
         await switchFlujo(ctx.from, 'testSelectionFlow');
-        await state.update({ 
+        await state.update({
           currentFlow: 'testSelection',
           citaConfirmada: null
         });
         return gotoFlow(testSelectionFlow);
-        
+
       } else if (msg === '2') {
         // Volver al menú
         await flowDynamic('✅ Perfecto. Regresando al menú principal...');
-        await state.update({ 
+        await state.update({
           currentFlow: 'menu',
           citaConfirmada: null
         });
         await switchFlujo(ctx.from, 'menuFlow');
         return gotoFlow(menuFlow);
-        
+
       } else {
         await flowDynamic(
           '❌ Opción no válida. Por favor responde:\n\n' +
@@ -1298,10 +1268,10 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
 export const completarDatosFlow = addKeyword(['completar datos'])
   .addAction(async (ctx, { flowDynamic, state, gotoFlow }) => {
     console.log('🔄 Usuario solicita completar datos:', ctx.from);
-    
+
     // Verificar si el usuario tiene rol de practicante pero no datos completos
     const rolInfo = await verificarRolUsuario(ctx.from);
-    
+
     if (!rolInfo || rolInfo.rol !== 'practicante') {
       await flowDynamic(
         '❌ Esta función solo está disponible para practicantes que están en proceso de configuración.\n\n' +
@@ -1309,12 +1279,12 @@ export const completarDatosFlow = addKeyword(['completar datos'])
       );
       return;
     }
-    
+
     // Verificar si ya existe en tabla practicante
     const practicanteCompleto = await prisma.practicante.findUnique({
       where: { telefono: ctx.from }
     });
-    
+
     if (practicanteCompleto) {
       await flowDynamic(
         '✅ ¡Tu perfil ya está completo!\n\n' +
@@ -1322,20 +1292,20 @@ export const completarDatosFlow = addKeyword(['completar datos'])
       );
       return;
     }
-    
+
     // Si está pendiente, redirigir al flujo de recolección
     await flowDynamic(
       '🔄 *Reanudando proceso de completar datos*\n\n' +
       'Voy a ayudarte a completar tu perfil de practicante.'
     );
-    
+
     // Guardar en estado que estamos en proceso de completar datos
-    await state.update({ 
+    await state.update({
       currentFlow: 'completandoDatos',
       cambioRol: { telefono: ctx.from, nuevoRol: 'practicante' }
     });
-    
-    return gotoFlow(recolectarGeneroFlow);
+
+    return gotoFlow(completarPerfilPracticanteFlow);
   });
 
 //---------------------------------------------------------------------------------------------------------

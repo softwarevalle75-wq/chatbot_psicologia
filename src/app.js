@@ -1,50 +1,43 @@
 import { createBot, createProvider, createFlow } from "@builderbot/bot";
 import { MysqlAdapter as Database } from "@builderbot/database-mysql";
 import { BaileysProvider as Provider } from "builderbot-provider-sherpa";
-import { 
-	welcomeFlow, 
-	//registerFlow, 
+import {
+	welcomeFlow,
 	dataConsentFlow,
 	reconsentFlow,
 	esDeUniversidadFlow,
-	menuFlow, 
-	testSelectionFlow, 
+	menuFlow,
+	testSelectionFlow,
 	testFlow,
-	agendFlow,  
-	assistantFlow, 
+	agendFlow,
 	pedirNumeroPracticanteAsignadoFlow,
-	completarDatosFlow
 } from "./flows/flows.js";
-
-// Importar flujos de autenticación web (temporalmente comentado)
-// import { 
-	//	welcomeAuthFlow, 
-	//	checkAuthFlow 
-	// } from "./flows/authFlow.js";
-	
-	import {
-		adminEntryFlow,
-		adminMenuFlow,
-		adminPedirTelefonoFlow,
-		adminAsignarRolFlow,
-	} from './flows/roles/adminMenuFlow.js'
-	import { menuMiddleware } from './flows/roles/menuMiddleware.js';
-	import { 
-		practMenuFlow, 
-		practOfrecerTestFlow__ElegirTest, 
-		practOfrecerTestFlow__PedirTelefono, 
-		practConsejosFlow,
-		practEsperarResultados
-	} from './flows/roles/practMenuFlow.js'
 
 
 import {
-	recolectarGeneroFlow,
-	recolectarEstratoFlow,
-	recolectarBarrioFlow,
-	recolectarLocalidadFlow,
-	recolectarHorariosFlow,
-	resumenDatosFlow
+	adminEntryFlow,
+	adminMenuFlow,
+	adminPedirTelefonoFlow,
+	adminAsignarRolFlow,
+	adminEditarPracticanteFlow,
+	adminEditarPracticanteClinicaFlow,
+	adminEditarPracticanteHorarioFlow,
+	adminEditarPracticanteOtroHorarioFlow,
+} from './flows/roles/adminMenuFlow.js'
+import { menuMiddleware } from './flows/roles/menuMiddleware.js';
+import {
+	practMenuFlow,
+	practOfrecerTestFlow__ElegirTest,
+	practOfrecerTestFlow__PedirTelefono,
+	practConsejosFlow,
+	practEsperarResultados
+} from './flows/roles/practMenuFlow.js'
+
+
+import {
+	completarPerfilPracticanteFlow,
+	resumenDatosFlow,
+	recordatorioDatosFlow
 } from './flows/roles/cambioRolFlow.js';
 
 import {
@@ -163,63 +156,57 @@ adapterProvider.on("message", (ctx) => {
 		}
 
 	} catch (e) {
-		console.error('Error en middleware JID:', e)		
+		console.error('Error en middleware JID:', e)
 	}
 })
 
 //---------------------------------------------------------------------------------------------------------
 
 const main = async () => {
-console.log('🚀 Iniciando función main...');
+	console.log('🚀 Iniciando función main...');
 
-const adapterFlow = createFlow([
-    // Flujos de entrada y bienvenida
-    welcomeFlow,
-    
-    // Flujos de registro (DEPRECADOS - ahora se hace por web)
-    //registerFlow,
-    dataConsentFlow,
-    reconsentFlow,
-	pedirNumeroPracticanteAsignadoFlow,
-    esDeUniversidadFlow,
+	const adapterFlow = createFlow([
+		// Flujos de entrada y bienvenida
+		welcomeFlow,
 
-    // Flujos de menús (agrupados)
-    menuFlow,
+		// Flujos de registro (DEPRECADOS - ahora se hace por web)
+		dataConsentFlow,
+		reconsentFlow,
+		pedirNumeroPracticanteAsignadoFlow,
+		esDeUniversidadFlow,
 
-	adminEntryFlow,
-    adminMenuFlow,
-    adminPedirTelefonoFlow,
-    adminAsignarRolFlow,
-    menuMiddleware,
+		// Flujos de menús (agrupados)
+		menuFlow,
 
-// Flujos de roles (después de welcome)
-    practMenuFlow,
-    practEsperarResultados,
-    
-    // Flujo de configuración de practicantes
-    completarDatosFlow,
+		adminEntryFlow,
+		adminMenuFlow,
+		adminPedirTelefonoFlow,
+		adminAsignarRolFlow,
+		adminEditarPracticanteFlow,
+		adminEditarPracticanteClinicaFlow,
+		adminEditarPracticanteHorarioFlow,
+		adminEditarPracticanteOtroHorarioFlow,
+		menuMiddleware,
 
-    // Flujos de recolección de datos para cambio de rol
-    recolectarGeneroFlow,
-    recolectarEstratoFlow,
-    recolectarBarrioFlow,
-    recolectarLocalidadFlow,
-    recolectarHorariosFlow,
-    resumenDatosFlow,
+		// Flujos de roles (después de welcome)
+		practMenuFlow,
+		practEsperarResultados,
 
-    // Flujos de tests (en orden lógico)
-    testSelectionFlow,
-    practOfrecerTestFlow__ElegirTest,
-    practOfrecerTestFlow__PedirTelefono,
-    testFlow,
-    practConsejosFlow,
-    
-    // Flujos de agendamiento
-    agendFlow,
-    
-    // Flujo asistente (al final, como fallback)
-    assistantFlow
-]);	
+		// Flujos de cambio de rol
+		completarPerfilPracticanteFlow,
+		resumenDatosFlow,
+		recordatorioDatosFlow,
+
+		// Flujos de tests (en orden lógico)
+		testSelectionFlow,
+		practOfrecerTestFlow__ElegirTest,
+		practOfrecerTestFlow__PedirTelefono,
+		testFlow,
+		practConsejosFlow,
+
+		// Flujos de agendamiento
+		agendFlow
+	]);
 
 
 	console.log('📊 Configurando base de datos...');
@@ -229,7 +216,7 @@ const adapterFlow = createFlow([
 		database: process.env.MYSQL_DB_NAME,
 		password: process.env.MYSQL_DB_PASSWORD ? '***' : 'NO_PASSWORD'
 	});
-	
+
 	let adapterDB;
 	try {
 		adapterDB = new Database({
@@ -310,21 +297,21 @@ const adapterFlow = createFlow([
 	configurarProviderDASS21(adapterProvider);
 
 	//---------------------------------------------------------------------------------------------------------
-	
+
 	// Inicializar RAG
 	initializeRAG()
 		.then(() => console.log('✅ RAG listo'))
 		.catch(err => console.error('❌ Error inicializando RAG:', err));
-	
+
 
 	//---------------------------------------------------------------------------------------------------------
-	
+
 	// Ruta raíz - redirige al sistema web
 	adapterProvider.server.get("/", (req, res) => {
 		res.writeHead(302, { 'Location': 'http://localhost:3002' });
 		res.end();
 	});
-	
+
 	adapterProvider.server.post(
 		"/v1/messages",
 		handleCtx(async (bot, req, res) => {
@@ -342,7 +329,7 @@ const adapterFlow = createFlow([
 			return res.end("trigger");
 		})
 	);
-	
+
 	adapterProvider.server.post(
 		"/v1/samples",
 		handleCtx(async (bot, req, res) => {
@@ -358,7 +345,7 @@ const adapterFlow = createFlow([
 			const { number, intent } = req.body;
 			if (intent === "remove") bot.blacklist.remove(number);
 			if (intent === "add") bot.blacklist.add(number);
-			
+
 			res.writeHead(200, { "Content-Type": "application/json" });
 			return res.end(JSON.stringify({ status: "ok", number, intent }));
 		})
@@ -370,7 +357,7 @@ const adapterFlow = createFlow([
 		"/v1/front/:entity/:searchQuery",
 		handleCtx(async (req, res) => {
 			const { entity, searchQuery } = req.params;
-			
+
 			try {
 				let response;
 				console.log(entity);
@@ -379,10 +366,10 @@ const adapterFlow = createFlow([
 						response = await getUsuario(searchQuery);
 						break;
 
-						case "practicante":
+					case "practicante":
 						response = await getPracticante(searchQuery);
 						break;
-						
+
 					default:
 						res.writeHead(400, { "Content-Type": "application/json" });
 						return res.end(
@@ -407,14 +394,14 @@ const adapterFlow = createFlow([
 			}
 		})
 	);
-	
+
 	//---------------------------------------------------------------------------------------------------------
 
 	adapterProvider.server.post(
 		"/v1/front/addUser",
 		handleCtx(async (req, res) => {
 			const { nombre, apellido, correo, tipoDocumento, documento, telefonoPersonal } =
-			req.body;
+				req.body;
 
 			try {
 				const response = await addWebUser(
@@ -425,7 +412,7 @@ const adapterFlow = createFlow([
 					documento,
 					telefonoPersonal
 				);
-				
+
 				res.writeHead(200, { "Content-Type": "application/json" });
 				return res.end(JSON.stringify(response));
 			} catch (error) {
@@ -440,7 +427,7 @@ const adapterFlow = createFlow([
 			}
 		})
 	);
-	
+
 	//---------------------------------------------------------------------------------------------------------
 
 	adapterProvider.server.post(
@@ -448,7 +435,7 @@ const adapterFlow = createFlow([
 		handleCtx(async (req, res) => {
 			const { nombre, apellido, correo, tipoDocumento, documento, telefonoPersonal } =
 				req.body;
-				
+
 			try {
 				const response = await editWebUser(
 					nombre,
@@ -458,7 +445,7 @@ const adapterFlow = createFlow([
 					documento,
 					telefonoPersonal
 				);
-				
+
 				res.writeHead(200, { "Content-Type": "application/json" });
 				return res.end(JSON.stringify(response));
 			} catch (error) {
@@ -473,14 +460,14 @@ const adapterFlow = createFlow([
 			}
 		})
 	);
-	
+
 	//---------------------------------------------------------------------------------------------------------
 
 	adapterProvider.server.post(
 		"/v1/front/citaCheckout",
 		handleCtx(async (req, res) => {
 			const { idCita } = req.body;
-			
+
 			try {
 				const response = await citaWebCheckout(idCita);
 
@@ -498,7 +485,7 @@ const adapterFlow = createFlow([
 			}
 		})
 	);
-	
+
 	//---------------------------------------------------------------------------------------------------------
 
 	adapterProvider.server.get(
@@ -521,14 +508,14 @@ const adapterFlow = createFlow([
 			}
 		})
 	);
-	
+
 	//---------------------------------------------------------------------------------------------------------
 
 	adapterProvider.server.post(
 		"/v1/front/changeConsultorio",
 		handleCtx(async (req, res) => {
 			const { idConsultorio } = req.body;
-			
+
 			try {
 				const response = await ChangeWebConsultorio(idConsultorio);
 
@@ -546,14 +533,14 @@ const adapterFlow = createFlow([
 			}
 		})
 	);
-	
+
 	//---------------------------------------------------------------------------------------------------------
-	
+
 	adapterProvider.server.get(
 		"/v1/front/citas",
 		handleCtx(async (req, res) => {
 			const { diaActual } = req.query;
-			
+
 			try {
 				const response = await getWebCitas(diaActual);
 
@@ -573,7 +560,7 @@ const adapterFlow = createFlow([
 	);
 
 	//---------------------------------------------------------------------------------------------------------
-	
+
 	adapterProvider.server.get(
 		"/v1/front/citasPorPaciente",
 		handleCtx(async (req, res) => {
@@ -596,12 +583,12 @@ const adapterFlow = createFlow([
 			}
 		})
 	);
-	
+
 	console.log(`🤖 Bot iniciado en puerto ${PORT}`);
 	try {
 		httpServer(+PORT);
 		console.log(`✅ Servidor HTTP iniciado correctamente en puerto ${PORT}`);
-		await new Promise(() => {});
+		await new Promise(() => { });
 	} catch (error) {
 		console.error('❌ Error iniciando servidor HTTP:', error);
 		throw error;

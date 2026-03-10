@@ -46,6 +46,7 @@ router.post('/register', async (req, res) => {
             perteneceUniversidad,
             documento,
             tipoDocumento,
+            genero,
             password
         } = req.body;
 
@@ -55,7 +56,7 @@ router.post('/register', async (req, res) => {
         const telefonoConPrefijo = telefonoPersonal.startsWith('57') ? telefonoPersonal : `57${telefonoPersonal}`;
         console.log(`📞 Teléfono original: ${telefonoPersonal} -> Con prefijo: ${telefonoConPrefijo}`);
 
-// Verificar si el usuario ya existe (buscar con ambos formatos)
+        // Verificar si el usuario ya existe (buscar con ambos formatos)
         const existingUser = await prisma.informacionUsuario.findFirst({
             where: {
                 OR: [
@@ -75,7 +76,7 @@ router.post('/register', async (req, res) => {
         // Cifrar contraseña
         const hashedPassword = await bcrypt.hash(password, 10);
 
-// Crear usuario
+        // Crear usuario
         const user = await prisma.informacionUsuario.create({
             data: {
                 primerNombre,
@@ -91,7 +92,8 @@ router.post('/register', async (req, res) => {
                 password: hashedPassword,
                 consentimientoInformado: 'no',
                 documento: documento || null,
-                tipoDocumento: tipoDocumento || "CC"
+                tipoDocumento: tipoDocumento || "CC",
+                genero: genero || 'No especificado'
             }
         });
 
@@ -102,8 +104,8 @@ router.post('/register', async (req, res) => {
             { expiresIn: '1h' }
         );
 
-        res.status(201).json({ 
-            message: 'Usuario registrado exitosamente', 
+        res.status(201).json({
+            message: 'Usuario registrado exitosamente',
             userId: user.idUsuario,
             token: token
         });
@@ -175,8 +177,8 @@ router.post('/login', async (req, res) => {
             { expiresIn: '1h' }
         );
 
-        res.json({ 
-            message: 'Login exitoso', 
+        res.json({
+            message: 'Login exitoso',
             token, // brinda el token al registro
             user: {
                 id: user.idUsuario,
@@ -218,10 +220,10 @@ router.post('/consentimiento', async (req, res) => {
         }
 
         const updateData = {};
-        
+
         // Esta ruta solo se guarda cuando el checkbox está aceptado
         updateData.consentimientoInformado = 'si';
-        
+
         // Solo agregar datos académicos si vienen
         if (semestre) updateData.semestre = semestre;
         if (jornada) updateData.jornada = jornada;
@@ -347,13 +349,13 @@ router.get('/check-sociodemografico', async (req, res) => {
 
         let usuarioId;
         if (token) {
-            try{
+            try {
                 // Verificar token y obtener userId
                 const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret_key');
                 console.log('Decoded token:', decoded);  // Ve si userId está aquí
                 usuarioId = decoded.userId;
 
-            } catch (err){
+            } catch (err) {
                 console.error("Error verificando token", err);
                 return res.status(401).json({ error: 'Usuario no autenticado' });
             }
@@ -400,7 +402,7 @@ router.post('/tratamiento-datos', async (req, res) => {
             } catch (error) {
                 if (error.name === 'TokenExpiredError') {
                     // Token expirado: Responde con error y posiblemente redirige
-                    return res.status(401).json({ 
+                    return res.status(401).json({
                         error: 'Token expirado. Inicia sesión nuevamente.',
                         redirect: '/login'  // Opcional: para frontend
                     });

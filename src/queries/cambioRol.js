@@ -12,7 +12,7 @@ const normalizePhone = (raw) => (raw || '').replace(/\D/g, '');
  */
 export async function validarCambioRolPosible(telefono, rolDestino) {
   const phone = normalizePhone(telefono);
-  
+
   try {
     // Obtener rol actual
     const rolActual = await prisma.rolChat.findUnique({
@@ -52,19 +52,28 @@ export async function validarCambioRolPosible(telefono, rolDestino) {
 /**
  * Migra usuario a practicante
  * @param {string} telefono - Teléfono del usuario
- * @param {Object} datosAdicionales - Datos adicionales requeridos para practicante
  * @returns {Object} { exito: boolean, error?: string, practicante?: Object }
  */
-export async function migrarUsuarioAPracticante(telefono, datosAdicionales) {
+export async function migrarUsuarioAPracticante(telefono) {
   const phone = normalizePhone(telefono);
-  
+
   try {
-    // Obtener datos del usuario
-    const usuario = await prisma.informacionUsuario.findUnique({
-      where: { telefonoPersonal: phone }
+    // Obtener datos del usuario (búsqueda robusta con/sin prefijo 57)
+    const phoneVariants = [phone];
+    if (phone.startsWith('57')) {
+      phoneVariants.push(phone.substring(2));
+    } else {
+      phoneVariants.push('57' + phone);
+    }
+
+    const usuario = await prisma.informacionUsuario.findFirst({
+      where: {
+        telefonoPersonal: { in: phoneVariants }
+      }
     });
 
     if (!usuario) {
+      console.log('❌ Usuario no encontrado en informacionUsuario para variantes:', phoneVariants);
       return { exito: false, error: 'Usuario no encontrado' };
     }
 
@@ -78,29 +87,27 @@ export async function migrarUsuarioAPracticante(telefono, datosAdicionales) {
       }
     }
 
+    // IMPORTANTE: Usar el teléfono exacto que está en la base de datos (evita líos con el prefijo 57)
+    const phoneDB = usuario.telefonoPersonal;
+
     // Preparar datos para migración
     const nombreCompleto = [usuario.primerNombre, usuario.segundoNombre, usuario.primerApellido, usuario.segundoApellido]
       .filter(Boolean)
       .join(' ');
 
     const datosPracticante = {
-      nombre:           nombreCompleto || 'Sin nombre',
-      telefono:         phone,
+      nombre: nombreCompleto || 'Sin nombre',
+      telefono: phoneDB,
       numero_documento: usuario.documento || `DOC_${Date.now()}`,
-      tipo_documento:   usuario.tipoDocumento || 'CC',
-      genero:           datosAdicionales.genero,
-      // Nuevos campos — opcionales, se completan desde la interfaz web
-      correo:           datosAdicionales.correo     || null,
-      eps_ips:          datosAdicionales.eps_ips    || null,
-      clinica:          datosAdicionales.clinica    || null,
-      fechaInicio:      datosAdicionales.fechaInicio ? new Date(datosAdicionales.fechaInicio) : null,
-      fechaFin:         datosAdicionales.fechaFin   ? new Date(datosAdicionales.fechaFin)    : null,
-      // Campos legacy — ya no se recopilan en el flujo del bot
-      estrato:          datosAdicionales.estrato    || null,
-      barrio:           datosAdicionales.barrio     || null,
-      localidad:        datosAdicionales.localidad  || null,
+      tipo_documento: usuario.tipoDocumento || 'CC',
+      genero: usuario.genero || 'No especificado',
+      correo: usuario.correo || null,
+      eps_ips: null,
+      clinica: null,
+      fechaInicio: new Date(),
+      fechaFin: null,
       citasProgramadas: 0,
-      fechaCreacion:    new Date()
+      fechaCreacion: new Date()
     };
 
     // Crear practicante
@@ -108,33 +115,25 @@ export async function migrarUsuarioAPracticante(telefono, datosAdicionales) {
       data: datosPracticante
     });
 
-    // Crear horarios si se proporcionaron
-    if (datosAdicionales.horarios && datosAdicionales.horarios.length > 0) {
-      // Mapear nombres de día a valores del enum DiaSemana (MAYÚSCULAS, sin tildes)
-      const diaToEnum = {
-        'lunes': 'LUNES', 'martes': 'MARTES', 'miercoles': 'MIERCOLES', 'miércoles': 'MIERCOLES',
-        'jueves': 'JUEVES', 'viernes': 'VIERNES', 'sabado': 'SABADO', 'sábado': 'SABADO',
-        'domingo': 'DOMINGO'
-      };
-      const horariosData = datosAdicionales.horarios.map(horario => ({
-        dia: diaToEnum[horario.dia.toLowerCase()] || horario.dia.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
-        horaInicio: parseInt(horario.horaInicio),
-        horaFin: parseInt(horario.horaFin),
-        practicanteId: practicante.idPracticante
-      }));
-
-      await prisma.horario.createMany({
-        data: horariosData
-      });
-    }
-
-    // Eliminar usuario (para evitar duplicación)
+    // Eliminar usuario de la tabla informacionUsuario (ya es practicante)
     await prisma.informacionUsuario.delete({
-      where: { telefonoPersonal: phone }
+      where: { idUsuario: usuario.idUsuario }
     });
 
-    // Actualizar rol
-    await setRolTelefono(phone, 'practicante');
+    // Actualizar rol en la tabla de mapeo para AMBOS formatos (el original y el de la DB)
+    await prisma.rolChat.upsert({
+      where: { telefono: phoneDB },
+      update: { rol: 'practicante' },
+      create: { telefono: phoneDB, rol: 'practicante' }
+    });
+
+    if (phone !== phoneDB) {
+      await prisma.rolChat.upsert({
+        where: { telefono: phone },
+        update: { rol: 'practicante' },
+        create: { telefono: phone, rol: 'practicante' }
+      });
+    }
 
     return { exito: true, practicante };
   } catch (error) {
@@ -150,7 +149,7 @@ export async function migrarUsuarioAPracticante(telefono, datosAdicionales) {
  */
 export async function revertirPracticanteAUsuario(telefono) {
   const phone = normalizePhone(telefono);
-  
+
   try {
     // Obtener datos del practicante
     const practicante = await prisma.practicante.findUnique({
@@ -222,7 +221,7 @@ export async function limpiarAsignacionesPacientes(practicanteId) {
  */
 export async function obtenerDatosParaConversion(telefono) {
   const phone = normalizePhone(telefono);
-  
+
   try {
     const usuario = await prisma.informacionUsuario.findUnique({
       where: { telefonoPersonal: phone }
@@ -244,12 +243,9 @@ export async function obtenerDatosParaConversion(telefono) {
 
     const datosFaltantes = [];
 
-    // Campos que siempre faltan para practicante
+    // Solo validar campos estructurales del usuario
     if (!datosExistentes.primerNombre) datosFaltantes.push('nombre');
     if (!datosExistentes.documento) datosFaltantes.push('documento');
-    
-    // Campos que no están en usuario pero son requeridos para practicante
-    datosFaltantes.push('género', 'estrato', 'barrio', 'localidad', 'horarios');
 
     return { datosExistentes, datosFaltantes };
   } catch (error) {

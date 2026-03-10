@@ -30,6 +30,7 @@ model informacionUsuario {
   password                String
   consentimientoInformado String   @default("No") 
   autorizacionDatos       String   @default("No") 
+  genero                  String   @default("No especificado")
   ayudaPsicologica        String?
   flujo                   String?
   historial               Json?

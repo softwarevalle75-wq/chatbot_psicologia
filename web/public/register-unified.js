@@ -7,7 +7,7 @@ class RegisterManager {
         this.registerBtn = document.getElementById('registerBtn');
         this.infoText = document.getElementById('infoText');
         this.formTitle = document.getElementById('formTitle');
-        
+
         this.init();
     }
 
@@ -38,27 +38,27 @@ class RegisterManager {
     precargarDatos() {
         const datos = this.getUrlParameters();
         let camposPrecargados = 0;
-        
+
         if (datos.primerNombre) {
             document.getElementById('primerNombre').value = datos.primerNombre;
             camposPrecargados++;
         }
-        
+
         if (datos.segundoNombre) {
             document.getElementById('segundoNombre').value = datos.segundoNombre;
             camposPrecargados++;
         }
-        
+
         if (datos.primerApellido) {
             document.getElementById('primerApellido').value = datos.primerApellido;
             camposPrecargados++;
         }
-        
+
         if (datos.segundoApellido) {
             document.getElementById('segundoApellido').value = datos.segundoApellido;
             camposPrecargados++;
         }
-        
+
         if (datos.telefonoPersonal) {
             const telefonoInput = document.getElementById('telefonoPersonal');
             telefonoInput.value = datos.telefonoPersonal;
@@ -67,7 +67,7 @@ class RegisterManager {
             telefonoInput.style.border = '2px solid #28a745';
             camposPrecargados++;
         }
-        
+
         // Los campos documento y tipoDocumento ya existen en el HTML de forma permanente.
         // Si vienen precargados desde la URL, se rellenan y se marcan como readonly.
         if (datos.documento) {
@@ -97,7 +97,7 @@ class RegisterManager {
                 camposPrecargados++;
             }
         }
-        
+
         if (camposPrecargados > 0) {
             this.actualizarInterfazPrecarga(camposPrecargados);
         }
@@ -108,10 +108,10 @@ class RegisterManager {
             `Los campos en verde son precargados y no se pueden editar. ` +
             `Por favor completa los campos restantes para finalizar tu registro.<br><br>` +
             `Campos precargados: ${camposPrecargados}`;
-        
+
         this.infoText.classList.add('highlight');
         this.formTitle.textContent = '🔄 Completar Registro';
-        
+
         const precargadosElements = document.querySelectorAll('input[readonly], select[readonly]');
         precargadosElements.forEach(element => {
             element.parentElement.classList.add('precargado');
@@ -120,17 +120,17 @@ class RegisterManager {
 
     async manejarEnvioFormulario(e) {
         e.preventDefault();
-        
+
         this.ocultarMensajes();
-        
+
         if (!this.validarFormulario()) {
             return;
         }
-        
+
         this.mostrarLoading();
-        
+
         const data = this.obtenerDatosFormulario();
-        
+
         try {
             const result = await this.registrarUsuario(data);
             this.manejarExito(result);
@@ -144,7 +144,7 @@ class RegisterManager {
     validarFormulario() {
         const password = document.getElementById('password').value;
         const confirmPassword = document.getElementById('confirmPassword').value;
-        
+
         if (password !== confirmPassword) {
             this.mostrarError('Las contraseñas no coinciden');
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -157,7 +157,7 @@ class RegisterManager {
             window.scrollTo({ top: 0, behavior: 'smooth' });
             return false;
         }
-        
+
         return true;
     }
 
@@ -177,7 +177,7 @@ class RegisterManager {
     obtenerDatosFormulario() {
         const formData = new FormData(this.form);
         const pertenece = document.getElementById('perteneceUniversidad');
-        
+
         // documento y tipoDocumento siempre están presentes en el formulario.
         // FormData los recoge directamente (incluyendo el input hidden que se crea
         // cuando el campo select está disabled por precarga desde URL).
@@ -194,9 +194,10 @@ class RegisterManager {
             segundoTelefono: formData.get('segundoTelefono'),
             fechaNacimiento: formData.get('fechaNacimiento'),
             perteneceUniversidad: pertenece.checked ? 'Si' : 'No',
+            genero: formData.get('genero'),
             password: formData.get('password')
         };
-        
+
         return data;
     }
 
@@ -208,19 +209,19 @@ class RegisterManager {
             },
             body: JSON.stringify(data)
         });
-        
+
         const result = await response.json();
-        
+
         if (!response.ok) {
             throw new Error(result.error || 'Error en el registro');
         }
-        
+
         return result;
     }
 
     manejarExito(result) {
         const data = this.obtenerDatosFormulario();
-        
+
         if (result.token) {
             const userInfo = {
                 id: result.userId,
@@ -231,12 +232,12 @@ class RegisterManager {
                 correo: data.correo,
                 consentimientoInformado: 'no'
             };
-            
+
             localStorage.setItem('token', result.token);
             localStorage.setItem('user', JSON.stringify(userInfo));
-            
+
             this.mostrarExito('Registro exitoso. Redirigiendo al tratamiento de datos...');
-            
+
             setTimeout(() => {
                 window.location.href = '/tratamientodatos';
             }, 1500);
@@ -248,16 +249,16 @@ class RegisterManager {
                 correo: data.correo,
                 telefonoPersonal: data.telefonoPersonal
             };
-            
+
             localStorage.setItem('userInfo', JSON.stringify(userInfo));
-            
+
             this.mostrarExito('¡Registro exitoso! Redirigiendo al login...');
-            
+
             setTimeout(() => {
                 window.location.href = '/login';
             }, 2000);
         }
-        
+
         this.limpiarUrl();
     }
 
@@ -304,12 +305,12 @@ document.addEventListener('DOMContentLoaded', () => {
     new RegisterManager();
 });
 
-window.precargarDatos = function() {
+window.precargarDatos = function () {
     const manager = new RegisterManager();
     manager.precargarDatos();
 };
 
-window.limpiarUrl = function() {
+window.limpiarUrl = function () {
     if (window.location.search) {
         const url = window.location.protocol + "//" + window.location.host + window.location.pathname;
         window.history.replaceState({}, document.title, url);

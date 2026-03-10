@@ -6,35 +6,35 @@ import fs from 'fs'
 //---------------------------------------------------------------------------------------------------------
 
 export const registrarUsuario = async (
-  primerNombre,
-  primerApellido,
-  correo,
-  numero
+	primerNombre,
+	primerApellido,
+	correo,
+	numero
 ) => {
-  try {
-    const user = await prisma.informacionUsuario.upsert({
-      where: {
-        telefonoPersonal: numero,
-      },
-      update: {
-        primerNombre,
-        primerApellido,
-        correo,
-      },
-      create: {
-        telefonoPersonal: numero,
-        primerNombre,
-        primerApellido,
-        correo,
-        fechaNacimiento: new Date(), // Campo requerido
-        password: 'temp_password' // Campo requerido
-      },
-    });
-    return user;
-  } catch (error) {
-    console.error("Error al crear el usuario:", error);
-    throw new Error("Hubo un problema al crear el usuario.");
-  }
+	try {
+		const user = await prisma.informacionUsuario.upsert({
+			where: {
+				telefonoPersonal: numero,
+			},
+			update: {
+				primerNombre,
+				primerApellido,
+				correo,
+			},
+			create: {
+				telefonoPersonal: numero,
+				primerNombre,
+				primerApellido,
+				correo,
+				fechaNacimiento: new Date(), // Campo requerido
+				password: 'temp_password' // Campo requerido
+			},
+		});
+		return user;
+	} catch (error) {
+		console.error("Error al crear el usuario:", error);
+		throw new Error("Hubo un problema al crear el usuario.");
+	}
 };
 
 //---------------------------------------------------------------------------------------------------------
@@ -60,66 +60,66 @@ export const perteneceUniversidad = async (numero, datos) => {
 // //---------------------------------------------------------------------------------------------------------
 //Verificar rol sin autenticación completa
 export async function verificarRolUsuario(telefono) {
-  try {
-    console.log('======================================')
-    console.log('🔍 Verificando rol para:', telefono);
-    
-    // Buscar con el número tal como viene
-    let rolInfo = await prisma.rolChat.findUnique({
-      where: { telefono: telefono },
-      select: {
-        telefono: true,
-        rol: true
-      }
-    });
+	try {
+		console.log('======================================')
+		console.log('🔍 Verificando rol para:', telefono);
 
-    // Si no encuentra y el número empieza con 57, buscar sin prefijo
-    if (!rolInfo && telefono.startsWith('57')) {
-      const telefonoSinPrefijo = telefono.substring(2);
-      console.log('🔍 Buscando rol sin prefijo 57:', telefonoSinPrefijo);
-      
-      rolInfo = await prisma.rolChat.findUnique({
-        where: { telefono: telefonoSinPrefijo },
-        select: {
-          telefono: true,
-          rol: true
-        }
-      });
-    }
+		// Buscar con el número tal como viene
+		let rolInfo = await prisma.rolChat.findUnique({
+			where: { telefono: telefono },
+			select: {
+				telefono: true,
+				rol: true
+			}
+		});
 
-    console.log('📋 Rol encontrado:', rolInfo ? rolInfo.rol : 'No encontrado');
-	console.log('======================================')
-    return rolInfo;
-    
-  } catch (error) {
-    console.error('❌ Error verificando rol:', error);
-    return null;
-  }
+		// Si no encuentra y el número empieza con 57, buscar sin prefijo
+		if (!rolInfo && telefono.startsWith('57')) {
+			const telefonoSinPrefijo = telefono.substring(2);
+			console.log('🔍 Buscando rol sin prefijo 57:', telefonoSinPrefijo);
+
+			rolInfo = await prisma.rolChat.findUnique({
+				where: { telefono: telefonoSinPrefijo },
+				select: {
+					telefono: true,
+					rol: true
+				}
+			});
+		}
+
+		console.log('📋 Rol encontrado:', rolInfo ? rolInfo.rol : 'No encontrado');
+		console.log('======================================')
+		return rolInfo;
+
+	} catch (error) {
+		console.error('❌ Error verificando rol:', error);
+		return null;
+	}
 }
 
 // //---------------------------------------------------------------------------------------------------------
 
 export const obtenerPracticantePorTelefono = async (numero) => {
-  try {
-    return await prisma.practicante.findFirst({
-      where: { telefono: numero },
-    });
-  } catch (e) {
-    console.error('obtenerPracticantePorTelefono error:', e);
-    return null;
-  }
+	try {
+		return await prisma.practicante.findFirst({
+			where: { telefono: numero },
+		});
+	} catch (e) {
+		console.error('obtenerPracticantePorTelefono error:', e);
+		return null;
+	}
 };
 
 // --- NUEVO: NO crea usuario; solo mira si existe por telefonoPersonal
 export const buscarUsuarioPorTelefono = async (numero) => {
-  try {
-    return await prisma.informacionUsuario.findUnique({
-      where: { telefonoPersonal: numero },
-    });
-  } catch (e) {
-    console.error('buscarUsuarioPorTelefono error:', e);
-    return null;
-  }
+	try {
+		return await prisma.informacionUsuario.findUnique({
+			where: { telefonoPersonal: numero },
+		});
+	} catch (e) {
+		console.error('buscarUsuarioPorTelefono error:', e);
+		return null;
+	}
 };
 
 export const obtenerPerfilPacienteParaInforme = async (numero) => {
@@ -217,134 +217,137 @@ export const obtenerPerfilPacienteParaInforme = async (numero) => {
 //---------------------------------------------------------------------------------------------------------
 
 export const obtenerUsuario = async (numero) => {
-  try {
-    const getUser = async (numero) => {
+	try {
+		const getUser = async (numero) => {
 
-      // ✅ Primero: intentar detectar practicante por teléfono
-      const pract = await prisma.practicante.findUnique({
-        where: {
-          telefono: numero
-        },
-        select: {
-          idPracticante: true,
-          nombre: true,
-          telefono: true,
-        }
-      })
+			// ✅ Primero: intentar detectar practicante por teléfono
+			const pract = await prisma.practicante.findUnique({
+				where: {
+					telefono: numero
+				},
+				select: {
+					idPracticante: true,
+					nombre: true,
+					telefono: true,
+				}
+			})
 
-      if (pract) {
-        return {
-          tipo: 'practicante',
-          data: pract,
-          flujo: 'practMenuFlow'
-        };
-      }
-      // ✅ Luego: buscar usuario normal
-      let user = await prisma.informacionUsuario.findUnique({
-        where: {
-          telefonoPersonal: numero,
-        },
-        select: {
-          idUsuario: true,
-          primerNombre: true,
-          primerApellido: true,
-          correo: true,
-          telefonoPersonal: true,
-          flujo: true,
-          testActual: true,
-          historial: true,
-          fechaCreacion: true,
-          consentimientoInformado: true,
-          practicanteAsignado: true
-        }
-      })
+			if (pract) {
+				return {
+					tipo: 'practicante',
+					data: pract,
+					flujo: 'practMenuFlow'
+				};
+			}
+			// ✅ Luego: buscar usuario normal
+			let user = await prisma.informacionUsuario.findUnique({
+				where: {
+					telefonoPersonal: numero,
+				},
+				select: {
+					idUsuario: true,
+					primerNombre: true,
+					primerApellido: true,
+					correo: true,
+					telefonoPersonal: true,
+					flujo: true,
+					testActual: true,
+					historial: true,
+					fechaCreacion: true,
+					consentimientoInformado: true,
+					practicanteAsignado: true
+				}
+			})
 
-      if (user) {
-        return {
-          tipo: 'usuario',
-          data: user,
-          flujo: user.flujo,
-          testActual: user.testActual
-        }
-      }
+			if (user) {
+				return {
+					tipo: 'usuario',
+					data: user,
+					flujo: user.flujo,
+					testActual: user.testActual
+				}
+			}
 
-      return null;
-    }
+			return null;
+		}
 
-    let user = await getUser(numero);
+		let user = await getUser(numero);
 
-    // Si el usuario no existe y no es practicante, crearlo con valores por defecto
-    if (!user) {
-      // doble verificación: si es practicante no crear usuario
-      const pract = await prisma.practicante.findUnique({ where: { telefono: numero } });
-      if (pract) {
-        return {
-          tipo: 'practicante',
-          data: pract,
-          flujo: 'practMenuFlow'
-        };
-      }
-      const newUser = await prisma.informacionUsuario.create({
-        data: {
-			telefonoPersonal: numero,
-			primerNombre: '',
-			primerApellido: '', 	
-			correo: '',
-			fechaNacimiento: new Date(),
-			password: '',
-			historial: [],
-			flujo: 'register' // ← BD ya tiene este default
-        },
+		// Si el usuario no existe y no es practicante, crearlo con valores por defecto
+		if (!user) {
+			// doble verificación: si es practicante no crear usuario
+			const pract = await prisma.practicante.findUnique({ where: { telefono: numero } });
+			if (pract) {
+				return {
+					tipo: 'practicante',
+					data: pract,
+					flujo: 'practMenuFlow'
+				};
+			}
+			const newUser = await prisma.informacionUsuario.create({
+				data: {
+					telefonoPersonal: numero,
+					primerNombre: '',
+					primerApellido: '',
+					correo: '',
+					fechaNacimiento: new Date(),
+					password: '',
+					historial: [],
+					flujo: 'register' // ← BD ya tiene este default
+				},
 
-        select: {
-          idUsuario: true,
-          telefonoPersonal: true,
-          historial: true,
-          flujo: true, // ← IMPORTANTE: Seleccionar flujo
-        },
-      })
-      
-      return { 
-        tipo: 'usuario', 
-        data: newUser, 
-        flujo: newUser.flujo // ← Será 'register'
-      }
-    }
-    
-    return user
-  } catch (error) {
-    console.error('Error al obtener el usuario:', error)
-    throw new Error('Hubo un problema al obtener el usuario.')
-  }
+				select: {
+					idUsuario: true,
+					telefonoPersonal: true,
+					historial: true,
+					flujo: true, // ← IMPORTANTE: Seleccionar flujo
+				},
+			})
+
+			// ✅ Asegurar rol usuario por defecto en RolChat
+			await setRolTelefono(numero, 'usuario');
+
+			return {
+				tipo: 'usuario',
+				data: newUser,
+				flujo: newUser.flujo // ← Será 'register'
+			}
+		}
+
+		return user
+	} catch (error) {
+		console.error('Error al obtener el usuario:', error)
+		throw new Error('Hubo un problema al obtener el usuario.')
+	}
 }
 //---------------------------------------------------------------------------------------------------------
 
 // Retorna el usuario solo si existe y completó el registro (tiene nombre y flujo != 'register').
 export const buscarUsuarioRegistrado = async (numero) => {
-  try {
-    const user = await prisma.informacionUsuario.findUnique({
-      where: { telefonoPersonal: numero },
-      select: {
-        idUsuario: true,
-        primerNombre: true,
-        primerApellido: true,
-        telefonoPersonal: true,
-        flujo: true,
-        consentimientoInformado: true,
-      }
-    });
+	try {
+		const user = await prisma.informacionUsuario.findUnique({
+			where: { telefonoPersonal: numero },
+			select: {
+				idUsuario: true,
+				primerNombre: true,
+				primerApellido: true,
+				telefonoPersonal: true,
+				flujo: true,
+				consentimientoInformado: true,
+			}
+		});
 
-    // No existe en BD
-    if (!user) return null;
+		// No existe en BD
+		if (!user) return null;
 
-    // Existe pero no completó registro
-    if (user.flujo === 'register' || !user.primerNombre) return null;
+		// Existe pero no completó registro
+		if (user.flujo === 'register' || !user.primerNombre) return null;
 
-    return user;
-  } catch (error) {
-    console.error('Error al buscar usuario registrado:', error);
-    return null;
-  }
+		return user;
+	} catch (error) {
+		console.error('Error al buscar usuario registrado:', error);
+		return null;
+	}
 };
 
 //---------------------------------------------------------------------------------------------------------
@@ -354,11 +357,11 @@ const normalizePhone = (raw) => (raw || '').replace(/\D/g, '');
 
 export async function setRolTelefono(telefono, rol) {
 	const phone = normalizePhone(telefono);
-  return prisma.rolChat.upsert({
-	where: { telefono: phone },
-    update: { rol },
-    create: { telefono: phone, rol },
-  });
+	return prisma.rolChat.upsert({
+		where: { telefono: phone },
+		update: { rol },
+		create: { telefono: phone, rol },
+	});
 }
 //---------------------------------------------------------------------------------------------------------
 
@@ -370,29 +373,29 @@ export async function getRolTelefono(telefono) {
 
 
 export async function createUsuarioBasico(telefono, data = {}) {
-  const phone = normalizePhone(telefono);
-  // Crea (o asegura) un usuario mínimo en informacionUsuario
-  const user = await prisma.informacionUsuario.upsert({
-    where: { telefonoPersonal: phone },
-    update: {
-      primerNombre: data.primerNombre ?? undefined,
-      primerApellido: data.primerApellido ?? undefined,
-      correo: data.correo ?? undefined,
-    },
-    create: {
-      telefonoPersonal: phone,
-      primerNombre: data.primerNombre ?? 'Usuario',
-      primerApellido: data.primerApellido ?? 'Bot',
-      correo: data.correo ?? `${phone}@temp.com`,
-      fechaNacimiento: new Date(),
-      password: 'temp_password',
-      historial: [],
-      // los demás campos de tu modelo ya tienen defaults
-    },
-  });
-  // Marca el rol en el mapa
-  await setRolTelefono(phone, 'usuario');
-  return user;
+	const phone = normalizePhone(telefono);
+	// Crea (o asegura) un usuario mínimo en informacionUsuario
+	const user = await prisma.informacionUsuario.upsert({
+		where: { telefonoPersonal: phone },
+		update: {
+			primerNombre: data.primerNombre ?? undefined,
+			primerApellido: data.primerApellido ?? undefined,
+			correo: data.correo ?? undefined,
+		},
+		create: {
+			telefonoPersonal: phone,
+			primerNombre: data.primerNombre ?? 'Usuario',
+			primerApellido: data.primerApellido ?? 'Bot',
+			correo: data.correo ?? `${phone}@temp.com`,
+			fechaNacimiento: new Date(),
+			password: 'temp_password',
+			historial: [],
+			// los demás campos de tu modelo ya tienen defaults
+		},
+	});
+	// Marca el rol en el mapa
+	await setRolTelefono(phone, 'usuario');
+	return user;
 }
 
 /**
@@ -402,38 +405,38 @@ export async function createUsuarioBasico(telefono, data = {}) {
  * - Para 'admin' normalmente basta con el mapeo (o si tienes tabla admin, haz upsert ahí).
  */
 export async function ensureRolMapping(telefono, rol) {
-  const phone = normalizePhone(telefono);
-  await setRolTelefono(phone, rol);
-  return { telefono: phone, rol };
+	const phone = normalizePhone(telefono);
+	await setRolTelefono(phone, rol);
+	return { telefono: phone, rol };
 }
 
 export async function resolverRemitentePorTelefono(rawPhone) {
-  const telefono = normalizePhone(rawPhone);
+	const telefono = normalizePhone(rawPhone);
 
-  // 1) Si existe mapeo, úsalo
-  const mapping = await getRolTelefono(telefono);
-  if (mapping) {
-    return { tipo: mapping.rol, data: null };
-  }
+	// 1) Si existe mapeo, úsalo
+	const mapping = await getRolTelefono(telefono);
+	if (mapping) {
+		return { tipo: mapping.rol, data: null };
+	}
 
-  // 2) Fallback a tus tablas (ajusta los campos según tu schema real)
-  const user = await prisma.informacionUsuario.findUnique({
-    where: { telefonoPersonal: telefono },
-  });
-  if (user) return { tipo: 'usuario', data: user };
+	// 2) Fallback a tus tablas (ajusta los campos según tu schema real)
+	const user = await prisma.informacionUsuario.findUnique({
+		where: { telefonoPersonal: telefono },
+	});
+	if (user) return { tipo: 'usuario', data: user };
 
-  // Si tu modelo practicante tiene campo 'telefono', úsalo; si no, quita esto.
-  try {
-    const pract = await prisma.practicante.findUnique({
-      where: { telefono: telefono },
-    });
-    if (pract) return { tipo: 'practicante', data: pract };
-  } catch (_) {
-    // si no existe la columna 'telefono' en practicante, ignora
-  }
+	// Si tu modelo practicante tiene campo 'telefono', úsalo; si no, quita esto.
+	try {
+		const pract = await prisma.practicante.findUnique({
+			where: { telefono: telefono },
+		});
+		if (pract) return { tipo: 'practicante', data: pract };
+	} catch (_) {
+		// si no existe la columna 'telefono' en practicante, ignora
+	}
 
-  // 3) Desconocido
-  return null;
+	// 3) Desconocido
+	return null;
 }
 
 //---------------------------------------------------------------------------------------------------------
@@ -441,17 +444,17 @@ export async function resolverRemitentePorTelefono(rawPhone) {
 export const obtenerHist = async (numero) => {
 	try {
 		console.log('Obteniendo historial del usuario:', numero)
-		
+
 		// 🔥 VERIFICAR PRIMERO SI ES UN PRACTICANTE
 		const practicante = await prisma.practicante.findFirst({
 			where: { telefono: numero }
 		});
-		
+
 		if (practicante) {
 			console.log('📋 Es un practicante, retornando historial vacío');
 			return []; // Los practicantes no necesitan historial
 		}
-		
+
 		const user = await prisma.informacionUsuario.findUnique({
 			where: {
 				telefonoPersonal: numero,
@@ -478,38 +481,38 @@ export const obtenerHist = async (numero) => {
 //---------------------------------------------------------------------------------------------------------
 
 export async function saveHist(numero, conversationHistory) {
-  try {
-    console.log("Guardando historial para:", numero);
-    
-    // 🔥 VERIFICAR PRIMERO SI ES UN PRACTICANTE
-    const practicante = await prisma.practicante.findFirst({
-      where: { telefono: numero }
-    });
-    
-    if (practicante) {
-      console.log('📋 Es un practicante, no guardar historial');
-      return; // Los practicantes no necesitan historial
-    }
+	try {
+		console.log("Guardando historial para:", numero);
 
-    await prisma.informacionUsuario.upsert({
-      where: { telefonoPersonal: numero },
-      update: { historial: conversationHistory },
-      create: {
-        telefonoPersonal: numero,
-        primerNombre: 'Usuario',
-        primerApellido: 'Bot',
-        correo: `${numero}@temp.com`,
-        fechaNacimiento: new Date(),
-        password: 'temp_password',
-        historial: conversationHistory
-      }
-    });
+		// 🔥 VERIFICAR PRIMERO SI ES UN PRACTICANTE
+		const practicante = await prisma.practicante.findFirst({
+			where: { telefono: numero }
+		});
 
-    console.log("Historial guardado correctamente.");
-  } catch (error) {
-    console.error("Error al guardar el historial:", error);
-    throw new Error("Hubo un problema al guardar el historial.");
-  }
+		if (practicante) {
+			console.log('📋 Es un practicante, no guardar historial');
+			return; // Los practicantes no necesitan historial
+		}
+
+		await prisma.informacionUsuario.upsert({
+			where: { telefonoPersonal: numero },
+			update: { historial: conversationHistory },
+			create: {
+				telefonoPersonal: numero,
+				primerNombre: 'Usuario',
+				primerApellido: 'Bot',
+				correo: `${numero}@temp.com`,
+				fechaNacimiento: new Date(),
+				password: 'temp_password',
+				historial: conversationHistory
+			}
+		});
+
+		console.log("Historial guardado correctamente.");
+	} catch (error) {
+		console.error("Error al guardar el historial:", error);
+		throw new Error("Hubo un problema al guardar el historial.");
+	}
 }
 
 //---------------------------------------------------------------------------------------------------------
@@ -535,7 +538,7 @@ export const switchAyudaPsicologica = async (numero, opcion) => {
 export const switchFlujo = async (numero, flujo) => {
 	try {
 		console.log('🔄 Intentando switchear flujo para:', numero, 'a:', flujo);
-		
+
 		// Intentar con el número tal como viene
 		let result = await prisma.informacionUsuario.updateMany({
 			where: {
@@ -550,7 +553,7 @@ export const switchFlujo = async (numero, flujo) => {
 		if (result.count === 0 && numero.startsWith('57')) {
 			const numeroSinPrefijo = numero.substring(2);
 			console.log('🔄 Intentando sin prefijo 57:', numeroSinPrefijo);
-			
+
 			result = await prisma.informacionUsuario.updateMany({
 				where: {
 					telefonoPersonal: numeroSinPrefijo,
@@ -562,12 +565,12 @@ export const switchFlujo = async (numero, flujo) => {
 		}
 
 		console.log('✅ Flujo actualizado. Registros afectados:', result.count);
-		
+
 		// Si no se actualizó ningún registro, no es un error crítico para usuarios web
 		if (result.count === 0) {
 			console.log('⚠️ No se encontró usuario para actualizar flujo, pero continuando...');
 		}
-		
+
 	} catch (error) {
 		console.error('Error al switchear el flujo:', error)
 		// No lanzar error para usuarios web que no existen en BD del bot
@@ -582,10 +585,10 @@ export const sendAutonomousMessage = async (numero, mensaje) => {
 		// Asegurate de que el número esté limpio
 		const numeroLimpio = numero.replace(/\D/g, '');
 		const numeroCompleto = `${numeroLimpio}@s.whatsapp.net`;
-		
+
 		const jid = ensureJid(numeroCompleto); // canoniza el número
 		await adapterProvider.sendText(jid, mensaje);
-		
+
 		console.log(`Mensaje autónomo enviado a ${numero}: ${mensaje}`);
 		return true;
 	} catch (error) {
@@ -617,7 +620,7 @@ export const sendAutonomousDocument = async (numero, mensaje, filePath) => {
 export const notificarTestCompletadoAPracticante = async (telefonoPaciente) => {
 	try {
 		console.log(`🔔 Notificando test completado para paciente: ${telefonoPaciente}`);
-		
+
 		const telefonoPracticante = await obtenerTelefonoPracticante(telefonoPaciente);
 		if (!telefonoPracticante) {
 			console.log('❌ No se encontró practicante asignado');
@@ -629,7 +632,7 @@ export const notificarTestCompletadoAPracticante = async (telefonoPaciente) => {
 		// el fin del test desde BD, sin depender del state en memoria de BuilderBot.
 		await prisma.practicante.update({
 			where: { telefono: telefonoPracticante },
-			data:  { flujo: 'practMenuFlow' },
+			data: { flujo: 'practMenuFlow' },
 		});
 
 		await sendAutonomousMessage(
@@ -657,16 +660,16 @@ export const usuarioTienePracticanteAsignado = async (telefonoPaciente) => {
 
 //---------------------------------------------------------------------------------------------------------
 
-export const getEstadoCuestionario = async(telefono, tipoTest) => {
+export const getEstadoCuestionario = async (telefono, tipoTest) => {
 	try {
 		console.log('[DB] getEstadoCuestionario ->', { telefono, tipoTest });
 		const modelo = seleccionarModelo(tipoTest);
 
 		// Si el registro existe
-		let infoCues = await modelo.findUnique ({
+		let infoCues = await modelo.findUnique({
 			where: { telefono }
 		})
-		
+
 		// Si no hay registro, se crea
 		if (!infoCues) {
 			const defaultData = { telefono: telefono }
@@ -681,14 +684,14 @@ export const getEstadoCuestionario = async(telefono, tipoTest) => {
 				defaultData.puntajeEstr = 0
 				defaultData.preguntaActual = 0
 				defaultData.resPreg = {}
-				defaultData.respuestas= []
+				defaultData.respuestas = []
 			} else {
 				defaultData.Puntaje = 0
 				defaultData.preguntaActual = 0
 				defaultData.resPreg = {}
 			}
 
-			infoCues = await modelo.create ({
+			infoCues = await modelo.create({
 				data: defaultData,
 			})
 		}
@@ -703,7 +706,7 @@ export const getEstadoCuestionario = async(telefono, tipoTest) => {
 //---------------------------------------------------------------------------------------------------------
 
 export const saveEstadoCuestionario = async (
-	telefono, 
+	telefono,
 	preguntaActual,
 	resPreg,
 	tipoTest,
@@ -744,10 +747,10 @@ export const savePuntajeUsuario = async (telefono, tipoTest, ...puntajeParams) =
 	const modelo = seleccionarModelo(tipoTest)
 
 	console.log(`Tipo de test: ${tipoTest}`)
-	
+
 	if (tipoTest === 'ghq12') {
 		const [puntaje, jsonPreg] = puntajeParams
-		return await modelo.update ({
+		return await modelo.update({
 			where: { telefono },
 			data: {
 				Puntaje: puntaje,
@@ -756,8 +759,8 @@ export const savePuntajeUsuario = async (telefono, tipoTest, ...puntajeParams) =
 		})
 	} else if (tipoTest === 'dass21') {
 		const [puntajeDep, puntajeAns, puntajeEstr, jsonPreg] = puntajeParams
-		
-		return await modelo.update ({
+
+		return await modelo.update({
 			where: { telefono },
 			data: {
 				puntajeDep,
@@ -768,7 +771,7 @@ export const savePuntajeUsuario = async (telefono, tipoTest, ...puntajeParams) =
 		})
 	} else {
 		const [puntaje, jsonPreg] = puntajeParams
-		return await modelo.update ({
+		return await modelo.update({
 			where: { telefono },
 			data: {
 				Puntaje: puntaje,
@@ -788,7 +791,7 @@ export const getInfoCuestionario = async (telefono, tipoTest) => {
 		const test = seleccionarModelo(tipoTest)
 
 		if (tipoTest === 'dass21') {
-			const infoCues = await test.findUnique ({
+			const infoCues = await test.findUnique({
 				where: { telefono },
 				select: {
 					puntajeDep: true,
@@ -811,34 +814,34 @@ export const getInfoCuestionario = async (telefono, tipoTest) => {
 			})
 
 			if (infoCues) {
-			const preguntas = [
-				'1. ¿Ha podido concentrarse bien en lo que hace?\n    0) Mejor que lo habitual.\n    1) Igual que lo habitual.\n    2) Menos que lo habitual.\n    3) Mucho menos que lo habitual.',
-				'2. ¿Sus preocupaciones le han hecho perder mucho el sueño?\n    0) No, en absoluto.\n    1) Igual que lo habitual.\n    2) Más que lo habitual.\n    3) Mucho más que lo habitual.',
-				'3. ¿Ha sentido que está desempeñando un papel útil en la vida?\n    0) Más que lo habitual.\n    1) Igual que lo habitual.\n    2) Menos que lo habitual.\n    3) Mucho menos que lo habitual.',
-				'4. ¿Se ha sentido capaz de tomar decisiones?\n    0) Más capaz que lo habitual.\n    1) Igual que lo habitual.\n    2) Menos capaz que lo habitual.\n    3) Mucho menos capaz que lo habitual.',
-				'5. ¿Se ha sentido constantemente agobiado y en tensión?\n    0) No, en absoluto.\n    1) Igual que lo habitual.\n    2) Más que lo habitual.\n    3) Mucho más que lo habitual.',
-				'6. ¿Ha sentido que no puede superar sus dificultades?\n    0) No, en absoluto.\n    1) Igual que lo habitual.\n    2) Más que lo habitual.\n    3) Mucho más que lo habitual.',
-				'7. ¿Ha sido capaz de disfrutar de sus actividades normales de cada día?\n    0) Más que lo habitual.\n    1) Igual que lo habitual.\n    2) Menos que lo habitual.\n    3) Mucho menos que lo habitual.',
-				'8. ¿Ha sido capaz de hacer frente adecuadamente a sus problemas?\n    0) Más capaz que lo habitual.\n    1) Igual que lo habitual.\n    2) Menos capaz que lo habitual.\n    3) Mucho menos capaz que lo habitual.',
-				'9. ¿Se ha sentido poco feliz o deprimido/a?\n    0) No, en absoluto.\n    1) No más que lo habitual.\n    2) Más que lo habitual.\n    3) Mucho más que lo habitual.',
-				'10. ¿Ha perdido confianza en sí mismo/a?\n    0) No, en absoluto.\n    1) No más que lo habitual.\n    2) Más que lo habitual.\n    3) Mucho más que lo habitual.',
-				'11. ¿Ha pensado que usted es una persona que no vale para nada?\n    0) No, en absoluto.\n    1) No más que lo habitual.\n    2) Más que lo habitual.\n    3) Mucho más que lo habitual.',
-				'12. ¿Se siente razonablemente feliz considerando todas las circunstancias?\n    0) Más feliz que lo habitual.\n    1) Igual que lo habitual.\n    2) Menos feliz que lo habitual.\n    3) Mucho menos feliz que lo habitual.',
-			]
-			const preguntasString = preguntas.join('\n')
-			const objetct = { infoCues, preguntasString }
-			return objetct
-		} else {
-			await test.create({
-				data: {
-					telefono: telefono,
-				},
-			})
-			return
-		}
+				const preguntas = [
+					'1. ¿Ha podido concentrarse bien en lo que hace?\n    0) Mejor que lo habitual.\n    1) Igual que lo habitual.\n    2) Menos que lo habitual.\n    3) Mucho menos que lo habitual.',
+					'2. ¿Sus preocupaciones le han hecho perder mucho el sueño?\n    0) No, en absoluto.\n    1) Igual que lo habitual.\n    2) Más que lo habitual.\n    3) Mucho más que lo habitual.',
+					'3. ¿Ha sentido que está desempeñando un papel útil en la vida?\n    0) Más que lo habitual.\n    1) Igual que lo habitual.\n    2) Menos que lo habitual.\n    3) Mucho menos que lo habitual.',
+					'4. ¿Se ha sentido capaz de tomar decisiones?\n    0) Más capaz que lo habitual.\n    1) Igual que lo habitual.\n    2) Menos capaz que lo habitual.\n    3) Mucho menos capaz que lo habitual.',
+					'5. ¿Se ha sentido constantemente agobiado y en tensión?\n    0) No, en absoluto.\n    1) Igual que lo habitual.\n    2) Más que lo habitual.\n    3) Mucho más que lo habitual.',
+					'6. ¿Ha sentido que no puede superar sus dificultades?\n    0) No, en absoluto.\n    1) Igual que lo habitual.\n    2) Más que lo habitual.\n    3) Mucho más que lo habitual.',
+					'7. ¿Ha sido capaz de disfrutar de sus actividades normales de cada día?\n    0) Más que lo habitual.\n    1) Igual que lo habitual.\n    2) Menos que lo habitual.\n    3) Mucho menos que lo habitual.',
+					'8. ¿Ha sido capaz de hacer frente adecuadamente a sus problemas?\n    0) Más capaz que lo habitual.\n    1) Igual que lo habitual.\n    2) Menos capaz que lo habitual.\n    3) Mucho menos capaz que lo habitual.',
+					'9. ¿Se ha sentido poco feliz o deprimido/a?\n    0) No, en absoluto.\n    1) No más que lo habitual.\n    2) Más que lo habitual.\n    3) Mucho más que lo habitual.',
+					'10. ¿Ha perdido confianza en sí mismo/a?\n    0) No, en absoluto.\n    1) No más que lo habitual.\n    2) Más que lo habitual.\n    3) Mucho más que lo habitual.',
+					'11. ¿Ha pensado que usted es una persona que no vale para nada?\n    0) No, en absoluto.\n    1) No más que lo habitual.\n    2) Más que lo habitual.\n    3) Mucho más que lo habitual.',
+					'12. ¿Se siente razonablemente feliz considerando todas las circunstancias?\n    0) Más feliz que lo habitual.\n    1) Igual que lo habitual.\n    2) Menos feliz que lo habitual.\n    3) Mucho menos feliz que lo habitual.',
+				]
+				const preguntasString = preguntas.join('\n')
+				const objetct = { infoCues, preguntasString }
+				return objetct
+			} else {
+				await test.create({
+					data: {
+						telefono: telefono,
+					},
+				})
+				return
+			}
 		}
 
-		
+
 	} catch (error) {
 		console.error('Error obteniendo el estado:', error)
 		throw new Error('Hubo un problema obteniendo el estado.')
@@ -875,7 +878,7 @@ function seleccionarModelo(tipoTest) {
 	} else {
 		return prisma.tests
 	}
-} 
+}
 
 //---------------------------------------------------------------------------------------------------------
 
@@ -1323,17 +1326,17 @@ export const guardarPracticanteAsignado = async (numeroUsuario, numeroPracticant
 export const obtenerResultadosPaciente = async (telefonoPaciente) => {
 	try {
 		console.log(`🔍 Obteniendo resultados para paciente: ${telefonoPaciente}`);
-		
+
 		// Normalizar el número de teléfono - probar ambos formatos
 		const soloNumeros = (telefonoPaciente || '').replace(/\D/g, '');
 		const telefonoSinPrefijo = soloNumeros.startsWith('57') ? soloNumeros.substring(2) : soloNumeros;
 		const telefonoConPrefijo = soloNumeros.startsWith('57') ? soloNumeros : `57${soloNumeros}`;
-		
+
 		console.log(`🔍 DEBUG: Número original: ${telefonoPaciente}`);
 		console.log(`🔍 DEBUG: Solo números: ${soloNumeros}`);
 		console.log(`🔍 DEBUG: Sin prefijo: ${telefonoSinPrefijo}`);
 		console.log(`🔍 DEBUG: Con prefijo: ${telefonoConPrefijo}`);
-		
+
 		// Buscar paciente con ambos formatos
 		let paciente = await prisma.informacionUsuario.findUnique({
 			where: { telefonoPersonal: telefonoConPrefijo },
@@ -1344,7 +1347,7 @@ export const obtenerResultadosPaciente = async (telefonoPaciente) => {
 				fechaCreacion: true
 			}
 		});
-		
+
 		// Si no se encuentra con prefijo, buscar sin prefijo
 		if (!paciente) {
 			console.log(`🔍 DEBUG: No encontrado con prefijo, buscando sin prefijo: ${telefonoSinPrefijo}`);
@@ -1363,7 +1366,7 @@ export const obtenerResultadosPaciente = async (telefonoPaciente) => {
 			console.log(`❌ DEBUG: Paciente no encontrado con ningún formato`);
 			return null;
 		}
-		
+
 		console.log(`✅ DEBUG: Paciente encontrado:`, paciente);
 		const telefonoFinal = paciente.telefonoPersonal;
 
@@ -1404,17 +1407,17 @@ export const obtenerResultadosPaciente = async (telefonoPaciente) => {
 
 //---------------------------------------------------------------------------------------------------------
 export const resetearEstadoPrueba = async (telefono, tipoTest) => {
-	try{
+	try {
 		const modelo = seleccionarModelo(tipoTest);
 		console.log(`🫡 Se intenta resetear el estado para ${telefono} en ${tipoTest}`)
 		const registroExistente = await modelo.findUnique({
 			where: { telefono },
 		})
 
-		if(!registroExistente){
+		if (!registroExistente) {
 			console.log(`❌ No existe registro previo para ${telefono} en ${tipoTest}`)
 			return;
-		} else if (tipoTest === 'ghq12'){
+		} else if (tipoTest === 'ghq12') {
 			await modelo.update({
 				where: { telefono },
 				data: ({
@@ -1423,7 +1426,7 @@ export const resetearEstadoPrueba = async (telefono, tipoTest) => {
 					resPreg: {},
 				})
 			})
-		} else if (tipoTest === 'dass21'){
+		} else if (tipoTest === 'dass21') {
 			await modelo.update({
 				where: { telefono },
 				data: ({
@@ -1449,7 +1452,7 @@ export const resetearEstadoPrueba = async (telefono, tipoTest) => {
 export const obtenerPacientesAsignados = async (idPracticante) => {
 	try {
 		console.log(`🔍 Obteniendo pacientes para practicante: ${idPracticante}`);
-		
+
 		const pacientes = await prisma.informacionUsuario.findMany({
 			where: { practicanteAsignado: idPracticante },
 			select: {
@@ -1473,7 +1476,7 @@ export const obtenerPacientesAsignados = async (idPracticante) => {
 //---------------------------------------------------------------------------------------------------------
 
 export const guardarResultadoPrueba = async (telefono, tipoTest, datosResultados) => {
-	try{
+	try {
 		console.log(`🫡 Guardando prueba ${tipoTest} para usuario ${telefono}`)
 
 		// Obtener usuario en BD
@@ -1481,7 +1484,7 @@ export const guardarResultadoPrueba = async (telefono, tipoTest, datosResultados
 			where: { telefonoPersonal: telefono },
 			select: { idUsuario: true },
 		});
-		if (!usuario){
+		if (!usuario) {
 			console.log(`❌ El usuario con telefono ${telefono} no se encuentra en la base de datos`)
 			return;
 		}
@@ -1495,7 +1498,7 @@ export const guardarResultadoPrueba = async (telefono, tipoTest, datosResultados
 			}
 		})
 		console.log(`✅ Los resultados para ${telefono} en ${tipoTest} fueron guardados con éxito`)
-	} catch (error){
+	} catch (error) {
 		console.error(`❌ Error al guardar resultado para ${telefono} en ${tipoTest}:`, error);
 	}
 };
