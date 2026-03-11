@@ -1,7 +1,7 @@
 import Prisma from '@prisma/client'
 export const prisma = new Prisma.PrismaClient()
 import { adapterProvider } from '../app.js'
-import { ensureJid } from '../helpers/jidHelper.js'
+// import { ensureJid } from '../helpers/jidHelper.js' // Desactivado: ya no se usan JIDs de WhatsApp
 import fs from 'fs'
 //---------------------------------------------------------------------------------------------------------
 
@@ -582,12 +582,12 @@ export const switchFlujo = async (numero, flujo) => {
 
 export const sendAutonomousMessage = async (numero, mensaje) => {
 	try {
-		// Asegurate de que el número esté limpio
+		// Limpiar número a solo dígitos (funciona tanto para WebSocket como WhatsApp)
 		const numeroLimpio = numero.replace(/\D/g, '');
-		const numeroCompleto = `${numeroLimpio}@s.whatsapp.net`;
 
-		const jid = ensureJid(numeroCompleto); // canoniza el número
-		await adapterProvider.sendText(jid, mensaje);
+		// WebSocket provider: sendMessage acepta número limpio directamente
+		// WhatsApp provider (desactivado): usaba JID con @s.whatsapp.net
+		await adapterProvider.sendMessage(numeroLimpio, mensaje, {});
 
 		console.log(`Mensaje autónomo enviado a ${numero}: ${mensaje}`);
 		return true;
@@ -603,11 +603,12 @@ export const sendAutonomousDocument = async (numero, mensaje, filePath) => {
 			throw new Error(`Archivo no encontrado: ${filePath}`)
 		}
 
+		// Limpiar número a solo dígitos (funciona tanto para WebSocket como WhatsApp)
 		const numeroLimpio = numero.replace(/\D/g, '')
-		const numeroCompleto = `${numeroLimpio}@s.whatsapp.net`
-		const jid = ensureJid(numeroCompleto)
 
-		await adapterProvider.sendMessage(jid, mensaje, { media: filePath })
+		// WebSocket provider: sendMessage acepta { options: { media } }
+		// WhatsApp provider (desactivado): usaba JID con @s.whatsapp.net
+		await adapterProvider.sendMessage(numeroLimpio, mensaje, { options: { media: filePath } })
 		console.log(`Documento enviado a ${numero}: ${filePath}`)
 		return true
 	} catch (error) {

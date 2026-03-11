@@ -22,6 +22,18 @@ npm run k6:quick
 npm run k6:saturation
 ```
 
+## 3.1) Prueba de saturación sin login (solo endpoints públicos)
+
+```bash
+npm run k6:saturation-public
+```
+
+También puedes exportar resumen:
+
+```bash
+k6 run -e BASE_URL=http://localhost:3008 --summary-export=./performance/k6/summary-public.json ./performance/k6/saturation-public.js
+```
+
 También puedes ejecutarla directo con URL personalizada:
 
 ```bash

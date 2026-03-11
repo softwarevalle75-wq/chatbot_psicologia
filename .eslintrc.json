@@ -13,5 +13,13 @@
   "rules": {
     "no-unsafe-optional-chaining": "off",
     "import/no-duplicates": "off"
-  }
+  },
+  "ignorePatterns": [
+    "frontend/dist",
+    "frontend/node_modules",
+    "performance",
+    "node_modules",
+    "dist",
+    "*.min.js"
+  ]
 }

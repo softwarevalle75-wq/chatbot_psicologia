@@ -1,6 +1,15 @@
 import { createBot, createProvider, createFlow } from "@builderbot/bot";
 import { MysqlAdapter as Database } from "@builderbot/database-mysql";
-import { BaileysProvider as Provider } from "builderbot-provider-sherpa";
+
+// ── Provider: WebSocket (reemplaza WhatsApp/Baileys) ──
+import { WebSocketProvider } from "./provider/WebSocketProvider.js";
+
+// ── DESACTIVADO: WhatsApp/Baileys provider ──
+// import { BaileysProvider as Provider } from "builderbot-provider-sherpa";
+// import { getRealPhoneFromCtx, phoneFromAny } from "./helpers/jidHelper.js";
+// import { saveBotRuntimePhone } from "../shared/botRuntimeState.js";
+// import { isBotReady, markBotReady, enqueueMessage, flushQueue } from "../shared/startupQueue.js";
+
 import {
 	welcomeFlow,
 	dataConsentFlow,
@@ -13,7 +22,6 @@ import {
 	pedirNumeroPracticanteAsignadoFlow,
 	pedirDocumentoProfesionalFlow,
 } from "./flows/flows.js";
-
 
 import {
 	adminEntryFlow,
@@ -34,7 +42,6 @@ import {
 	practEsperarResultados
 } from './flows/roles/practMenuFlow.js'
 
-
 import {
 	completarPerfilPracticanteFlow,
 	resumenDatosFlow,
@@ -52,119 +59,42 @@ import {
 	getWebCitas,
 	citasPorPaciente,
 } from "./queries/queries.js";
-import { getRealPhoneFromCtx, phoneFromAny } from "./helpers/jidHelper.js";
-import { saveBotRuntimePhone } from "../shared/botRuntimeState.js";
-import { isBotReady, markBotReady, enqueueMessage, flushQueue } from "../shared/startupQueue.js";
 
 // inicializar RAG
 import { initializeRAG } from "./RAG/index.js";
 
-const originalConsoleInfo = console.info.bind(console)
-const libsignalNoisePatterns = [
-	/^Closing session:/,
-	/^Removing old closed session:/,
-	/^Opening session:/,
-]
-
-console.info = (...args) => {
-	const firstArg = typeof args[0] === 'string' ? args[0] : ''
-	if (libsignalNoisePatterns.some((pattern) => pattern.test(firstArg))) {
-		return
-	}
-	originalConsoleInfo(...args)
-}
+// Auth routes for web chatbot frontend
+import { registerAuthRoutes } from "./routes/authRoutes.js";
 
 const PORT = process.env.PORT ?? 3000;
 
-const extractPhoneFromUnknown = (value) => {
-	if (!value) return null
+// ── Provider: WebSocket ──
+export const adapterProvider = createProvider(WebSocketProvider);
 
-	if (typeof value === 'string' || typeof value === 'number') {
-		const asString = String(value)
-		return phoneFromAny(asString)
-	}
-
-	if (typeof value === 'object') {
-		try {
-			const serialized = JSON.stringify(value)
-			if (!serialized) return null
-
-			const jidMatch = serialized.match(/(\d{10,15})(?::\d+)?@s\.whatsapp\.net/)
-			if (jidMatch?.[1]) return jidMatch[1]
-
-			const digitsMatch = serialized.match(/\d{10,15}/)
-			if (digitsMatch?.[0]) return digitsMatch[0]
-		} catch {
-			return null
-		}
-	}
-
-	return null
-}
-
-const publishActiveBotNumber = async (provider, source = 'unknown') => {
-	try {
-		const candidates = [
-			provider?.vendor?.user?.id,
-			provider?.vendor?.user,
-			provider?.vendor?.authState?.creds?.me?.id,
-			provider?.vendor?.authState?.creds?.me?.lid,
-			provider?.vendor?.authState?.creds?.me?.phoneNumber,
-			provider?.vendor?.authState?.creds?.me,
-			provider?.vendor?.authState?.creds,
-		]
-
-		for (const candidate of candidates) {
-			const phone = extractPhoneFromUnknown(candidate)
-			if (!phone) continue
-
-			await saveBotRuntimePhone(phone, source)
-			console.log(`📲 Número activo del bot detectado: ${phone} (${source})`)
-			return phone
-		}
-	} catch (error) {
-		console.error('⚠️ No se pudo publicar número activo del bot:', error?.message || error)
-	}
-
-	return null
-}
-export const adapterProvider = createProvider(Provider, {
-	// Esto envía pings cada 30 segundos, pa mantener activa la conec
-	version: [2, 3000, 1033834674],
-	baileys: {
-		writeMyself: 'both',
-		keepAliveIntervalMs: 30000,
-	}
-})
-//---------------------------------------------------------------------------------------------------------
-
-adapterProvider.on("message", (ctx) => {
-	try {
-		const realPhone = getRealPhoneFromCtx(ctx)
-		const realJid = realPhone ? `${realPhone}` : null
-
-		ctx.realPhone = realPhone
-		ctx.realJid = realJid
-
-		// Se normaliza ctx.from
-		if (realPhone) ctx.from = realJid
-		if (realJid && ctx?.key) ctx.key.remoteJid = realJid
-
-		// Si el bot aún no está listo, encolar el mensaje para reintentarlo
-		// cuando la conexión esté completamente establecida.
-		if (!isBotReady()) {
-			enqueueMessage(ctx);
-		}
-
-	} catch (e) {
-		console.error('Error en middleware JID:', e)
-	}
-})
+// ── DESACTIVADO: WhatsApp/Baileys provider y middleware de JID ──
+// export const adapterProvider = createProvider(Provider, {
+// 	version: [2, 3000, 1033834674],
+// 	baileys: { writeMyself: 'both', keepAliveIntervalMs: 30000 }
+// });
+//
+// adapterProvider.on("message", (ctx) => {
+// 	try {
+// 		const realPhone = getRealPhoneFromCtx(ctx)
+// 		const realJid = realPhone ? `${realPhone}` : null
+// 		ctx.realPhone = realPhone
+// 		ctx.realJid = realJid
+// 		if (realPhone) ctx.from = realJid
+// 		if (realJid && ctx?.key) ctx.key.remoteJid = realJid
+// 		if (!isBotReady()) { enqueueMessage(ctx); }
+// 	} catch (e) {
+// 		console.error('Error en middleware JID:', e)
+// 	}
+// });
 
 //---------------------------------------------------------------------------------------------------------
 
 const main = async () => {
-	console.log('🚀 Iniciando función main...');
+	console.log('🚀 Iniciando ChatBot Psicológico (modo WebSocket)...');
 
 	const adapterFlow = createFlow([
 		// Flujos de entrada y bienvenida
@@ -245,52 +175,13 @@ const main = async () => {
 		provider: adapterProvider,
 		database: adapterDB,
 	});
-	let runtimePublished = false
-	const tryPublishRuntimeNumber = async (source) => {
-		if (runtimePublished) return
-		const found = await publishActiveBotNumber(adapterProvider, source)
-		if (found) runtimePublished = true
-	}
 
-	await tryPublishRuntimeNumber('startup')
-
-	const ev = adapterProvider?.vendor?.ev
-	if (ev?.on) {
-		ev.on('connection.update', async (update) => {
-			if (update?.connection === 'open') {
-				await tryPublishRuntimeNumber('connection.open')
-
-				// Marcar bot como listo cuando Baileys emite connection.open
-				if (!isBotReady()) {
-					setTimeout(async () => {
-						markBotReady();
-						await flushQueue(adapterProvider);
-					}, 1500);
-				}
-			}
-		})
-	}
-
-	// Timeout de seguridad: si connection.open nunca se emite
-	// (sesión ya activa al reiniciar), marcar listo igualmente.
-	setTimeout(async () => {
-		if (!isBotReady()) {
-			console.log('⚠️ startupQueue: connection.open no se emitió — marcando listo por timeout');
-			markBotReady();
-			await flushQueue(adapterProvider);
-		}
-	}, 5000);
-
-	const publishInterval = setInterval(() => {
-		tryPublishRuntimeNumber('polling')
-	}, 3000)
-
-	setTimeout(() => {
-		clearInterval(publishInterval)
-		if (!runtimePublished) {
-			console.warn('⚠️ No se pudo detectar automáticamente el número activo del bot')
-		}
-	}, 60000)
+	// ── DESACTIVADO: WhatsApp bot number detection y startup queue ──
+	// let runtimePublished = false
+	// const tryPublishRuntimeNumber = async (source) => { ... }
+	// await tryPublishRuntimeNumber('startup')
+	// const ev = adapterProvider?.vendor?.ev
+	// ... connection.update listeners, timeouts, polling ...
 
 	console.log('✅ Bot creado exitosamente');
 
@@ -310,10 +201,13 @@ const main = async () => {
 
 	//---------------------------------------------------------------------------------------------------------
 
-	// Ruta raíz - redirige al sistema web
+	// ── Auth routes for web chatbot frontend ──
+	registerAuthRoutes(adapterProvider.server);
+
+	// Ruta raíz
 	adapterProvider.server.get("/", (req, res) => {
-		res.writeHead(302, { 'Location': 'http://localhost:3002' });
-		res.end();
+		res.writeHead(200, { 'Content-Type': 'application/json' });
+		res.end(JSON.stringify({ status: 'ok', mode: 'websocket', message: 'ChatBot Psicológico API' }));
 	});
 
 	adapterProvider.server.post(
@@ -591,7 +485,7 @@ const main = async () => {
 	console.log(`🤖 Bot iniciado en puerto ${PORT}`);
 	try {
 		httpServer(+PORT);
-		console.log(`✅ Servidor HTTP iniciado correctamente en puerto ${PORT}`);
+		console.log(`✅ Servidor HTTP + WebSocket iniciado en puerto ${PORT}`);
 		await new Promise(() => { });
 	} catch (error) {
 		console.error('❌ Error iniciando servidor HTTP:', error);
