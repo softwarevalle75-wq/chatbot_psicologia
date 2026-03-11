@@ -54,6 +54,7 @@ model informacionUsuario {
 
   // Historial de pruebas
   historialTests HistorialTest[]
+  aspirante     aspirante?
 
   //citas
   @@unique([primerNombre, segundoNombre, primerApellido])
@@ -81,6 +82,10 @@ model ghq12 {
   Puntaje        Int    @default(0)
   preguntaActual Int    @default(0)
   resPreg        Json?
+  informePdf     Bytes?
+  informePdfNombre String?
+  informePdfMime String?
+  informePdfFecha DateTime? @db.Timestamp(0)
 
   usuario informacionUsuario @relation(fields: [telefono], references: [telefonoPersonal]) // Relación con informacionUsuario
 }
@@ -95,6 +100,10 @@ model dass21 {
   preguntaActual Int    @default(0)
   resPreg        Json?
   respuestas     Json?
+  informePdf     Bytes?
+  informePdfNombre String?
+  informePdfMime String?
+  informePdfFecha DateTime? @db.Timestamp(0)
 
   usuario informacionUsuario @relation(fields: [telefono], references: [telefonoPersonal])
 }
@@ -294,4 +303,18 @@ model RagPsychologicalConfig {
   updatedAt           DateTime @updatedAt @db.Timestamp(0)
 
   @@map("rag_psychological_config")
+}
+
+model aspirante {
+  idAspirante       String   @id @default(cuid())
+  usuarioId         String   @unique
+  telefono          String
+  documento         String?
+  estado            String   @default("aspirante")
+  fechaCreacion     DateTime @default(now())  @db.Timestamp(0)
+  fechaActualizacion DateTime @updatedAt      @db.Timestamp(0)
+
+  usuario informacionUsuario @relation(fields: [usuarioId], references: [idUsuario], onDelete: Cascade)
+
+  @@index([telefono])
 }

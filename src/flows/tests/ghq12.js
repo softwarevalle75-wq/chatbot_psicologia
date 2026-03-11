@@ -3,6 +3,7 @@ import {
 	saveEstadoCuestionario,
 	savePuntajeUsuario,
 	obtenerPerfilPacienteParaInforme,
+	guardarInformePdfEnBD,
 } from '../../queries/queries.js'
 
 import { interpretPsychologicalTest } from '../../RAG/psychological-interpreter.js'
@@ -144,9 +145,10 @@ const generarInformeGHQ12Async = async (numeroUsuario, rawResults) => {
             patientData,
         })
 
-        // Guardar ruta del PDF para envío por correo desde el flujo de documento
-        guardarRutaPdf(numeroUsuario, pdfPath, 'ghq12')
-    } catch (error) {
+		// Guardar ruta del PDF para envío por correo desde el flujo de documento
+		guardarRutaPdf(numeroUsuario, pdfPath, 'ghq12')
+		await guardarInformePdfEnBD(numeroUsuario, 'ghq12', pdfPath)
+	} catch (error) {
         console.error('❌ Error generando/enviando informe GHQ-12:', error)
     }
 }

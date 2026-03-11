@@ -250,6 +250,7 @@ export const obtenerUsuario = async (numero) => {
 					primerApellido: true,
 					correo: true,
 					telefonoPersonal: true,
+					fechaNacimiento: true,
 					flujo: true,
 					testActual: true,
 					historial: true,
@@ -299,6 +300,7 @@ export const obtenerUsuario = async (numero) => {
 				select: {
 					idUsuario: true,
 					telefonoPersonal: true,
+					fechaNacimiento: true,
 					historial: true,
 					flujo: true, // ← IMPORTANTE: Seleccionar flujo
 				},
@@ -779,6 +781,38 @@ export const savePuntajeUsuario = async (telefono, tipoTest, ...puntajeParams) =
 				resPreg: jsonPreg,
 			},
 		})
+	}
+}
+
+export const guardarInformePdfEnBD = async (telefono, tipoTest, pdfPath) => {
+	try {
+		if (!pdfPath || !fs.existsSync(pdfPath)) return false
+
+		const fileBuffer = fs.readFileSync(pdfPath)
+		const fileName = pdfPath.split(/[\\/]/).pop() || `informe_${tipoTest}.pdf`
+
+		const modelo = seleccionarModelo(tipoTest)
+		await modelo.upsert({
+			where: { telefono },
+			update: {
+				informePdf: fileBuffer,
+				informePdfNombre: fileName,
+				informePdfMime: 'application/pdf',
+				informePdfFecha: new Date(),
+			},
+			create: {
+				telefono,
+				informePdf: fileBuffer,
+				informePdfNombre: fileName,
+				informePdfMime: 'application/pdf',
+				informePdfFecha: new Date(),
+			},
+		})
+
+		return true
+	} catch (error) {
+		console.error('Error guardando informe PDF en BD:', error)
+		return false
 	}
 }
 

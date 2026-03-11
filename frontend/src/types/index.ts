@@ -22,6 +22,7 @@ export interface Step1Data {
   telefonoPersonal: string;
   fechaNacimiento: string;
   perteneceUniversidad: string;
+  esAspirante: boolean;
   carrera: string;
   jornada: string;
   semestre: string;

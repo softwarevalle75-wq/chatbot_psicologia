@@ -26,7 +26,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/registro" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   // Redirect to the appropriate registration step

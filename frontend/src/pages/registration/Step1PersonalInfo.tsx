@@ -18,6 +18,7 @@ const INITIAL: Step1Data = {
   telefonoPersonal: '',
   fechaNacimiento: '',
   perteneceUniversidad: 'No',
+  esAspirante: false,
   carrera: '',
   jornada: '',
   semestre: '',
@@ -36,12 +37,12 @@ export default function Step1PersonalInfo() {
   const { register } = useAuth();
   const [form, setForm] = useState<Step1Data>(() => {
     const saved = sessionStorage.getItem('reg_step1');
-    return saved ? JSON.parse(saved) : INITIAL;
+    return saved ? { ...INITIAL, ...JSON.parse(saved) } : INITIAL;
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const update = (field: keyof Step1Data, value: string) => {
+  const update = (field: keyof Step1Data, value: string | boolean) => {
     setForm((prev) => {
       const next = { ...prev, [field]: value };
       sessionStorage.setItem('reg_step1', JSON.stringify(next));
@@ -64,6 +65,7 @@ export default function Step1PersonalInfo() {
       if (!form.jornada) return 'La jornada es obligatoria si perteneces a la universidad';
       if (!form.semestre) return 'El semestre es obligatorio si perteneces a la universidad';
     }
+    if (form.perteneceUniversidad === 'Si' && form.esAspirante) return 'No puedes marcar pertenencia y aspirante al mismo tiempo';
     if (!form.password) return 'La contrasena es obligatoria';
     if (form.password.length < 6) return 'La contrasena debe tener al menos 6 caracteres';
     if (form.password !== form.confirmPassword) return 'Las contrasenas no coinciden';
@@ -91,6 +93,7 @@ export default function Step1PersonalInfo() {
         telefonoPersonal: form.telefonoPersonal.trim(),
         fechaNacimiento: form.fechaNacimiento,
         perteneceUniversidad: form.perteneceUniversidad,
+        esAspirante: form.esAspirante,
         carrera: form.perteneceUniversidad === 'Si' ? form.carrera.trim() : undefined,
         jornada: form.perteneceUniversidad === 'Si' ? form.jornada : undefined,
         semestre: form.perteneceUniversidad === 'Si' ? Number(form.semestre) : undefined,
@@ -281,10 +284,19 @@ export default function Step1PersonalInfo() {
                   : 'border-gray-300'
               }`}
               onClick={() =>
-                update(
-                  'perteneceUniversidad',
-                  form.perteneceUniversidad === 'Si' ? 'No' : 'Si',
-                )
+                setForm((prev) => {
+                  const nuevoPertenece = prev.perteneceUniversidad === 'Si' ? 'No' : 'Si';
+                  const next = {
+                    ...prev,
+                    perteneceUniversidad: nuevoPertenece,
+                    esAspirante: nuevoPertenece === 'Si' ? false : prev.esAspirante,
+                    carrera: nuevoPertenece === 'Si' ? prev.carrera : '',
+                    jornada: nuevoPertenece === 'Si' ? prev.jornada : '',
+                    semestre: nuevoPertenece === 'Si' ? prev.semestre : '',
+                  };
+                  sessionStorage.setItem('reg_step1', JSON.stringify(next));
+                  return next;
+                })
               }
             >
               {form.perteneceUniversidad === 'Si' && (
@@ -295,6 +307,41 @@ export default function Step1PersonalInfo() {
             </div>
             <span className="text-sm text-gray-700 font-medium">
               Pertenezco a la Institucion Universitaria de Colombia
+            </span>
+          </label>
+        </div>
+
+        <div className="mb-4">
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <div
+              className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
+                form.esAspirante
+                  ? 'bg-blue-500 border-blue-500'
+                  : 'border-gray-300'
+              }`}
+              onClick={() =>
+                setForm((prev) => {
+                  const next = {
+                    ...prev,
+                    esAspirante: !prev.esAspirante,
+                    perteneceUniversidad: !prev.esAspirante ? 'No' : prev.perteneceUniversidad,
+                    carrera: !prev.esAspirante ? '' : prev.carrera,
+                    jornada: !prev.esAspirante ? '' : prev.jornada,
+                    semestre: !prev.esAspirante ? '' : prev.semestre,
+                  };
+                  sessionStorage.setItem('reg_step1', JSON.stringify(next));
+                  return next;
+                })
+              }
+            >
+              {form.esAspirante && (
+                <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+            <span className="text-sm text-gray-700 font-medium">
+              Soy aspirante para ingresar a la universidad
             </span>
           </label>
         </div>
@@ -339,6 +386,7 @@ export default function Step1PersonalInfo() {
                 ))}
               </select>
             </div>
+
           </div>
         )}
       </section>

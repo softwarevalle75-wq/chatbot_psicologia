@@ -99,7 +99,7 @@ export function registerAuthRoutes(server) {
                 primerNombre, segundoNombre, primerApellido, segundoApellido,
                 tipoDocumento, documento, genero, correo, telefonoPersonal,
                 fechaNacimiento, perteneceUniversidad, carrera, jornada, semestre,
-                password,
+                password, esAspirante,
             } = req.body;
 
             if (!primerNombre || !primerApellido || !correo || !telefonoPersonal || !password || !documento) {
@@ -107,7 +107,14 @@ export function registerAuthRoutes(server) {
             }
 
             const correoNorm = normalizeEmail(correo);
-            const telefonoConPrefijo = telefonoPersonal.startsWith('57') ? telefonoPersonal : `57${telefonoPersonal}`;
+            const telefonoLimpio = normalizePhone(telefonoPersonal);
+            const telefonoConPrefijo = telefonoLimpio.startsWith('57') ? telefonoLimpio : `57${telefonoLimpio}`;
+            const perteneceUni = canonicalYesNo(perteneceUniversidad) === 'si';
+            const aspiranteFlag = Boolean(esAspirante);
+
+            if (perteneceUni && aspiranteFlag) {
+                return json(res, 400, { error: 'No puedes marcar pertenencia y aspirante al mismo tiempo' });
+            }
 
             // Check uniqueness
             const existing = await prisma.informacionUsuario.findFirst({
@@ -124,34 +131,48 @@ export function registerAuthRoutes(server) {
 
             const hashedPassword = await bcrypt.hash(password, 10);
 
-            const user = await prisma.informacionUsuario.create({
-                data: {
-                    primerNombre: primerNombre.trim(),
-                    segundoNombre: segundoNombre?.trim() || null,
-                    primerApellido: primerApellido.trim(),
-                    segundoApellido: segundoApellido?.trim() || null,
-                    tipoDocumento: tipoDocumento || 'CC',
-                    documento,
-                    genero: genero || 'No especificado',
-                    correo: correoNorm,
-                    telefonoPersonal: telefonoConPrefijo,
-                    fechaNacimiento: fechaNacimiento ? new Date(fechaNacimiento) : new Date(),
-                    perteneceUniversidad: perteneceUniversidad || 'No',
-                    carrera: carrera || null,
-                    jornada: jornada || null,
-                    semestre: semestre ? Number(semestre) : null,
-                    password: hashedPassword,
-                    consentimientoInformado: 'no',
-                    autorizacionDatos: 'no',
-                    isAuthenticated: true,
-                },
-            });
+            const user = await prisma.$transaction(async (tx) => {
+                const created = await tx.informacionUsuario.create({
+                    data: {
+                        primerNombre: primerNombre.trim(),
+                        segundoNombre: segundoNombre?.trim() || null,
+                        primerApellido: primerApellido.trim(),
+                        segundoApellido: segundoApellido?.trim() || null,
+                        tipoDocumento: tipoDocumento || 'CC',
+                        documento,
+                        genero: genero || 'No especificado',
+                        correo: correoNorm,
+                        telefonoPersonal: telefonoConPrefijo,
+                        fechaNacimiento: fechaNacimiento ? new Date(fechaNacimiento) : new Date(),
+                        perteneceUniversidad: perteneceUni ? 'Si' : 'No',
+                        carrera: carrera || null,
+                        jornada: jornada || null,
+                        semestre: semestre ? Number(semestre) : null,
+                        password: hashedPassword,
+                        consentimientoInformado: 'no',
+                        autorizacionDatos: 'no',
+                        isAuthenticated: true,
+                    },
+                });
 
-            // Create rolChat entry
-            await prisma.rolChat.upsert({
-                where: { telefono: telefonoConPrefijo },
-                update: {},
-                create: { telefono: telefonoConPrefijo, rol: 'usuario' },
+                await tx.rolChat.upsert({
+                    where: { telefono: telefonoConPrefijo },
+                    update: {},
+                    create: { telefono: telefonoConPrefijo, rol: 'usuario' },
+                });
+
+                if (aspiranteFlag) {
+                    await tx.aspirante.create({
+                        data: {
+                            usuarioId: created.idUsuario,
+                            telefono: telefonoConPrefijo,
+                            documento: documento || null,
+                            estado: 'aspirante',
+                        },
+                    });
+                }
+
+                return created;
             });
 
             const token = jwt.sign({ userId: user.idUsuario, correo: user.correo }, JWT_SECRET, { expiresIn: '7d' });

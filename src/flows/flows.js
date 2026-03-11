@@ -35,8 +35,56 @@ import Prisma from '@prisma/client'
 export const prisma = new Prisma.PrismaClient()
 //---------------------------------------------------------------------------------------------------------
 
+const calcularEdad = (fechaNacimiento) => {
+  if (!fechaNacimiento) return null;
+  const fecha = new Date(fechaNacimiento);
+  if (Number.isNaN(fecha.getTime())) return null;
+
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - fecha.getFullYear();
+  const mes = hoy.getMonth() - fecha.getMonth();
+
+  if (mes < 0 || (mes === 0 && hoy.getDate() < fecha.getDate())) {
+    edad -= 1;
+  }
+
+  return edad;
+};
+
+const validarMayorDeEdad = async (telefono) => {
+  const usuario = await obtenerUsuario(telefono);
+  const fechaNacimiento = usuario?.data?.fechaNacimiento;
+  const edad = calcularEdad(fechaNacimiento);
+
+  if (edad === null) {
+    return { permitido: false, motivo: 'SIN_FECHA', edad: null };
+  }
+
+  if (edad < 18) {
+    return { permitido: false, motivo: 'MENOR_EDAD', edad };
+  }
+
+  return { permitido: true, motivo: null, edad };
+};
+
+const mensajeBloqueoEdad =
+  '❌ Por políticas del sistema, los cuestionarios psicológicos están disponibles solo para mayores de 18 años.';
+
+const bloquearAccesoPorMenorEdad = async (ctx, state, flowDynamic) => {
+  await flowDynamic(`${mensajeBloqueoEdad}\n\n🔒 Acceso al chatbot bloqueado por restricción de edad.`);
+  await state.update({
+    currentFlow: 'bloqueadoMenorEdad',
+    waitingForTestResponse: false,
+    justInitializedTest: false,
+    initialized: false,
+    testActual: null,
+  });
+  await switchFlujo(ctx.from, 'bloqueadoMenorEdad');
+};
+
+
 export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
-  async (ctx, { gotoFlow, flowDynamic, state }) => {
+  async (ctx, { gotoFlow, flowDynamic, state, endFlow }) => {
     try {
       // console.log('🔍 ===== DEBUG CTX COMPLETO =====')
       // console.log('ctx.from:', ctx.from)
@@ -45,6 +93,11 @@ export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
 
       // 1. VERIFICAR FLUJOS ACTIVOS CRÍTICOS (prioridad máxima)
       let currentFlow = await state.get('currentFlow');
+
+      if (currentFlow === 'bloqueadoMenorEdad') {
+        await flowDynamic('🔒 Tu acceso está bloqueado por restricción de edad.');
+        return endFlow();
+      }
 
       // ⚠️ DETECCIÓN DE CAMBIO DE ROL EN TIEMPO REAL
       // Si el usuario está en un flujo activo, verificar si un admin le cambió el rol.
@@ -319,6 +372,10 @@ async function handleUserFlow(ctx, user, state, gotoFlow) {
         return;
       }
 
+    case 'bloqueadoMenorEdad':
+      await state.update({ currentFlow: 'bloqueadoMenorEdad' });
+      return;
+
     default:
       console.log('❓ Flujo por defecto -> menuFlow');
       await switchFlujo(ctx.from, 'menuFlow');
@@ -332,7 +389,7 @@ async function handleUserFlow(ctx, user, state, gotoFlow) {
 // ========================================
 
 export const testFlow = addKeyword(EVENTS.ACTION)
-  .addAction(async (ctx, { flowDynamic, gotoFlow, state }) => {
+  .addAction(async (ctx, { flowDynamic, gotoFlow, state, endFlow }) => {
     // 🔥 CONFIGURACIÓN INICIAL DEL TEST
     let user = state.get('user');
     const justInitialized = state.get('justInitializedTest');
@@ -345,6 +402,12 @@ export const testFlow = addKeyword(EVENTS.ACTION)
     if (currentFlow !== 'test') {
       console.log('🚫 testFlow ejecutado fuera de contexto');
       return;
+    }
+
+    const verificacionEdad = await validarMayorDeEdad(ctx.from);
+    if (!verificacionEdad.permitido) {
+      await bloquearAccesoPorMenorEdad(ctx, state, flowDynamic);
+      return endFlow();
     }
 
     // Obtener test actual
@@ -474,10 +537,16 @@ export const testSelectionFlow = addKeyword(utils.setEvent('TEST_SELECTION_FLOW'
     // '🔹 *2* - DASS-21 (Depresión, Ansiedad y Estrés)\n\n' +
     // 'Responde con *1* o *2*:',
     { capture: true },
-    async (ctx, { flowDynamic, gotoFlow, state, fallBack }) => {
+    async (ctx, { flowDynamic, gotoFlow, state, fallBack, endFlow }) => {
       const user = state.get('user') || {};
       const msg = ctx.body.trim();
       const tipoTest = parsearSeleccionTest(msg);
+
+      const verificacionEdad = await validarMayorDeEdad(ctx.from);
+      if (!verificacionEdad.permitido) {
+        await bloquearAccesoPorMenorEdad(ctx, state, flowDynamic);
+        return endFlow();
+      }
 
       // Ya no se requiere practicante asignado para iniciar pruebas
 
@@ -730,6 +799,12 @@ export const menuFlow = addKeyword(utils.setEvent('MENU_FLOW'))
         const msg = validarRespuestaMenu(ctx.body, ['1']);
 
         if (msg === '1') {
+          const verificacionEdad = await validarMayorDeEdad(ctx.from);
+          if (!verificacionEdad.permitido) {
+            await bloquearAccesoPorMenorEdad(ctx, state, flowDynamic);
+            return endFlow();
+          }
+
           // Hacer cuestionarios - ya no requiere practicante asignado
           await flowDynamic(menuCuestionarios());
           await switchFlujo(ctx.from, 'testSelectionFlow')

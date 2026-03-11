@@ -43,6 +43,7 @@ export interface RegisterPayload {
   telefonoPersonal: string;
   fechaNacimiento: string;
   perteneceUniversidad: string;
+  esAspirante?: boolean;
   carrera?: string;
   jornada?: string;
   semestre?: number;
