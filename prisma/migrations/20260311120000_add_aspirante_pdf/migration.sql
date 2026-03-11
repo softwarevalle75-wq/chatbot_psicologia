@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `informacionusuario`
+ALTER TABLE `informacionUsuario`
 ADD COLUMN `pdfAspirante` VARCHAR(191) NULL;
 
 -- CreateTable
@@ -21,5 +21,5 @@ CREATE TABLE `aspirante` (
 -- AddForeignKey
 ALTER TABLE `aspirante`
 ADD CONSTRAINT `aspirante_usuarioId_fkey`
-FOREIGN KEY (`usuarioId`) REFERENCES `informacionusuario`(`idUsuario`)
+FOREIGN KEY (`usuarioId`) REFERENCES `informacionUsuario`(`idUsuario`)
 ON DELETE CASCADE ON UPDATE CASCADE;

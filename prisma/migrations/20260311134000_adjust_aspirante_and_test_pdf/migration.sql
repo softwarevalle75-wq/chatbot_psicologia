@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `informacionusuario`
+ALTER TABLE `informacionUsuario`
 DROP COLUMN `pdfAspirante`;
 
 -- AlterTable
