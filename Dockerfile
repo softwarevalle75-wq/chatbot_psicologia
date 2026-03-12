@@ -4,11 +4,12 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 
 # Paquetes necesarios para dependencias nativas (por si acaso)
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
-    git
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copiar archivos de dependencias
 COPY package*.json ./
