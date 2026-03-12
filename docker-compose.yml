@@ -1,24 +1,62 @@
-version: '3.8'
-
 services:
-  chatbot-psico:
-    build: .
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
-    environment:
-      # Override DATABASE_URL para Docker (host.docker.internal)
-      - DATABASE_URL=mysql://root:123456@host.docker.internal:3306/chatbot_psico
+  mysql:
+    image: mysql:8.4
+    container_name: chatbot_mysql
     restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_DB_PASSWORD:-123456}
+      MYSQL_DATABASE: ${MYSQL_DB_NAME:-chatbot_psico}
+    ports:
+      - '3306:3306'
     volumes:
-      # Montar carpetas de sesión y tokens para persistencia
-      - ./_sessions:/app/_sessions
-      - ./tokens:/app/tokens
-      - ./.wwebjs_auth:/app/.wwebjs_auth
-    networks:
-      - chatbot-network
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-uroot', '-p${MYSQL_DB_PASSWORD:-123456}']
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
-networks:
-  chatbot-network:
-    driver: bridge
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatbot_app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      DATABASE_URL: mysql://root:${MYSQL_DB_PASSWORD:-123456}@mysql:3306/${MYSQL_DB_NAME:-chatbot_psico}
+      MYSQL_DB_HOST: mysql
+      MYSQL_DB_PORT: 3306
+      MYSQL_DB_USER: root
+      MYSQL_DB_PASSWORD: ${MYSQL_DB_PASSWORD:-123456}
+      MYSQL_DB_NAME: ${MYSQL_DB_NAME:-chatbot_psico}
+
+      JWT_SECRET: ${JWT_SECRET:-cambia-esto-en-produccion}
+
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      QDRANT_URL: ${QDRANT_URL}
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-rag-psicologia}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-large}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      PDF_TARGET: ${PDF_TARGET:-practitioner}
+
+      IP_DOMAIN: ${IP_DOMAIN:-http://localhost:3000}
+      BOT_NUM: ${BOT_NUM:-}
+      PRIMER_ADMIN: ${PRIMER_ADMIN:-}
+    ports:
+      - '3000:3000'
+    volumes:
+      - app_temp:/app/temp
+
+volumes:
+  mysql_data:
+  app_temp:

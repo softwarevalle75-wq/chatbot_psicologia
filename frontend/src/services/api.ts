@@ -1,4 +1,5 @@
-const API_BASE = '/v1/auth';
+const rawApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
+const API_BASE = rawApiBase ? rawApiBase.replace(/\/+$/, '') : '/v1/auth';
 
 async function request<T>(
   endpoint: string,
@@ -38,9 +39,11 @@ export interface RegisterPayload {
   segundoApellido?: string;
   tipoDocumento: string;
   documento: string;
-  genero: string;
+  sexo: string;
+  identidadGenero: string;
   orientacionSexual: string;
   etnia: string;
+  discapacidad: string;
   correo: string;
   telefonoPersonal: string;
   fechaNacimiento: string;

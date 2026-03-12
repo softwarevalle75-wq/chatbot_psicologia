@@ -13,9 +13,11 @@ const INITIAL: Step1Data = {
   segundoApellido: '',
   tipoDocumento: '',
   documento: '',
-  genero: '',
+  sexo: '',
+  identidadGenero: '',
   orientacionSexual: '',
   etnia: '',
+  discapacidad: '',
   correo: '',
   telefonoPersonal: '',
   fechaNacimiento: '',
@@ -57,9 +59,11 @@ export default function Step1PersonalInfo() {
     if (!form.primerApellido.trim()) return 'El primer apellido es obligatorio';
     if (!form.tipoDocumento) return 'Selecciona el tipo de documento';
     if (!form.documento.trim()) return 'El numero de documento es obligatorio';
-    if (!form.genero) return 'Selecciona el genero';
+    if (!form.sexo) return 'Selecciona el sexo';
+    if (!form.identidadGenero) return 'Selecciona la identidad de genero';
     if (!form.orientacionSexual) return 'Selecciona la orientacion sexual';
     if (!form.etnia) return 'Selecciona la etnia';
+    if (!form.discapacidad) return 'Selecciona si tienes discapacidad';
     if (!form.correo.trim()) return 'El correo es obligatorio';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo)) return 'El correo no es valido';
     if (!form.telefonoPersonal.trim()) return 'El telefono es obligatorio';
@@ -92,9 +96,11 @@ export default function Step1PersonalInfo() {
         segundoApellido: form.segundoApellido.trim() || undefined,
         tipoDocumento: form.tipoDocumento,
         documento: form.documento.trim(),
-        genero: form.genero,
+        sexo: form.sexo,
+        identidadGenero: form.identidadGenero,
         orientacionSexual: form.orientacionSexual,
         etnia: form.etnia,
+        discapacidad: form.discapacidad,
         correo: form.correo.trim(),
         telefonoPersonal: form.telefonoPersonal.trim(),
         fechaNacimiento: form.fechaNacimiento,
@@ -194,10 +200,11 @@ export default function Step1PersonalInfo() {
               onChange={(e) => update('tipoDocumento', e.target.value)}
             >
               <option value="">Seleccione...</option>
-              <option value="CC">Cedula de Ciudadania</option>
-              <option value="TI">Tarjeta de Identidad</option>
-              <option value="CE">Cedula de Extranjeria</option>
-              <option value="PA">Pasaporte</option>
+              <option value="(cc) Cedula de ciudadania">(cc) Cedula de ciudadania</option>
+              <option value="(ti) Tarjeta de identidad">(ti) Tarjeta de identidad</option>
+              <option value="(rc) Registro civil">(rc) Registro civil</option>
+              <option value="(ce) Cedula de extranjeria">(ce) Cedula de extranjeria</option>
+              <option value="(si) Sin identificacion">(si) Sin identificacion</option>
             </select>
           </div>
           <div>
@@ -225,17 +232,30 @@ export default function Step1PersonalInfo() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Genero</label>
+            <label className={labelClass}>Sexo</label>
             <select
               className={selectClass}
-              value={form.genero}
-              onChange={(e) => update('genero', e.target.value)}
+              value={form.sexo}
+              onChange={(e) => update('sexo', e.target.value)}
+            >
+              <option value="">Seleccione...</option>
+              <option value="Hombre">Hombre</option>
+              <option value="Mujer">Mujer</option>
+              <option value="Intersexual">Intersexual</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Identidad de genero</label>
+            <select
+              className={selectClass}
+              value={form.identidadGenero}
+              onChange={(e) => update('identidadGenero', e.target.value)}
             >
               <option value="">Seleccione...</option>
               <option value="Masculino">Masculino</option>
               <option value="Femenino">Femenino</option>
-              <option value="Otro">Otro</option>
-              <option value="Prefiero no decir">Prefiero no decir</option>
+              <option value="Transexual">Transexual</option>
+              <option value="No informa">No informa</option>
             </select>
           </div>
           <div>
@@ -249,10 +269,7 @@ export default function Step1PersonalInfo() {
               <option value="Heterosexual">Heterosexual</option>
               <option value="Homosexual">Homosexual</option>
               <option value="Bisexual">Bisexual</option>
-              <option value="Pansexual">Pansexual</option>
-              <option value="Asexual">Asexual</option>
-              <option value="Otra">Otra</option>
-              <option value="Prefiero no decir">Prefiero no decir</option>
+              <option value="No informa">No informa</option>
             </select>
           </div>
           <div>
@@ -263,14 +280,25 @@ export default function Step1PersonalInfo() {
               onChange={(e) => update('etnia', e.target.value)}
             >
               <option value="">Seleccione...</option>
-              <option value="Indigena">Indigena</option>
-              <option value="Afrocolombiano(a)">Afrocolombiano(a)</option>
+              <option value="Afro">Afro</option>
               <option value="Raizal">Raizal</option>
-              <option value="Palenquero(a)">Palenquero(a)</option>
-              <option value="Rrom (Gitano)">Rrom (Gitano)</option>
-              <option value="Blanco(a)">Blanco(a)</option>
-              <option value="Otra">Otra</option>
-              <option value="Prefiero no decir">Prefiero no decir</option>
+              <option value="Palanquero">Palanquero</option>
+              <option value="Indigena">Indigena</option>
+              <option value="Rom">Rom</option>
+              <option value="Ninguna">Ninguna</option>
+              <option value="No informa">No informa</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Discapacidad</label>
+            <select
+              className={selectClass}
+              value={form.discapacidad}
+              onChange={(e) => update('discapacidad', e.target.value)}
+            >
+              <option value="">Seleccione...</option>
+              <option value="Si">Si</option>
+              <option value="No">No</option>
             </select>
           </div>
           <div>

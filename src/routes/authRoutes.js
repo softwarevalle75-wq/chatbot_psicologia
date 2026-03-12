@@ -22,26 +22,24 @@ if (!JWT_SECRET || JWT_SECRET.length < 16) {
     throw new Error('JWT_SECRET no configurado o demasiado corto (minimo 16 caracteres)');
 }
 
-const GENEROS_VALIDOS = new Set(['Masculino', 'Femenino', 'Otro', 'Prefiero no decir']);
-const ORIENTACIONES_VALIDAS = new Set([
-    'Heterosexual',
-    'Homosexual',
-    'Bisexual',
-    'Pansexual',
-    'Asexual',
-    'Otra',
-    'Prefiero no decir',
+const TIPOS_DOCUMENTO_VALIDOS = new Set([
+    '(cc) Cedula de ciudadania',
+    '(ti) Tarjeta de identidad',
+    '(rc) Registro civil',
+    '(ce) Cedula de extranjeria',
+    '(si) Sin identificacion',
+    // Compatibilidad con clientes previos
+    'CC',
+    'TI',
+    'RC',
+    'CE',
+    'SI',
 ]);
-const ETNIAS_VALIDAS = new Set([
-    'Indigena',
-    'Afrocolombiano(a)',
-    'Raizal',
-    'Palenquero(a)',
-    'Rrom (Gitano)',
-    'Blanco(a)',
-    'Otra',
-    'Prefiero no decir',
-]);
+const SEXOS_VALIDOS = new Set(['Hombre', 'Mujer', 'Intersexual']);
+const IDENTIDADES_GENERO_VALIDAS = new Set(['Masculino', 'Femenino', 'Transexual', 'No informa']);
+const ORIENTACIONES_VALIDAS = new Set(['Heterosexual', 'Homosexual', 'Bisexual', 'No informa']);
+const ETNIAS_VALIDAS = new Set(['Afro', 'Raizal', 'Palanquero', 'Indigena', 'Rom', 'Ninguna', 'No informa']);
+const DISCAPACIDAD_VALORES = new Set(['Si', 'No']);
 
 const rateLimitStore = new Map();
 
@@ -93,9 +91,12 @@ const validateRegisterPayload = (payload) => {
     const correo = normalizeEmail(payload.correo);
     const telefono = normalizePhone(payload.telefonoPersonal);
     const password = String(payload.password || '');
-    const genero = normalizeSpaces(payload.genero);
+    const tipoDocumento = normalizeSpaces(payload.tipoDocumento);
+    const sexo = normalizeSpaces(payload.sexo || '');
+    const identidadGenero = normalizeSpaces(payload.identidadGenero || '');
     const orientacionSexual = normalizeSpaces(payload.orientacionSexual || '');
     const etnia = normalizeSpaces(payload.etnia || '');
+    const discapacidad = normalizeSpaces(payload.discapacidad || '');
 
     if (!primerNombre || primerNombre.length < 2 || primerNombre.length > 80) errors.push('Primer nombre invalido');
     if (!primerApellido || primerApellido.length < 2 || primerApellido.length > 80) errors.push('Primer apellido invalido');
@@ -103,9 +104,12 @@ const validateRegisterPayload = (payload) => {
     if (!correo || correo.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) errors.push('Correo invalido');
     if (!telefono || telefono.length < 10 || telefono.length > 13) errors.push('Telefono invalido');
     if (password.length < 8 || password.length > 64) errors.push('Contrasena invalida (minimo 8 caracteres)');
-    if (!GENEROS_VALIDOS.has(genero)) errors.push('Genero invalido');
+    if (!TIPOS_DOCUMENTO_VALIDOS.has(tipoDocumento)) errors.push('Tipo de documento invalido');
+    if (!SEXOS_VALIDOS.has(sexo)) errors.push('Sexo invalido');
+    if (!IDENTIDADES_GENERO_VALIDAS.has(identidadGenero)) errors.push('Identidad de genero invalida');
     if (!ORIENTACIONES_VALIDAS.has(orientacionSexual)) errors.push('Orientacion sexual invalida');
     if (!ETNIAS_VALIDAS.has(etnia)) errors.push('Etnia invalida');
+    if (!DISCAPACIDAD_VALORES.has(discapacidad)) errors.push('Discapacidad invalida');
 
     if (payload.fechaNacimiento) {
         const fecha = new Date(payload.fechaNacimiento);
@@ -120,11 +124,13 @@ const validateRegisterPayload = (payload) => {
             segundoNombre: normalizeSpaces(payload.segundoNombre),
             primerApellido,
             segundoApellido: normalizeSpaces(payload.segundoApellido),
-            tipoDocumento: normalizeSpaces(payload.tipoDocumento),
+            tipoDocumento,
             documento,
-            genero,
+            sexo,
+            identidadGenero,
             orientacionSexual,
             etnia,
+            discapacidad,
             correo,
             telefono,
             fechaNacimiento: payload.fechaNacimiento,
@@ -213,9 +219,10 @@ export function registerAuthRoutes(server) {
 
             const {
                 primerNombre, segundoNombre, primerApellido, segundoApellido,
-                tipoDocumento, documento, genero, correo, telefonoPersonal,
+                tipoDocumento, documento, sexo, identidadGenero, orientacionSexual, etnia, discapacidad,
+                correo, telefonoPersonal,
                 fechaNacimiento, perteneceUniversidad, carrera, jornada, semestre,
-                password, esAspirante, orientacionSexual, etnia,
+                password, esAspirante,
             } = req.body;
 
             const { errors, normalized } = validateRegisterPayload({
@@ -225,9 +232,11 @@ export function registerAuthRoutes(server) {
                 segundoApellido,
                 tipoDocumento,
                 documento,
-                genero,
+                sexo,
+                identidadGenero,
                 orientacionSexual,
                 etnia,
+                discapacidad,
                 correo,
                 telefonoPersonal,
                 fechaNacimiento,
@@ -264,14 +273,14 @@ export function registerAuthRoutes(server) {
                     OR: [
                         { correo: correoNorm },
                         { telefonoPersonal: telefonoConPrefijo },
-                        { telefonoPersonal: telefonoPersonal },
-                        { documento: documento },
+                        { telefonoPersonal: normalized.telefono },
+                        { documento: normalized.documento },
                     ],
                 },
             });
             if (existing) return json(res, 400, { error: 'Ya existe un usuario con ese correo, telefono o documento' });
 
-            const hashedPassword = await bcrypt.hash(password, 10);
+            const hashedPassword = await bcrypt.hash(normalized.password, 10);
 
             const user = await prisma.$transaction(async (tx) => {
                 const created = await tx.informacionUsuario.create({
@@ -280,11 +289,14 @@ export function registerAuthRoutes(server) {
                         segundoNombre: normalized.segundoNombre || null,
                         primerApellido: normalized.primerApellido,
                         segundoApellido: normalized.segundoApellido || null,
-                        tipoDocumento: normalized.tipoDocumento || 'CC',
+                        tipoDocumento: normalized.tipoDocumento,
                         documento: normalized.documento,
-                        genero: normalized.genero,
+                        sexo: normalized.sexo,
+                        identidadGenero: normalized.identidadGenero,
+                        genero: normalized.identidadGenero,
                         orientacionSexual: normalized.orientacionSexual,
                         etnia: normalized.etnia,
+                        discapacidad: normalized.discapacidad,
                         correo: correoNorm,
                         telefonoPersonal: telefonoConPrefijo,
                         fechaNacimiento: normalized.fechaNacimiento ? new Date(normalized.fechaNacimiento) : new Date(),

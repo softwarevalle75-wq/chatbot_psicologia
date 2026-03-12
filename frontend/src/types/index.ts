@@ -17,9 +17,11 @@ export interface Step1Data {
   segundoApellido: string;
   tipoDocumento: string;
   documento: string;
-  genero: string;
+  sexo: string;
+  identidadGenero: string;
   orientacionSexual: string;
   etnia: string;
+  discapacidad: string;
   correo: string;
   telefonoPersonal: string;
   fechaNacimiento: string;

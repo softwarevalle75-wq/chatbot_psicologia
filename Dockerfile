@@ -10,31 +10,21 @@ RUN apk add --no-cache \
     g++ \
     git
 
-# Instalar pnpm global
-RUN npm install -g pnpm@9
-
 # Copiar archivos de dependencias
-COPY package*.json *-lock.yaml ./
+COPY package*.json ./
 
-# Instalar TODAS las dependencias (incluye prisma CLI)
-RUN pnpm install
+# Instalar dependencias
+RUN npm install
 
 # Copiar el resto del código
 COPY . .
 
 # Generar el cliente de Prisma dentro del contenedor
-RUN pnpm prisma generate
+RUN npx prisma generate
 
 # Configurar puerto 
 ENV PORT=3000
 EXPOSE 3000
 
-# ✅ Ejecuta migraciones AL INICIAR el contenedor, no durante el build
-CMD sh -c "\
-  echo '⏳ Esperando MySQL...' && \
-  sleep 5 && \
-  pnpm prisma migrate reset --force && \ 
-  pnpm start\
-"
-
-# Cambiar reset por deploy en producción
+# Ejecutar migraciones seguras y levantar backend principal
+CMD sh -c "npx prisma migrate deploy && node src/app.js"
