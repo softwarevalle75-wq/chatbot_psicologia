@@ -1,5 +1,5 @@
 # Imagen base
-FROM node:20-alpine3.18
+FROM node:20-bookworm-slim
 
 WORKDIR /app
 
