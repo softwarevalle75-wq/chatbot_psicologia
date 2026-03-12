@@ -8,6 +8,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  preview: {
+    host: true,
+    allowedHosts: ['.up.railway.app'],
+  },
   server: {
     proxy: {
       '/v1': {
