@@ -1,4 +1,5 @@
-import { LogOut, BrainCircuit, X } from 'lucide-react';
+import { LogOut, X } from 'lucide-react';
+import logo from '../assets/loguito.png';
 
 interface SidebarProps {
   onLogout?: () => void;
@@ -39,10 +40,12 @@ export default function Sidebar({ onLogout, isOpen, onClose }: SidebarProps) {
         </button>
 
         {/* Avatar */}
-        <div className="mt-4 mb-6">
-          <div className="w-28 h-28 rounded-full bg-white/20 border-4 border-white/40 backdrop-blur-sm flex items-center justify-center shadow-2xl shadow-blue-900/40">
-            <BrainCircuit className="w-14 h-14 text-white drop-shadow-md" strokeWidth={1.5} />
-          </div>
+        <div className="mt-2 mb-1">
+          <img
+            src={logo}
+            alt="Logo Chatbot Psicologico"
+            className="w-44 h-44 object-contain"
+          />
         </div>
 
         {/* Title */}
@@ -51,7 +54,7 @@ export default function Sidebar({ onLogout, isOpen, onClose }: SidebarProps) {
         </h1>
 
         {/* Subtitle */}
-        <p className="mt-3 text-sm font-medium tracking-widest uppercase text-white/60 text-center">
+        <p className="mt-2 text-sm font-medium tracking-widest uppercase text-white/60 text-center">
           Tu asistente virtual
         </p>
 

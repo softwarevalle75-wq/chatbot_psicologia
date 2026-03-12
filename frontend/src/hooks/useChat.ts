@@ -77,7 +77,7 @@ export function useChat(): UseChatReturn {
           id: String(nextId++),
           sender: 'bot',
           content: msg.body,
-          timestamp: msg.timestamp || generateTimestamp(),
+          timestamp: generateTimestamp(),
           // Attach extras for future use (buttons, media)
           ...(msg.buttons ? { buttons: msg.buttons } : {}),
           ...(msg.media ? { media: msg.media } : {}),

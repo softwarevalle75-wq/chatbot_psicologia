@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { BrainCircuit } from 'lucide-react';
 import ProgressCard from './ProgressCard';
+import logo from '../../assets/loguito.png';
 
 interface StepConfig {
   step: number;
@@ -26,10 +26,12 @@ export default function RegistrationLayout({ currentStep, children }: Registrati
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-blue-400 via-blue-500 to-indigo-400 flex flex-col font-['Inter',sans-serif]">
       {/* Header */}
-      <header className="flex items-center justify-center gap-3 py-4 bg-blue-600/30 backdrop-blur-sm">
-        <div className="w-10 h-10 rounded-full bg-white/20 border-2 border-white/40 flex items-center justify-center">
-          <BrainCircuit className="w-5 h-5 text-white" strokeWidth={1.5} />
-        </div>
+      <header className="flex items-center justify-center gap-2 py-3 bg-blue-600/30 backdrop-blur-sm">
+        <img
+          src={logo}
+          alt="Logo Chatbot Psicologico"
+          className="w-14 h-14 object-contain"
+        />
         <span className="text-white font-bold text-lg tracking-wide">Chatbot Psicologico</span>
       </header>
 

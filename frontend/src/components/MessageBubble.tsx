@@ -12,6 +12,22 @@ const isSeparator = (line: string) => {
   return cleaned.length >= 8 && /^[=\-_.•🧠👉⭐✨🔹]+$/.test(cleaned);
 };
 
+const extractNumberFromEmoji = (token: string) => {
+  const emojiMap: Record<string, string> = {
+    '0️⃣': '0',
+    '1️⃣': '1',
+    '2️⃣': '2',
+    '3️⃣': '3',
+    '4️⃣': '4',
+    '5️⃣': '5',
+    '6️⃣': '6',
+    '7️⃣': '7',
+    '8️⃣': '8',
+    '9️⃣': '9',
+  };
+  return emojiMap[token] || token;
+};
+
 const matchOptionLine = (line: string) => {
   const trimmed = line.trim();
   const emojiMatch = trimmed.match(/^([0-9]️⃣)\s*(.+)$/);
@@ -30,6 +46,13 @@ const matchOptionLine = (line: string) => {
 const matchNumberedLine = (line: string) => {
   const trimmed = line.trim();
   const match = trimmed.match(/^([0-9]{1,2})\s*[).\-]\s*(.+)$/);
+  if (!match) return null;
+  return { index: match[1], text: match[2] };
+};
+
+const matchQuestionLine = (line: string) => {
+  const trimmed = line.trim();
+  const match = trimmed.match(/^([0-9]{1,2})\s*[).\-]\s*(.+\?)$/);
   if (!match) return null;
   return { index: match[1], text: match[2] };
 };
@@ -80,12 +103,28 @@ const renderBotMessage = (content: string) => {
           return <div key={`sep-${idx}`} className="my-1 border-t border-slate-300/70" />;
         }
 
+        const questionLine = matchQuestionLine(line);
+        if (questionLine) {
+          return (
+            <div key={`q-${idx}`} className="flex items-start gap-2 rounded-lg bg-blue-50/80 px-2.5 py-2 border border-blue-200/80">
+              <span className="shrink-0 inline-flex min-w-6 h-6 items-center justify-center rounded-md bg-blue-600 text-white text-[11px] font-semibold">
+                ❓
+              </span>
+              <p className="whitespace-pre-wrap break-words text-slate-800 font-medium">
+                <span className="text-blue-700 font-semibold mr-1">{questionLine.index}.</span>
+                {parseInlineFormatting(questionLine.text)}
+              </p>
+            </div>
+          );
+        }
+
         const optionLine = matchOptionLine(line);
         if (optionLine) {
+          const numericToken = extractNumberFromEmoji(optionLine.token);
           return (
             <div key={`opt-${idx}`} className="flex items-start gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 border border-slate-200/80">
-              <span className="shrink-0 inline-flex min-w-6 h-6 items-center justify-center rounded-md bg-blue-600 text-white text-[11px] font-semibold">
-                {optionLine.token}
+              <span className="shrink-0 inline-flex min-w-6 h-6 items-center justify-center rounded-md bg-slate-200 text-slate-700 text-[11px] font-semibold">
+                {numericToken}
               </span>
               <p className="whitespace-pre-wrap break-words text-slate-800">
                 {parseInlineFormatting(optionLine.text)}
