@@ -1,6 +1,8 @@
 //---------------------------------------------------------------------------------------------------------
 
 import { addKeyword, utils, EVENTS } from '@builderbot/bot'
+import fs from 'node:fs'
+import path from 'node:path'
 import {
   obtenerUsuario,
   changeTest,
@@ -34,6 +36,40 @@ import { obtenerRutaPdf, limpiarRutaPdf } from '../helpers/pdfStore.js'
 import Prisma from '@prisma/client'
 export const prisma = new Prisma.PrismaClient()
 //---------------------------------------------------------------------------------------------------------
+
+const ensureTempDir = () => {
+  const tempDir = path.resolve(process.cwd(), 'temp')
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true })
+  }
+  return tempDir
+}
+
+const recuperarPdfDesdeBD = async (telefono, testIdPreferido) => {
+  const candidatos = testIdPreferido ? [testIdPreferido] : ['dass21', 'ghq12']
+
+  for (const tipo of candidatos) {
+    const modelo = tipo === 'dass21' ? prisma.dass21 : prisma.ghq12
+    const registro = await modelo.findUnique({
+      where: { telefono },
+      select: {
+        informePdf: true,
+        informePdfNombre: true,
+      },
+    })
+
+    if (!registro?.informePdf) continue
+
+    const nombreArchivo = registro.informePdfNombre || `informe_${tipo}_${telefono}.pdf`
+    const tempDir = ensureTempDir()
+    const filePath = path.join(tempDir, nombreArchivo)
+
+    fs.writeFileSync(filePath, Buffer.from(registro.informePdf))
+    return { pdfPath: filePath, testId: tipo, fecha: new Date() }
+  }
+
+  return null
+}
 
 const calcularEdad = (fechaNacimiento) => {
   if (!fechaNacimiento) return null;
@@ -924,11 +960,16 @@ export const pedirDocumentoProfesionalFlow = addKeyword(utils.setEvent('PEDIR_DO
 
         await flowDynamic(`✅ Profesional encontrado: *${practicante.nombre}*\n⏳ Preparando el informe para envío por correo...`);
 
-        // Esperar hasta 60 segundos por el PDF (se genera en background)
+        // Esperar hasta 180 segundos por el PDF (RAG + PDF puede tardar)
         let pdfListo = obtenerRutaPdf(ctx.from);
-        for (let i = 0; i < 12 && !pdfListo?.pdfPath; i++) {
+        for (let i = 0; i < 36 && !pdfListo?.pdfPath; i++) {
           await new Promise(resolve => setTimeout(resolve, 5000));
           pdfListo = obtenerRutaPdf(ctx.from);
+        }
+
+        if (!pdfListo?.pdfPath) {
+          const testActualCompletado = await state.get('testActualCompletado') || null
+          pdfListo = await recuperarPdfDesdeBD(ctx.from, testActualCompletado)
         }
 
         if (!pdfListo?.pdfPath) {
