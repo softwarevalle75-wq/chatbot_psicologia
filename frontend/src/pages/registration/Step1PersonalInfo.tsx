@@ -14,6 +14,8 @@ const INITIAL: Step1Data = {
   tipoDocumento: '',
   documento: '',
   genero: '',
+  orientacionSexual: '',
+  etnia: '',
   correo: '',
   telefonoPersonal: '',
   fechaNacimiento: '',
@@ -56,6 +58,8 @@ export default function Step1PersonalInfo() {
     if (!form.tipoDocumento) return 'Selecciona el tipo de documento';
     if (!form.documento.trim()) return 'El numero de documento es obligatorio';
     if (!form.genero) return 'Selecciona el genero';
+    if (!form.orientacionSexual) return 'Selecciona la orientacion sexual';
+    if (!form.etnia) return 'Selecciona la etnia';
     if (!form.correo.trim()) return 'El correo es obligatorio';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo)) return 'El correo no es valido';
     if (!form.telefonoPersonal.trim()) return 'El telefono es obligatorio';
@@ -89,6 +93,8 @@ export default function Step1PersonalInfo() {
         tipoDocumento: form.tipoDocumento,
         documento: form.documento.trim(),
         genero: form.genero,
+        orientacionSexual: form.orientacionSexual,
+        etnia: form.etnia,
         correo: form.correo.trim(),
         telefonoPersonal: form.telefonoPersonal.trim(),
         fechaNacimiento: form.fechaNacimiento,
@@ -229,6 +235,41 @@ export default function Step1PersonalInfo() {
               <option value="Masculino">Masculino</option>
               <option value="Femenino">Femenino</option>
               <option value="Otro">Otro</option>
+              <option value="Prefiero no decir">Prefiero no decir</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Orientacion sexual</label>
+            <select
+              className={selectClass}
+              value={form.orientacionSexual}
+              onChange={(e) => update('orientacionSexual', e.target.value)}
+            >
+              <option value="">Seleccione...</option>
+              <option value="Heterosexual">Heterosexual</option>
+              <option value="Homosexual">Homosexual</option>
+              <option value="Bisexual">Bisexual</option>
+              <option value="Pansexual">Pansexual</option>
+              <option value="Asexual">Asexual</option>
+              <option value="Otra">Otra</option>
+              <option value="Prefiero no decir">Prefiero no decir</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Etnia</label>
+            <select
+              className={selectClass}
+              value={form.etnia}
+              onChange={(e) => update('etnia', e.target.value)}
+            >
+              <option value="">Seleccione...</option>
+              <option value="Indigena">Indigena</option>
+              <option value="Afrocolombiano(a)">Afrocolombiano(a)</option>
+              <option value="Raizal">Raizal</option>
+              <option value="Palenquero(a)">Palenquero(a)</option>
+              <option value="Rrom (Gitano)">Rrom (Gitano)</option>
+              <option value="Blanco(a)">Blanco(a)</option>
+              <option value="Otra">Otra</option>
               <option value="Prefiero no decir">Prefiero no decir</option>
             </select>
           </div>

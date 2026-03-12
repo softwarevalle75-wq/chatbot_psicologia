@@ -31,6 +31,8 @@ model informacionUsuario {
   consentimientoInformado String   @default("No") 
   autorizacionDatos       String   @default("No") 
   genero                  String   @default("No especificado")
+  orientacionSexual       String   @default("Prefiero no decir")
+  etnia                   String   @default("Prefiero no decir")
   ayudaPsicologica        String?
   flujo                   String?
   historial               Json?

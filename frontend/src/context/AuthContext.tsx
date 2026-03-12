@@ -84,20 +84,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const saveTratamientoDatos = useCallback(async () => {
     if (!user) return;
-    await api.saveTratamientoDatos(user.id);
+    await api.saveTratamientoDatos();
     setUser((prev) => prev ? { ...prev, autorizacionDatos: 'si' } : prev);
     setRegistrationStep(3);
   }, [user]);
 
   const saveSociodemografico = useCallback(async (data: SociodemograficoPayload) => {
     if (!user) return;
-    await api.saveSociodemografico(user.id, data);
+    await api.saveSociodemografico(data);
     setRegistrationStep(4);
   }, [user]);
 
   const saveConsentimiento = useCallback(async () => {
     if (!user) return;
-    await api.saveConsentimiento(user.id);
+    await api.saveConsentimiento();
     setUser((prev) => prev ? { ...prev, consentimientoInformado: 'si' } : prev);
     setRegistrationStep(5);
   }, [user]);

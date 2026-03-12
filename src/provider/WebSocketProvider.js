@@ -19,7 +19,11 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'secret_key';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET || JWT_SECRET.length < 16) {
+    throw new Error('JWT_SECRET no configurado o demasiado corto (minimo 16 caracteres)');
+}
 
 class WebSocketProvider extends ProviderClass {
 
@@ -212,7 +216,7 @@ class WebSocketProvider extends ProviderClass {
             // Verify JWT
             let decoded;
             try {
-                decoded = jwt.verify(token, JWT_SECRET);
+                decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
             } catch {
                 ws.close(4002, 'Token invalido o expirado');
                 return;

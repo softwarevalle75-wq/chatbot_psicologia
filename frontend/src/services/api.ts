@@ -39,6 +39,8 @@ export interface RegisterPayload {
   tipoDocumento: string;
   documento: string;
   genero: string;
+  orientacionSexual: string;
+  etnia: string;
   correo: string;
   telefonoPersonal: string;
   fechaNacimiento: string;
@@ -77,24 +79,24 @@ export const api = {
     );
   },
 
-  saveTratamientoDatos(userId: string) {
+  saveTratamientoDatos() {
     return request<{ message: string }>(
       '/tratamiento-datos',
-      { method: 'POST', body: JSON.stringify({ userId, autorizacionDatos: 'si' }) },
+      { method: 'POST', body: JSON.stringify({ autorizacionDatos: 'si' }) },
     );
   },
 
-  saveSociodemografico(userId: string, data: SociodemograficoPayload) {
+  saveSociodemografico(data: SociodemograficoPayload) {
     return request<{ message: string }>(
       '/sociodemografico',
-      { method: 'POST', body: JSON.stringify({ ...data, userId }) },
+      { method: 'POST', body: JSON.stringify(data) },
     );
   },
 
-  saveConsentimiento(userId: string) {
+  saveConsentimiento() {
     return request<{ message: string }>(
       '/consentimiento',
-      { method: 'POST', body: JSON.stringify({ userId, consentimientoInformado: 'si' }) },
+      { method: 'POST', body: JSON.stringify({ consentimientoInformado: 'si' }) },
     );
   },
 
