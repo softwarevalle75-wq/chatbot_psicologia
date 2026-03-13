@@ -36,6 +36,7 @@ model informacionUsuario {
   orientacionSexual       String   @default("Prefiero no decir")
   etnia                   String   @default("Prefiero no decir")
   discapacidad            String   @default("No")
+  discapacidadDetalle     String?
   ayudaPsicologica        String?
   flujo                   String?
   historial               Json?
@@ -242,7 +243,7 @@ model InformacionSociodemografica {
   numeroHermanos        Int @default(0)
   conQuienVive          String
   tienePersonasACargo   String @default("Si")
-  rolFamiliar           RolFamiliar
+  rolFamiliar           Json
   escolaridad           Escolaridad
   ocupacion             String
   nivelIngresos         NivelIngresos

@@ -22,6 +22,7 @@ export interface Step1Data {
   orientacionSexual: string;
   etnia: string;
   discapacidad: string;
+  discapacidadDetalle: string;
   correo: string;
   telefonoPersonal: string;
   fechaNacimiento: string;
@@ -42,7 +43,7 @@ export interface Step3Data {
   estadoCivil: string;
   numeroHijos: number;
   numeroHermanos: number;
-  rolFamiliar: string;
+  rolFamiliar: string[];
   conQuienVive: string;
   tienePersonasACargo: string;
   escolaridad: string;

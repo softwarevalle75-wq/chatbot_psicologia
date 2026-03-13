@@ -40,6 +40,7 @@ const IDENTIDADES_GENERO_VALIDAS = new Set(['Masculino', 'Femenino', 'Transexual
 const ORIENTACIONES_VALIDAS = new Set(['Heterosexual', 'Homosexual', 'Bisexual', 'No informa']);
 const ETNIAS_VALIDAS = new Set(['Afro', 'Raizal', 'Palanquero', 'Indigena', 'Rom', 'Ninguna', 'No informa']);
 const DISCAPACIDAD_VALORES = new Set(['Si', 'No']);
+const ROL_FAMILIAR_VALIDOS = new Set(['madre', 'padre', 'hijo', 'hermano', 'abuelo', 'nieto', 'tio', 'sobrino', 'otro']);
 
 const rateLimitStore = new Map();
 
@@ -96,7 +97,9 @@ const validateRegisterPayload = (payload) => {
     const identidadGenero = normalizeSpaces(payload.identidadGenero || '');
     const orientacionSexual = normalizeSpaces(payload.orientacionSexual || '');
     const etnia = normalizeSpaces(payload.etnia || '');
-    const discapacidad = normalizeSpaces(payload.discapacidad || '');
+    const discapacidadRaw = normalizeSpaces(payload.discapacidad || '');
+    const discapacidad = discapacidadRaw.toLowerCase() === 'si' ? 'Si' : discapacidadRaw.toLowerCase() === 'no' ? 'No' : discapacidadRaw;
+    const discapacidadDetalle = normalizeSpaces(payload.discapacidadDetalle || '');
 
     if (!primerNombre || primerNombre.length < 2 || primerNombre.length > 80) errors.push('Primer nombre invalido');
     if (!primerApellido || primerApellido.length < 2 || primerApellido.length > 80) errors.push('Primer apellido invalido');
@@ -110,6 +113,9 @@ const validateRegisterPayload = (payload) => {
     if (!ORIENTACIONES_VALIDAS.has(orientacionSexual)) errors.push('Orientacion sexual invalida');
     if (!ETNIAS_VALIDAS.has(etnia)) errors.push('Etnia invalida');
     if (!DISCAPACIDAD_VALORES.has(discapacidad)) errors.push('Discapacidad invalida');
+    if (discapacidad === 'Si' && (discapacidadDetalle.length < 2 || discapacidadDetalle.length > 120)) {
+        errors.push('Debes indicar cual discapacidad tienes');
+    }
 
     if (payload.fechaNacimiento) {
         const fecha = new Date(payload.fechaNacimiento);
@@ -131,6 +137,7 @@ const validateRegisterPayload = (payload) => {
             orientacionSexual,
             etnia,
             discapacidad,
+            discapacidadDetalle,
             correo,
             telefono,
             fechaNacimiento: payload.fechaNacimiento,
@@ -219,7 +226,7 @@ export function registerAuthRoutes(server) {
 
             const {
                 primerNombre, segundoNombre, primerApellido, segundoApellido,
-                tipoDocumento, documento, sexo, identidadGenero, orientacionSexual, etnia, discapacidad,
+                tipoDocumento, documento, sexo, identidadGenero, orientacionSexual, etnia, discapacidad, discapacidadDetalle,
                 correo, telefonoPersonal,
                 fechaNacimiento, perteneceUniversidad, carrera, jornada, semestre,
                 password, esAspirante,
@@ -237,6 +244,7 @@ export function registerAuthRoutes(server) {
                 orientacionSexual,
                 etnia,
                 discapacidad,
+                discapacidadDetalle,
                 correo,
                 telefonoPersonal,
                 fechaNacimiento,
@@ -297,6 +305,7 @@ export function registerAuthRoutes(server) {
                         orientacionSexual: normalized.orientacionSexual,
                         etnia: normalized.etnia,
                         discapacidad: normalized.discapacidad,
+                        discapacidadDetalle: normalized.discapacidad === 'Si' ? normalized.discapacidadDetalle : null,
                         correo: correoNorm,
                         telefonoPersonal: telefonoConPrefijo,
                         fechaNacimiento: normalized.fechaNacimiento ? new Date(normalized.fechaNacimiento) : new Date(),
@@ -341,6 +350,9 @@ export function registerAuthRoutes(server) {
             });
         } catch (error) {
             console.error('Error en /v1/auth/register:', error);
+            if (error?.code === 'P2002') {
+                return json(res, 400, { error: 'Ya existe un usuario con esos datos. Cambia documento/correo/telefono o nombres.' });
+            }
             return json(res, 500, { error: 'Error interno del servidor' });
         }
     });
@@ -443,8 +455,16 @@ export function registerAuthRoutes(server) {
                 tienePersonasACargo, rolFamiliar, escolaridad, ocupacion, nivelIngresos,
             } = req.body;
 
-            if (!estadoCivil || !conQuienVive || !rolFamiliar || !escolaridad || !ocupacion || !nivelIngresos) {
+            const rolesFamiliares = Array.isArray(rolFamiliar)
+                ? rolFamiliar.map((r) => normalizeSpaces(r).toLowerCase()).filter(Boolean)
+                : [];
+
+            if (!estadoCivil || !conQuienVive || !rolesFamiliares.length || !escolaridad || !ocupacion || !nivelIngresos) {
                 return json(res, 400, { error: 'Todos los campos son obligatorios' });
+            }
+
+            if (!rolesFamiliares.every((role) => ROL_FAMILIAR_VALIDOS.has(role))) {
+                return json(res, 400, { error: 'Rol familiar invalido' });
             }
 
             await prisma.informacionSociodemografica.upsert({
@@ -453,14 +473,14 @@ export function registerAuthRoutes(server) {
                     estadoCivil, numeroHijos: Number(numeroHijos) || 0,
                     numeroHermanos: Number(numeroHermanos) || 0, conQuienVive,
                     tienePersonasACargo: tienePersonasACargo || 'No',
-                    rolFamiliar, escolaridad, ocupacion, nivelIngresos,
+                    rolFamiliar: rolesFamiliares, escolaridad, ocupacion, nivelIngresos,
                 },
                 create: {
                     usuarioId: userId, estadoCivil,
                     numeroHijos: Number(numeroHijos) || 0,
                     numeroHermanos: Number(numeroHermanos) || 0, conQuienVive,
                     tienePersonasACargo: tienePersonasACargo || 'No',
-                    rolFamiliar, escolaridad, ocupacion, nivelIngresos,
+                    rolFamiliar: rolesFamiliares, escolaridad, ocupacion, nivelIngresos,
                 },
             });
 

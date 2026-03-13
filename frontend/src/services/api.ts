@@ -44,6 +44,7 @@ export interface RegisterPayload {
   orientacionSexual: string;
   etnia: string;
   discapacidad: string;
+  discapacidadDetalle?: string;
   correo: string;
   telefonoPersonal: string;
   fechaNacimiento: string;
@@ -59,7 +60,7 @@ export interface SociodemograficoPayload {
   estadoCivil: string;
   numeroHijos: number;
   numeroHermanos: number;
-  rolFamiliar: string;
+  rolFamiliar: string[];
   conQuienVive: string;
   tienePersonasACargo: string;
   escolaridad: string;
