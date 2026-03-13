@@ -42,6 +42,7 @@ const ETNIAS_VALIDAS = new Set([
     'Otra',
     'Prefiero no decir',
 ]);
+const DISCAPACIDAD_VALIDA = new Set(['Si', 'No']);
 
 const rateLimitStore = new Map();
 
@@ -96,6 +97,9 @@ const validateRegisterPayload = (payload) => {
     const genero = normalizeSpaces(payload.genero);
     const orientacionSexual = normalizeSpaces(payload.orientacionSexual || '');
     const etnia = normalizeSpaces(payload.etnia || '');
+    const discapacidadRaw = normalizeSpaces(payload.discapacidad || '');
+    const discapacidad = discapacidadRaw.toLowerCase() === 'si' ? 'Si' : discapacidadRaw.toLowerCase() === 'no' ? 'No' : discapacidadRaw;
+    const discapacidadDetalle = normalizeSpaces(payload.discapacidadDetalle || '');
 
     if (!primerNombre || primerNombre.length < 2 || primerNombre.length > 80) errors.push('Primer nombre invalido');
     if (!primerApellido || primerApellido.length < 2 || primerApellido.length > 80) errors.push('Primer apellido invalido');
@@ -106,6 +110,10 @@ const validateRegisterPayload = (payload) => {
     if (!GENEROS_VALIDOS.has(genero)) errors.push('Genero invalido');
     if (!ORIENTACIONES_VALIDAS.has(orientacionSexual)) errors.push('Orientacion sexual invalida');
     if (!ETNIAS_VALIDAS.has(etnia)) errors.push('Etnia invalida');
+    if (!DISCAPACIDAD_VALIDA.has(discapacidad)) errors.push('Discapacidad invalida');
+    if (discapacidad === 'Si' && (discapacidadDetalle.length < 2 || discapacidadDetalle.length > 120)) {
+        errors.push('Debes indicar cual discapacidad tienes');
+    }
 
     if (payload.fechaNacimiento) {
         const fecha = new Date(payload.fechaNacimiento);
@@ -125,6 +133,8 @@ const validateRegisterPayload = (payload) => {
             genero,
             orientacionSexual,
             etnia,
+            discapacidad,
+            discapacidadDetalle,
             correo,
             telefono,
             fechaNacimiento: payload.fechaNacimiento,
@@ -215,7 +225,7 @@ export function registerAuthRoutes(server) {
                 primerNombre, segundoNombre, primerApellido, segundoApellido,
                 tipoDocumento, documento, genero, correo, telefonoPersonal,
                 fechaNacimiento, perteneceUniversidad, carrera, jornada, semestre,
-                password, esAspirante, orientacionSexual, etnia,
+                password, esAspirante, orientacionSexual, etnia, discapacidad, discapacidadDetalle,
             } = req.body;
 
             const { errors, normalized } = validateRegisterPayload({
@@ -228,6 +238,8 @@ export function registerAuthRoutes(server) {
                 genero,
                 orientacionSexual,
                 etnia,
+                discapacidad,
+                discapacidadDetalle,
                 correo,
                 telefonoPersonal,
                 fechaNacimiento,
@@ -285,6 +297,8 @@ export function registerAuthRoutes(server) {
                         genero: normalized.genero,
                         orientacionSexual: normalized.orientacionSexual,
                         etnia: normalized.etnia,
+                        discapacidad: normalized.discapacidad,
+                        discapacidadDetalle: normalized.discapacidad === 'Si' ? normalized.discapacidadDetalle : null,
                         correo: correoNorm,
                         telefonoPersonal: telefonoConPrefijo,
                         fechaNacimiento: normalized.fechaNacimiento ? new Date(normalized.fechaNacimiento) : new Date(),

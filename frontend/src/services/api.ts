@@ -41,6 +41,8 @@ export interface RegisterPayload {
   genero: string;
   orientacionSexual: string;
   etnia: string;
+  discapacidad: string;
+  discapacidadDetalle?: string;
   correo: string;
   telefonoPersonal: string;
   fechaNacimiento: string;
