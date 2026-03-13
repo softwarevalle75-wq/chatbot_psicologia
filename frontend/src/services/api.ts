@@ -60,7 +60,7 @@ export interface SociodemograficoPayload {
   estadoCivil: string;
   numeroHijos: number;
   numeroHermanos: number;
-  rolFamiliar: string;
+  rolFamiliar: string[];
   conQuienVive: string;
   tienePersonasACargo: string;
   escolaridad: string;

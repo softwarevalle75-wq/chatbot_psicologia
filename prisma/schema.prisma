@@ -243,7 +243,7 @@ model InformacionSociodemografica {
   numeroHermanos        Int @default(0)
   conQuienVive          String
   tienePersonasACargo   String @default("Si")
-  rolFamiliar           RolFamiliar
+  rolFamiliar           Json
   escolaridad           Escolaridad
   ocupacion             String
   nivelIngresos         NivelIngresos

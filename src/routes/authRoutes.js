@@ -40,6 +40,7 @@ const IDENTIDADES_GENERO_VALIDAS = new Set(['Masculino', 'Femenino', 'Transexual
 const ORIENTACIONES_VALIDAS = new Set(['Heterosexual', 'Homosexual', 'Bisexual', 'No informa']);
 const ETNIAS_VALIDAS = new Set(['Afro', 'Raizal', 'Palanquero', 'Indigena', 'Rom', 'Ninguna', 'No informa']);
 const DISCAPACIDAD_VALORES = new Set(['Si', 'No']);
+const ROL_FAMILIAR_VALIDOS = new Set(['madre', 'padre', 'hijo', 'hermano', 'abuelo', 'nieto', 'tio', 'sobrino', 'otro']);
 
 const rateLimitStore = new Map();
 
@@ -349,6 +350,9 @@ export function registerAuthRoutes(server) {
             });
         } catch (error) {
             console.error('Error en /v1/auth/register:', error);
+            if (error?.code === 'P2002') {
+                return json(res, 400, { error: 'Ya existe un usuario con esos datos. Cambia documento/correo/telefono o nombres.' });
+            }
             return json(res, 500, { error: 'Error interno del servidor' });
         }
     });
@@ -451,8 +455,16 @@ export function registerAuthRoutes(server) {
                 tienePersonasACargo, rolFamiliar, escolaridad, ocupacion, nivelIngresos,
             } = req.body;
 
-            if (!estadoCivil || !conQuienVive || !rolFamiliar || !escolaridad || !ocupacion || !nivelIngresos) {
+            const rolesFamiliares = Array.isArray(rolFamiliar)
+                ? rolFamiliar.map((r) => normalizeSpaces(r).toLowerCase()).filter(Boolean)
+                : [];
+
+            if (!estadoCivil || !conQuienVive || !rolesFamiliares.length || !escolaridad || !ocupacion || !nivelIngresos) {
                 return json(res, 400, { error: 'Todos los campos son obligatorios' });
+            }
+
+            if (!rolesFamiliares.every((role) => ROL_FAMILIAR_VALIDOS.has(role))) {
+                return json(res, 400, { error: 'Rol familiar invalido' });
             }
 
             await prisma.informacionSociodemografica.upsert({
@@ -461,14 +473,14 @@ export function registerAuthRoutes(server) {
                     estadoCivil, numeroHijos: Number(numeroHijos) || 0,
                     numeroHermanos: Number(numeroHermanos) || 0, conQuienVive,
                     tienePersonasACargo: tienePersonasACargo || 'No',
-                    rolFamiliar, escolaridad, ocupacion, nivelIngresos,
+                    rolFamiliar: rolesFamiliares, escolaridad, ocupacion, nivelIngresos,
                 },
                 create: {
                     usuarioId: userId, estadoCivil,
                     numeroHijos: Number(numeroHijos) || 0,
                     numeroHermanos: Number(numeroHermanos) || 0, conQuienVive,
                     tienePersonasACargo: tienePersonasACargo || 'No',
-                    rolFamiliar, escolaridad, ocupacion, nivelIngresos,
+                    rolFamiliar: rolesFamiliares, escolaridad, ocupacion, nivelIngresos,
                 },
             });
 
