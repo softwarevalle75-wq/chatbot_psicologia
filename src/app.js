@@ -68,6 +68,23 @@ import { registerAuthRoutes } from "./routes/authRoutes.js";
 
 const PORT = process.env.PORT ?? 3000;
 
+const parseAllowedOrigins = () => {
+	const source = process.env.CORS_ORIGINS || process.env.FRONTEND_ORIGIN || process.env.IP_DOMAIN || '';
+	return source
+		.split(',')
+		.map((origin) => origin.trim())
+		.filter(Boolean);
+};
+
+const allowedOrigins = parseAllowedOrigins();
+
+const resolveCorsOrigin = (requestOrigin) => {
+	if (!requestOrigin) return null;
+	if (allowedOrigins.length === 0) return requestOrigin;
+	if (allowedOrigins.includes('*')) return '*';
+	return allowedOrigins.includes(requestOrigin) ? requestOrigin : null;
+};
+
 // ── Provider: WebSocket ──
 export const adapterProvider = createProvider(WebSocketProvider);
 
@@ -184,6 +201,31 @@ const main = async () => {
 	// ... connection.update listeners, timeouts, polling ...
 
 	console.log('✅ Bot creado exitosamente');
+
+	if (typeof adapterProvider.server.use === 'function') {
+		adapterProvider.server.use((req, res, next) => {
+			const requestOrigin = req.headers?.origin;
+			const corsOrigin = resolveCorsOrigin(requestOrigin);
+
+			if (corsOrigin) {
+				res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+				res.setHeader('Vary', 'Origin');
+				res.setHeader('Access-Control-Allow-Credentials', 'true');
+			}
+
+			res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+			res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+			if (req.method === 'OPTIONS') {
+				res.writeHead(204);
+				res.end();
+				return;
+			}
+
+			next();
+		});
+		console.log('✅ CORS habilitado para API HTTP');
+	}
 
 	// 🔥 CONFIGURAR PROVIDER PARA ENVÍO DE PDFs
 	const { configurarProviderGHQ12 } = await import('./flows/tests/ghq12.js');

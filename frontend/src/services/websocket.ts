@@ -30,6 +30,29 @@ type WsListener = (data: unknown) => void;
 const MAX_RECONNECT_DELAY = 30_000;
 const INITIAL_RECONNECT_DELAY = 1_000;
 
+const rawWsBase = import.meta.env.VITE_WS_BASE_URL?.trim();
+
+function buildWebSocketBaseUrl(): string {
+  if (!rawWsBase) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    return `${protocol}//${host}/ws`;
+  }
+
+  let base = rawWsBase.replace(/\/+$/, '');
+  if (base.startsWith('https://')) base = `wss://${base.slice('https://'.length)}`;
+  if (base.startsWith('http://')) base = `ws://${base.slice('http://'.length)}`;
+  if (!/^wss?:\/\//.test(base)) {
+    throw new Error('VITE_WS_BASE_URL debe iniciar con ws://, wss://, http:// o https://');
+  }
+
+  if (!base.endsWith('/ws')) {
+    base = `${base}/ws`;
+  }
+
+  return base;
+}
+
 class WebSocketService {
   private ws: WebSocket | null = null;
   private token: string | null = null;
@@ -53,10 +76,9 @@ class WebSocketService {
     this.clearReconnectTimer();
     this.closeExisting();
 
-    // Build WebSocket URL relative to the current host
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const url = `${protocol}//${host}/ws?token=${encodeURIComponent(token)}`;
+    const wsBase = buildWebSocketBaseUrl();
+    const tokenSeparator = wsBase.includes('?') ? '&' : '?';
+    const url = `${wsBase}${tokenSeparator}token=${encodeURIComponent(token)}`;
 
     this.ws = new WebSocket(url);
 

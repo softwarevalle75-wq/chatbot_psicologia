@@ -1,4 +1,5 @@
-const API_BASE = '/v1/auth';
+const rawApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
+const API_BASE = rawApiBase ? rawApiBase.replace(/\/+$/, '') : '/v1/auth';
 
 async function request<T>(
   endpoint: string,
@@ -20,10 +21,22 @@ async function request<T>(
     headers,
   });
 
-  const data = await res.json();
+  const raw = await res.text();
+  let data: unknown = {};
+
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error('Respuesta invalida del servidor');
+    }
+  }
 
   if (!res.ok) {
-    throw new Error(data.error || 'Error en la solicitud');
+    const errorMessage = typeof data === 'object' && data !== null && 'error' in data
+      ? (data as { error?: string }).error
+      : undefined;
+    throw new Error(errorMessage || 'Error en la solicitud');
   }
 
   return data as T;
@@ -38,7 +51,8 @@ export interface RegisterPayload {
   segundoApellido?: string;
   tipoDocumento: string;
   documento: string;
-  genero: string;
+  sexo: string;
+  identidadGenero: string;
   orientacionSexual: string;
   etnia: string;
   discapacidad: string;

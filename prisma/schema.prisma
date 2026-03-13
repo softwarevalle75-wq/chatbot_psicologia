@@ -30,6 +30,8 @@ model informacionUsuario {
   password                String
   consentimientoInformado String   @default("No") 
   autorizacionDatos       String   @default("No") 
+  sexo                    String   @default("No informa")
+  identidadGenero         String   @default("No informa")
   genero                  String   @default("No especificado")
   orientacionSexual       String   @default("Prefiero no decir")
   etnia                   String   @default("Prefiero no decir")

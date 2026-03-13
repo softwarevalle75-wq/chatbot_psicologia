@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, BrainCircuit } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import logo from '../assets/loguito.png';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -40,17 +41,19 @@ export default function LoginPage() {
         {/* Overlay sutil para profundidad */}
         <div className="absolute inset-0 bg-gradient-to-b from-blue-500/20 to-blue-700/30" />
 
-        <div className="relative z-10 flex flex-col items-center gap-5 px-8">
-          {/* Logo placeholder */}
-          <div className="w-36 h-36 rounded-full bg-white/15 border-2 border-white/25 flex items-center justify-center shadow-lg shadow-blue-900/20">
-            <BrainCircuit className="w-20 h-20 text-white/90" strokeWidth={1.2} />
-          </div>
+        <div className="relative z-10 flex flex-col items-center gap-3 px-8">
+          {/* Logo */}
+          <img
+            src={logo}
+            alt="Logo Chatbot Psicologico"
+            className="w-72 h-72 object-contain"
+          />
 
           {/* Titulo */}
           <h1 className="text-white text-4xl font-extrabold text-center leading-tight tracking-tight">
             Chatbot<br />Psicologico
           </h1>
-          <p className="text-white/70 text-base font-medium tracking-wide">
+          <p className="text-white/75 text-lg font-semibold tracking-wide">
             Tu asistente virtual
           </p>
         </div>
@@ -62,9 +65,11 @@ export default function LoginPage() {
         <div className="w-full max-w-[440px] bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl shadow-blue-900/8 p-8 sm:p-10">
           {/* Branding mobile (solo visible en < lg) */}
           <div className="flex lg:hidden flex-col items-center mb-6">
-            <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center mb-3 shadow-md shadow-blue-300/40">
-              <BrainCircuit className="w-9 h-9 text-white" strokeWidth={1.3} />
-            </div>
+            <img
+              src={logo}
+              alt="Logo Chatbot Psicologico"
+              className="w-28 h-28 object-contain mb-3"
+            />
             <span className="text-blue-600 font-bold text-lg">Chatbot Psicologico</span>
           </div>
 
@@ -73,7 +78,7 @@ export default function LoginPage() {
             Iniciar Sesion
           </h2>
           <p className="text-gray-500 text-sm mt-1.5 mb-7 leading-relaxed">
-            Bienvenido de nuevo. Por favor, ingresa tus datos.
+            ¡Bienvenido! Si eres nuevo, por favor regístrate antes de ingresar tus datos.
           </p>
 
           {/* Error */}
@@ -101,18 +106,9 @@ export default function LoginPage() {
 
             {/* Contrasena */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-semibold text-gray-800">
-                  Contrasena
-                </label>
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  className="text-xs font-semibold text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
-                >
-                  Olvidaste tu contrasena?
-                </button>
-              </div>
+              <label className="block text-sm font-semibold text-gray-800 mb-2">
+                Contrasena
+              </label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -148,15 +144,17 @@ export default function LoginPage() {
           </form>
 
           {/* Link a registro */}
-          <p className="text-center text-sm text-gray-500 mt-7">
-            No tienes cuenta?{' '}
+          <div className="mt-7 text-center">
+            <p className="text-xs text-gray-500 mb-2 tracking-wide uppercase">
+              ¿Aún no tienes una cuenta?
+            </p>
             <Link
               to="/registro"
-              className="font-semibold text-blue-500 hover:text-blue-600 transition-colors"
+              className="inline-flex items-center justify-center rounded-full border border-blue-500 text-blue-600 hover:text-white hover:bg-blue-500 font-semibold text-sm px-6 py-2 transition-all duration-200"
             >
-              Registrarse
+              Registrarme
             </Link>
-          </p>
+          </div>
         </div>
       </div>
     </div>

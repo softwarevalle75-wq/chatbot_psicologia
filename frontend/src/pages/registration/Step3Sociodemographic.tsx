@@ -85,6 +85,9 @@ const NIVEL_INGRESOS = [
 
 const inputClass =
   'w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 text-sm text-gray-700 placeholder-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200';
+const labelClass = 'block text-sm font-medium text-gray-700 mb-1.5';
+const helperClass =
+  'mt-2 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs font-semibold px-3 py-2';
 
 export default function Step3Sociodemographic() {
   const navigate = useNavigate();
@@ -95,6 +98,8 @@ export default function Step3Sociodemographic() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [touchedHome, setTouchedHome] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const update = <K extends keyof Step3Data>(field: K, value: Step3Data[K]) => {
     setForm((prev) => {
@@ -115,13 +120,17 @@ export default function Step3Sociodemographic() {
     return null;
   };
 
-  const handleNext = async () => {
+  const handleNext = () => {
     const err = validate();
     if (err) {
       setError(err);
       return;
     }
     setError('');
+    setShowConfirm(true);
+  };
+
+  const submitSociodemografico = async () => {
     setLoading(true);
     try {
       await saveSociodemografico({
@@ -141,6 +150,7 @@ export default function Step3Sociodemographic() {
       setError(e instanceof Error ? e.message : 'Error al guardar');
     } finally {
       setLoading(false);
+      setShowConfirm(false);
     }
   };
 
@@ -214,13 +224,21 @@ export default function Step3Sociodemographic() {
           <Home className="w-5 h-5 text-blue-500" />
           <h3 className="text-base font-bold text-gray-800">Con quien vive actualmente?</h3>
         </div>
+        <label htmlFor="con-quien-vive" className={labelClass}>
+          Describe con quien compartes tu hogar
+        </label>
         <input
+          id="con-quien-vive"
           type="text"
           className={inputClass}
           placeholder="Ej. Padres, pareja, solo/a..."
           value={form.conQuienVive}
           onChange={(e) => update('conQuienVive', e.target.value)}
+          onBlur={() => setTouchedHome(true)}
         />
+        {touchedHome && form.conQuienVive.trim() && (
+          <p className={helperClass}>Verifique que este dato sea correcto.</p>
+        )}
       </section>
 
       {/* Personas a cargo */}
@@ -288,6 +306,46 @@ export default function Step3Sociodemographic() {
         nextLabel={loading ? 'Guardando...' : 'Continuar'}
         nextDisabled={loading}
       />
+
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Confirmar datos</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Revise que todos sus datos esten correctamente diligenciados antes de continuar. Si esta seguro presione continuar.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setShowConfirm(false)}
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                className="flex-1 rounded-full border border-gray-300 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                onClick={() => setShowConfirm(false)}
+              >
+                Revisar
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-full bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                onClick={submitSociodemografico}
+                disabled={loading}
+              >
+                {loading ? 'Guardando...' : 'Continuar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </RegistrationLayout>
   );
 }

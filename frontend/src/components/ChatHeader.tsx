@@ -1,4 +1,5 @@
 import { Menu } from 'lucide-react';
+import logo from '../assets/loguito.png';
 
 interface ChatHeaderProps {
   onOpenSidebar: () => void;
@@ -28,9 +29,7 @@ export default function ChatHeader({ onOpenSidebar }: ChatHeaderProps) {
         <span className="hidden sm:inline-block text-xs text-slate-400 font-medium">
           Asistente de Bienestar
         </span>
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-sm">
-          <span className="text-white text-xs font-bold">CP</span>
-        </div>
+        <img src={logo} alt="Logo" className="w-11 h-11 object-contain" />
       </div>
     </header>
   );
