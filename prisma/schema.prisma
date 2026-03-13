@@ -36,6 +36,7 @@ model informacionUsuario {
   orientacionSexual       String   @default("Prefiero no decir")
   etnia                   String   @default("Prefiero no decir")
   discapacidad            String   @default("No")
+  discapacidadDetalle     String?
   ayudaPsicologica        String?
   flujo                   String?
   historial               Json?

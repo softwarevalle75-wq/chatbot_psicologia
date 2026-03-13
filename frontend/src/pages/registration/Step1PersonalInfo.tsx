@@ -18,6 +18,7 @@ const INITIAL: Step1Data = {
   orientacionSexual: '',
   etnia: '',
   discapacidad: '',
+  discapacidadDetalle: '',
   correo: '',
   telefonoPersonal: '',
   fechaNacimiento: '',
@@ -63,7 +64,10 @@ export default function Step1PersonalInfo() {
     if (!form.identidadGenero) return 'Selecciona la identidad de genero';
     if (!form.orientacionSexual) return 'Selecciona la orientacion sexual';
     if (!form.etnia) return 'Selecciona la etnia';
-    if (!form.discapacidad) return 'Selecciona si tienes discapacidad';
+    if (!form.discapacidad) return 'Selecciona si tienes alguna discapacidad';
+    if (form.discapacidad === 'Si' && !form.discapacidadDetalle.trim()) {
+      return 'Indica cual discapacidad tienes';
+    }
     if (!form.correo.trim()) return 'El correo es obligatorio';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo)) return 'El correo no es valido';
     if (!form.telefonoPersonal.trim()) return 'El telefono es obligatorio';
@@ -101,6 +105,7 @@ export default function Step1PersonalInfo() {
         orientacionSexual: form.orientacionSexual,
         etnia: form.etnia,
         discapacidad: form.discapacidad,
+        discapacidadDetalle: form.discapacidad === 'Si' ? form.discapacidadDetalle.trim() : undefined,
         correo: form.correo.trim(),
         telefonoPersonal: form.telefonoPersonal.trim(),
         fechaNacimiento: form.fechaNacimiento,
@@ -294,13 +299,31 @@ export default function Step1PersonalInfo() {
             <select
               className={selectClass}
               value={form.discapacidad}
-              onChange={(e) => update('discapacidad', e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                update('discapacidad', value);
+                if (value !== 'Si') {
+                  update('discapacidadDetalle', '');
+                }
+              }}
             >
               <option value="">Seleccione...</option>
-              <option value="Si">Si</option>
               <option value="No">No</option>
+              <option value="Si">Si</option>
             </select>
           </div>
+          {form.discapacidad === 'Si' && (
+            <div className="sm:col-span-2">
+              <label className={labelClass}>Cual discapacidad</label>
+              <input
+                type="text"
+                className={inputClass}
+                placeholder="Especifica cual"
+                value={form.discapacidadDetalle}
+                onChange={(e) => update('discapacidadDetalle', e.target.value)}
+              />
+            </div>
+          )}
           <div>
             <label className={labelClass}>Fecha de nacimiento</label>
             <input
