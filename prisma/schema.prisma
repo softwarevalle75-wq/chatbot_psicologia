@@ -13,7 +13,7 @@ model informacionUsuario {
   primerNombre            String
   segundoNombre           String?
   primerApellido          String
-  segundoApellido         String
+  segundoApellido         String?
   telefonoPersonal        String    @unique
   segundoTelefono         String?
   correo                  String   @unique
