@@ -303,11 +303,11 @@ enum NivelIngresos {
 // Se declara aquí para que prisma db push no intente droparla
 model History {
   id           Int       @id @default(autoincrement())
-  ref          String?
-  keyword      String?
+  ref          String?   @db.VarChar(255)
+  keyword      String?   @db.VarChar(255)
   answer       String?   @db.LongText
-  refSerialize String?
-  phone        String
+  refSerialize String?   @db.VarChar(255)
+  phone        String    @db.VarChar(255)
   options      String?   @db.LongText
   created_at   DateTime? @default(now()) @db.Timestamp(0)
 
