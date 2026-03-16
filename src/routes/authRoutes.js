@@ -14,6 +14,8 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { Resolver } from 'dns/promises';
+import { validateRegisterPayload, validateSociodemograficoPayload } from '../utils/validations.js';
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -22,24 +24,8 @@ if (!JWT_SECRET || JWT_SECRET.length < 16) {
     throw new Error('JWT_SECRET no configurado o demasiado corto (minimo 16 caracteres)');
 }
 
-const TIPOS_DOCUMENTO_VALIDOS = new Set([
-    '(cc) Cedula de ciudadania',
-    '(ti) Tarjeta de identidad',
-    '(rc) Registro civil',
-    '(ce) Cedula de extranjeria',
-    '(si) Sin identificacion',
-    // Compatibilidad con clientes previos
-    'CC',
-    'TI',
-    'RC',
-    'CE',
-    'SI',
-]);
-const SEXOS_VALIDOS = new Set(['Hombre', 'Mujer', 'Intersexual']);
-const IDENTIDADES_GENERO_VALIDAS = new Set(['Masculino', 'Femenino', 'Transexual', 'No informa']);
-const ORIENTACIONES_VALIDAS = new Set(['Heterosexual', 'Homosexual', 'Bisexual', 'No informa']);
-const ETNIAS_VALIDAS = new Set(['Afro', 'Raizal', 'Palanquero', 'Indigena', 'Rom', 'Ninguna', 'No informa']);
-const DISCAPACIDAD_VALIDOS = new Set(['Si', 'No']);
+// Los sets de valores válidos y la función validateRegisterPayload
+// se centralizaron en src/utils/validations.js (importado arriba).
 
 const rateLimitStore = new Map();
 
@@ -82,9 +68,11 @@ const isAllowedRate = (bucket, key, max, windowMs) => {
     return { allowed: true, retryAfterMs: 0 };
 };
 
-const validateRegisterPayload = (payload) => {
-    const errors = [];
-
+/**
+ * Normaliza los campos del payload de registro y devuelve el objeto normalizado.
+ * La validación se delega al módulo src/utils/validations.js.
+ */
+const normalizeRegisterPayload = (payload) => {
     const primerNombre = normalizeSpaces(payload.primerNombre);
     const primerApellido = normalizeSpaces(payload.primerApellido);
     const documento = normalizeSpaces(payload.documento);
@@ -97,56 +85,33 @@ const validateRegisterPayload = (payload) => {
     const orientacionSexual = normalizeSpaces(payload.orientacionSexual || '');
     const etnia = normalizeSpaces(payload.etnia || '');
     const discapacidadRaw = normalizeSpaces(payload.discapacidad || '');
-    const discapacidad = discapacidadRaw.toLowerCase() === 'si' ? 'Si' : discapacidadRaw.toLowerCase() === 'no' ? 'No' : discapacidadRaw;
+    const discapacidad = discapacidadRaw.toLowerCase() === 'si' ? 'Si'
+        : discapacidadRaw.toLowerCase() === 'no' ? 'No'
+        : discapacidadRaw;
     const discapacidadDetalle = normalizeSpaces(payload.discapacidadDetalle || '');
 
-    if (!primerNombre || primerNombre.length < 2 || primerNombre.length > 80) errors.push('Primer nombre invalido');
-    if (!primerApellido || primerApellido.length < 2 || primerApellido.length > 80) errors.push('Primer apellido invalido');
-    if (!documento || documento.length < 5 || documento.length > 20 || !/^[A-Za-z0-9-]+$/.test(documento)) errors.push('Documento invalido');
-    if (!correo || correo.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) errors.push('Correo invalido');
-    if (!telefono || telefono.length < 10 || telefono.length > 13) errors.push('Telefono invalido');
-    if (password.length < 8 || password.length > 64) errors.push('Contrasena invalida (minimo 8 caracteres)');
-    if (!TIPOS_DOCUMENTO_VALIDOS.has(tipoDocumento)) errors.push('Tipo de documento invalido');
-    if (!SEXOS_VALIDOS.has(sexo)) errors.push('Sexo invalido');
-    if (!IDENTIDADES_GENERO_VALIDAS.has(identidadGenero)) errors.push('Identidad de genero invalida');
-    if (!ORIENTACIONES_VALIDAS.has(orientacionSexual)) errors.push('Orientacion sexual invalida');
-    if (!ETNIAS_VALIDAS.has(etnia)) errors.push('Etnia invalida');
-    if (!DISCAPACIDAD_VALIDOS.has(discapacidad)) errors.push('Discapacidad invalida');
-    if (discapacidad === 'Si' && (discapacidadDetalle.length < 2 || discapacidadDetalle.length > 120)) {
-        errors.push('Debes indicar cual discapacidad tienes');
-    }
-
-    if (payload.fechaNacimiento) {
-        const fecha = new Date(payload.fechaNacimiento);
-        if (Number.isNaN(fecha.getTime())) errors.push('Fecha de nacimiento invalida');
-        if (fecha > new Date()) errors.push('Fecha de nacimiento no puede ser futura');
-    }
-
     return {
-        errors,
-        normalized: {
-            primerNombre,
-            segundoNombre: normalizeSpaces(payload.segundoNombre),
-            primerApellido,
-            segundoApellido: normalizeSpaces(payload.segundoApellido),
-            tipoDocumento,
-            documento,
-            sexo,
-            identidadGenero,
-            orientacionSexual,
-            etnia,
-            discapacidad,
-            discapacidadDetalle,
-            correo,
-            telefono,
-            fechaNacimiento: payload.fechaNacimiento,
-            perteneceUniversidad: payload.perteneceUniversidad,
-            carrera: normalizeSpaces(payload.carrera),
-            jornada: normalizeSpaces(payload.jornada),
-            semestre: payload.semestre,
-            password,
-            esAspirante: Boolean(payload.esAspirante),
-        },
+        primerNombre,
+        segundoNombre: normalizeSpaces(payload.segundoNombre),
+        primerApellido,
+        segundoApellido: normalizeSpaces(payload.segundoApellido),
+        tipoDocumento,
+        documento,
+        sexo,
+        identidadGenero,
+        orientacionSexual,
+        etnia,
+        discapacidad,
+        discapacidadDetalle,
+        correo,
+        telefono,
+        fechaNacimiento: payload.fechaNacimiento,
+        perteneceUniversidad: payload.perteneceUniversidad,
+        carrera: normalizeSpaces(payload.carrera),
+        jornada: normalizeSpaces(payload.jornada),
+        semestre: payload.semestre,
+        password,
+        esAspirante: Boolean(payload.esAspirante),
     };
 };
 
@@ -206,6 +171,31 @@ const safeUser = (user, step) => ({
     registrationStep: step,
 });
 
+// ── DNS email domain validation ─────────────────────────────
+
+// Resolver DNS con servidores públicos para evitar dependencia del DNS del sistema
+const dnsResolver = new Resolver();
+dnsResolver.setServers(['8.8.8.8', '1.1.1.1']);
+
+/**
+ * Verifica que el dominio de un correo tenga registros MX en DNS.
+ * Solo se acepta un dominio que pueda recibir correos (registro MX presente).
+ * Un dominio con solo A record (sitio web pero sin servidor de correo) es rechazado.
+ *
+ * @param {string} correo - Correo ya normalizado en minúsculas
+ * @returns {Promise<boolean>} true si el dominio puede recibir correos
+ */
+const validarDominioCorreo = async (correo) => {
+    const dominio = correo.split('@')[1];
+    if (!dominio) return false;
+    try {
+        const mx = await dnsResolver.resolveMx(dominio);
+        return Array.isArray(mx) && mx.length > 0;
+    } catch {
+        return false;
+    }
+};
+
 // ── Route Registration ──────────────────────────────────────
 
 /**
@@ -232,7 +222,7 @@ export function registerAuthRoutes(server) {
                 password, esAspirante,
             } = req.body;
 
-            const { errors, normalized } = validateRegisterPayload({
+            const normalized = normalizeRegisterPayload({
                 primerNombre,
                 segundoNombre,
                 primerApellido,
@@ -256,8 +246,13 @@ export function registerAuthRoutes(server) {
                 esAspirante,
             });
 
-            if (errors.length > 0) {
-                return json(res, 400, { error: errors[0] });
+            const validationErrors = validateRegisterPayload(
+                { fechaNacimiento, password },
+                normalized,
+            );
+
+            if (validationErrors.length > 0) {
+                return json(res, 400, { error: validationErrors[0] });
             }
 
             const correoNorm = normalized.correo;
@@ -265,6 +260,12 @@ export function registerAuthRoutes(server) {
             const telefonoConPrefijo = telefonoLimpio.startsWith('57') ? telefonoLimpio : `57${telefonoLimpio}`;
             const perteneceUni = canonicalYesNo(normalized.perteneceUniversidad) === 'si';
             const aspiranteFlag = normalized.esAspirante;
+
+            // Verificar que el dominio del correo existe en DNS
+            const dominioValido = await validarDominioCorreo(correoNorm);
+            if (!dominioValido) {
+                return json(res, 400, { error: 'El dominio del correo no existe. Verifica que sea un correo real.' });
+            }
 
             const rateByIdentifier = isAllowedRate('register-identifier', `${correoNorm}|${telefonoConPrefijo}|${normalized.documento}`, 8, 15 * 60 * 1000);
             if (!rateByIdentifier.allowed) {
@@ -456,12 +457,12 @@ export function registerAuthRoutes(server) {
                 ? rolFamiliar.filter(Boolean)
                 : (rolFamiliar ? [rolFamiliar] : []);
 
-            if (!estadoCivil || !conQuienVive || rolFamiliarNormalizado.length === 0 || !escolaridad || !ocupacion || !nivelIngresos) {
-                return json(res, 400, { error: 'Todos los campos son obligatorios' });
-            }
-
-            if (tienePersonasACargo === 'Si' && !String(personasACargoQuien || '').trim()) {
-                return json(res, 400, { error: 'Debes indicar quien esta a tu cargo' });
+            const socioErrors = validateSociodemograficoPayload({
+                estadoCivil, conQuienVive, rolFamiliar: rolFamiliarNormalizado,
+                tienePersonasACargo, personasACargoQuien, escolaridad, ocupacion, nivelIngresos,
+            });
+            if (socioErrors.length > 0) {
+                return json(res, 400, { error: socioErrors[0] });
             }
 
             const buildPayload = (rolValue) => ({
@@ -470,6 +471,9 @@ export function registerAuthRoutes(server) {
                 numeroHermanos: Number(numeroHermanos) || 0,
                 conQuienVive,
                 tienePersonasACargo: tienePersonasACargo || 'No',
+                personasACargoQuien: tienePersonasACargo === 'Si'
+                    ? String(personasACargoQuien || '').trim()
+                    : null,
                 rolFamiliar: rolValue,
                 escolaridad,
                 ocupacion,

@@ -5,6 +5,7 @@ import RegistrationLayout from '../../components/registration/RegistrationLayout
 import StepNavigation from '../../components/registration/StepNavigation';
 import { useAuth } from '../../context/AuthContext';
 import type { Step1Data } from '../../types';
+import { validateStep1, isFormValid, type FormErrors } from '../../utils/validations';
 
 const INITIAL: Step1Data = {
   primerNombre: '',
@@ -33,11 +34,16 @@ const INITIAL: Step1Data = {
 
 const inputClass =
   'w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 text-sm text-gray-700 placeholder-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200';
+const inputErrorClass =
+  'w-full px-4 py-3 rounded-xl border border-red-400 bg-red-50/30 text-sm text-gray-700 placeholder-gray-400 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all duration-200';
 const selectClass =
   'w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 text-sm text-gray-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200 appearance-none cursor-pointer';
+const selectErrorClass =
+  'w-full px-4 py-3 rounded-xl border border-red-400 bg-red-50/30 text-sm text-gray-700 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all duration-200 appearance-none cursor-pointer';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1.5';
 const helperClass =
   'mt-2 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs font-semibold px-3 py-2';
+const fieldErrorClass = 'mt-1.5 text-xs font-medium text-red-600';
 const helperText = 'Verifique que este dato sea correcto.';
 
 export default function Step1PersonalInfo() {
@@ -47,7 +53,7 @@ export default function Step1PersonalInfo() {
     const saved = sessionStorage.getItem('reg_step1');
     return saved ? { ...INITIAL, ...JSON.parse(saved) } : INITIAL;
   });
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [touched, setTouched] = useState<Partial<Record<keyof Step1Data, boolean>>>({});
@@ -64,7 +70,9 @@ export default function Step1PersonalInfo() {
   const update = (field: keyof Step1Data, value: string | boolean) => {
     setForm((prev) => {
       const next = { ...prev, [field]: value };
-      sessionStorage.setItem('reg_step1', JSON.stringify(next));
+      // Excluir contraseñas del sessionStorage — no persistir credenciales en texto plano
+      const { password: _p, confirmPassword: _cp, ...persistable } = next;
+      sessionStorage.setItem('reg_step1', JSON.stringify(persistable));
       return next;
     });
   };
@@ -88,43 +96,10 @@ export default function Step1PersonalInfo() {
     }
   }, [form.correo, touched.correo]);
 
-  const validate = (): string | null => {
-    if (!form.primerNombre.trim()) return 'El primer nombre es obligatorio';
-    if (!form.primerApellido.trim()) return 'El primer apellido es obligatorio';
-    if (!form.segundoApellido.trim()) return 'El segundo apellido es obligatorio';
-    if (!form.tipoDocumento) return 'Selecciona el tipo de documento';
-    if (!form.documento.trim()) return 'El numero de documento es obligatorio';
-    if (!form.sexo) return 'Selecciona el sexo';
-    if (!form.identidadGenero) return 'Selecciona la identidad de genero';
-    if (!form.orientacionSexual) return 'Selecciona la orientacion sexual';
-    if (!form.etnia) return 'Selecciona la etnia';
-    if (!form.discapacidad) return 'Selecciona si tienes discapacidad';
-    if (form.discapacidad === 'Si' && !form.discapacidadDetalle.trim()) {
-      return 'Indica cual discapacidad tienes';
-    }
-    if (!form.correo.trim()) return 'El correo es obligatorio';
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo)) return 'El correo no es valido';
-    if (!form.telefonoPersonal.trim()) return 'El telefono es obligatorio';
-    if (!form.fechaNacimiento) return 'La fecha de nacimiento es obligatoria';
-    if (form.perteneceUniversidad === 'Si') {
-      if (!form.carrera.trim()) return 'La carrera es obligatoria si perteneces a la universidad';
-      if (!form.jornada) return 'La jornada es obligatoria si perteneces a la universidad';
-      if (!form.semestre) return 'El semestre es obligatorio si perteneces a la universidad';
-    }
-    if (form.perteneceUniversidad === 'Si' && form.esAspirante) return 'No puedes marcar pertenencia y aspirante al mismo tiempo';
-    if (!form.password) return 'La contrasena es obligatoria';
-    if (form.password.length < 6) return 'La contrasena debe tener al menos 6 caracteres';
-    if (form.password !== form.confirmPassword) return 'Las contrasenas no coinciden';
-    return null;
-  };
-
   const handleNext = async () => {
-    const err = validate();
-    if (err) {
-      setError(err);
-      return;
-    }
-    setError('');
+    const formErrors = validateStep1(form);
+    setErrors(formErrors);
+    if (!isFormValid(formErrors)) return;
     setShowConfirm(true);
   };
 
@@ -135,7 +110,7 @@ export default function Step1PersonalInfo() {
         primerNombre: form.primerNombre.trim(),
         segundoNombre: form.segundoNombre.trim() || undefined,
         primerApellido: form.primerApellido.trim(),
-        segundoApellido: form.segundoApellido.trim() || undefined,
+        segundoApellido: form.segundoApellido.trim(),
         tipoDocumento: form.tipoDocumento,
         documento: form.documento.trim(),
         sexo: form.sexo,
@@ -157,7 +132,7 @@ export default function Step1PersonalInfo() {
       sessionStorage.removeItem('reg_step1');
       navigate('/registro/tratamiento-datos');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al registrar');
+      setErrors({ _general: e instanceof Error ? e.message : 'Error al registrar' });
     } finally {
       setLoading(false);
       setShowConfirm(false);
@@ -183,49 +158,61 @@ export default function Step1PersonalInfo() {
             <label className={labelClass}>Primer nombre <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="text"
-              className={inputClass}
+              className={errors.primerNombre ? inputErrorClass : inputClass}
               placeholder="Ej. Juan"
               value={form.primerNombre}
+              maxLength={60}
               onChange={(e) => update('primerNombre', e.target.value)}
               onBlur={() => markTouched('primerNombre')}
             />
-            {shouldShowHelper('primerNombre') && <p className={helperClass}>{helperText}</p>}
+            {errors.primerNombre
+              ? <p className={fieldErrorClass}>{errors.primerNombre}</p>
+              : shouldShowHelper('primerNombre') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Segundo nombre</label>
             <input
               type="text"
-              className={inputClass}
+              className={errors.segundoNombre ? inputErrorClass : inputClass}
               placeholder="Ej. Alberto"
               value={form.segundoNombre}
+              maxLength={60}
               onChange={(e) => update('segundoNombre', e.target.value)}
               onBlur={() => markTouched('segundoNombre')}
             />
-            {shouldShowHelper('segundoNombre') && <p className={helperClass}>{helperText}</p>}
+            {errors.segundoNombre
+              ? <p className={fieldErrorClass}>{errors.segundoNombre}</p>
+              : shouldShowHelper('segundoNombre') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Primer apellido <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="text"
-              className={inputClass}
+              className={errors.primerApellido ? inputErrorClass : inputClass}
               placeholder="Ej. Perez"
               value={form.primerApellido}
+              maxLength={60}
               onChange={(e) => update('primerApellido', e.target.value)}
               onBlur={() => markTouched('primerApellido')}
             />
-            {shouldShowHelper('primerApellido') && <p className={helperClass}>{helperText}</p>}
+            {errors.primerApellido
+              ? <p className={fieldErrorClass}>{errors.primerApellido}</p>
+              : shouldShowHelper('primerApellido') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Segundo apellido <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="text"
-              className={inputClass}
+              className={errors.segundoApellido ? inputErrorClass : inputClass}
               placeholder="Ej. Gomez"
               value={form.segundoApellido}
+              maxLength={60}
               onChange={(e) => update('segundoApellido', e.target.value)}
               onBlur={() => markTouched('segundoApellido')}
             />
-            {shouldShowHelper('segundoApellido') && <p className={helperClass}>{helperText}</p>}
+            {errors.segundoApellido
+              ? <p className={fieldErrorClass}>{errors.segundoApellido}</p>
+              : shouldShowHelper('segundoApellido') && <p className={helperClass}>{helperText}</p>}
           </div>
         </div>
       </section>
@@ -244,7 +231,7 @@ export default function Step1PersonalInfo() {
           <div>
             <label className={labelClass}>Tipo de documento <span className="text-red-500 font-semibold">(*)</span></label>
             <select
-              className={selectClass}
+              className={errors.tipoDocumento ? selectErrorClass : selectClass}
               value={form.tipoDocumento}
               onChange={(e) => update('tipoDocumento', e.target.value)}
               onBlur={() => markTouched('tipoDocumento')}
@@ -256,19 +243,24 @@ export default function Step1PersonalInfo() {
               <option value="(ce) Cedula de extranjeria">(ce) Cedula de extranjeria</option>
               <option value="(si) Sin identificacion">(si) Sin identificacion</option>
             </select>
-            {shouldShowHelper('tipoDocumento') && <p className={helperClass}>{helperText}</p>}
+            {errors.tipoDocumento
+              ? <p className={fieldErrorClass}>{errors.tipoDocumento}</p>
+              : shouldShowHelper('tipoDocumento') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Numero de documento <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="text"
-              className={inputClass}
-              placeholder="000.000.000"
+              className={errors.documento ? inputErrorClass : inputClass}
+              placeholder="000000000"
               value={form.documento}
+              maxLength={20}
               onChange={(e) => update('documento', e.target.value)}
               onBlur={() => markTouched('documento')}
             />
-            {shouldShowHelper('documento') && <p className={helperClass}>{helperText}</p>}
+            {errors.documento
+              ? <p className={fieldErrorClass}>{errors.documento}</p>
+              : shouldShowHelper('documento') && <p className={helperClass}>{helperText}</p>}
           </div>
         </div>
       </section>
@@ -287,7 +279,7 @@ export default function Step1PersonalInfo() {
           <div>
             <label className={labelClass}>Sexo <span className="text-red-500 font-semibold">(*)</span></label>
             <select
-              className={selectClass}
+              className={errors.sexo ? selectErrorClass : selectClass}
               value={form.sexo}
               onChange={(e) => update('sexo', e.target.value)}
             >
@@ -296,11 +288,12 @@ export default function Step1PersonalInfo() {
               <option value="Mujer">Mujer</option>
               <option value="Intersexual">Intersexual</option>
             </select>
+            {errors.sexo && <p className={fieldErrorClass}>{errors.sexo}</p>}
           </div>
           <div>
             <label className={labelClass}>Identidad de genero <span className="text-red-500 font-semibold">(*)</span></label>
             <select
-              className={selectClass}
+              className={errors.identidadGenero ? selectErrorClass : selectClass}
               value={form.identidadGenero}
               onChange={(e) => update('identidadGenero', e.target.value)}
             >
@@ -310,11 +303,12 @@ export default function Step1PersonalInfo() {
               <option value="Transexual">Transexual</option>
               <option value="No informa">No informa</option>
             </select>
+            {errors.identidadGenero && <p className={fieldErrorClass}>{errors.identidadGenero}</p>}
           </div>
           <div>
             <label className={labelClass}>Orientacion sexual <span className="text-red-500 font-semibold">(*)</span></label>
             <select
-              className={selectClass}
+              className={errors.orientacionSexual ? selectErrorClass : selectClass}
               value={form.orientacionSexual}
               onChange={(e) => update('orientacionSexual', e.target.value)}
             >
@@ -324,11 +318,12 @@ export default function Step1PersonalInfo() {
               <option value="Bisexual">Bisexual</option>
               <option value="No informa">No informa</option>
             </select>
+            {errors.orientacionSexual && <p className={fieldErrorClass}>{errors.orientacionSexual}</p>}
           </div>
           <div>
             <label className={labelClass}>Etnia <span className="text-red-500 font-semibold">(*)</span></label>
             <select
-              className={selectClass}
+              className={errors.etnia ? selectErrorClass : selectClass}
               value={form.etnia}
               onChange={(e) => update('etnia', e.target.value)}
             >
@@ -341,11 +336,12 @@ export default function Step1PersonalInfo() {
               <option value="Ninguna">Ninguna</option>
               <option value="No informa">No informa</option>
             </select>
+            {errors.etnia && <p className={fieldErrorClass}>{errors.etnia}</p>}
           </div>
           <div>
             <label className={labelClass}>Discapacidad <span className="text-red-500 font-semibold">(*)</span></label>
             <select
-              className={selectClass}
+              className={errors.discapacidad ? selectErrorClass : selectClass}
               value={form.discapacidad}
               onChange={(e) => {
                 const value = e.target.value;
@@ -359,55 +355,67 @@ export default function Step1PersonalInfo() {
               <option value="No">No</option>
               <option value="Si">Si</option>
             </select>
+            {errors.discapacidad && <p className={fieldErrorClass}>{errors.discapacidad}</p>}
           </div>
           {form.discapacidad === 'Si' && (
             <div>
               <label className={labelClass}>Cual discapacidad <span className="text-red-500 font-semibold">(*)</span></label>
               <input
                 type="text"
-                className={inputClass}
+                className={errors.discapacidadDetalle ? inputErrorClass : inputClass}
                 placeholder="Especifica cual"
                 value={form.discapacidadDetalle}
+                maxLength={120}
                 onChange={(e) => update('discapacidadDetalle', e.target.value)}
                 onBlur={() => markTouched('discapacidadDetalle')}
               />
-              {shouldShowHelper('discapacidadDetalle') && <p className={helperClass}>{helperText}</p>}
+              {errors.discapacidadDetalle
+                ? <p className={fieldErrorClass}>{errors.discapacidadDetalle}</p>
+                : shouldShowHelper('discapacidadDetalle') && <p className={helperClass}>{helperText}</p>}
             </div>
           )}
           <div>
             <label className={labelClass}>Fecha de nacimiento <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="date"
-              className={inputClass}
+              className={errors.fechaNacimiento ? inputErrorClass : inputClass}
               value={form.fechaNacimiento}
               onChange={(e) => update('fechaNacimiento', e.target.value)}
               onBlur={() => markTouched('fechaNacimiento')}
             />
-            {shouldShowHelper('fechaNacimiento') && <p className={helperClass}>{helperText}</p>}
+            {errors.fechaNacimiento
+              ? <p className={fieldErrorClass}>{errors.fechaNacimiento}</p>
+              : shouldShowHelper('fechaNacimiento') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Correo electronico <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="email"
-              className={inputClass}
+              className={errors.correo ? inputErrorClass : inputClass}
               placeholder="correo@ejemplo.com"
               value={form.correo}
+              maxLength={120}
               onChange={(e) => update('correo', e.target.value)}
               onBlur={() => markTouched('correo')}
             />
-            {shouldShowHelper('correo') && <p className={helperClass}>{helperText}</p>}
+            {errors.correo
+              ? <p className={fieldErrorClass}>{errors.correo}</p>
+              : shouldShowHelper('correo') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Telefono <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="tel"
-              className={inputClass}
+              className={errors.telefonoPersonal ? inputErrorClass : inputClass}
               placeholder="3001234567"
               value={form.telefonoPersonal}
+              maxLength={13}
               onChange={(e) => update('telefonoPersonal', e.target.value)}
               onBlur={() => markTouched('telefonoPersonal')}
             />
-            {shouldShowHelper('telefonoPersonal') && <p className={helperClass}>{helperText}</p>}
+            {errors.telefonoPersonal
+              ? <p className={fieldErrorClass}>{errors.telefonoPersonal}</p>
+              : shouldShowHelper('telefonoPersonal') && <p className={helperClass}>{helperText}</p>}
           </div>
         </div>
       </section>
@@ -500,18 +508,21 @@ export default function Step1PersonalInfo() {
               <label className={labelClass}>Carrera <span className="text-red-500 font-semibold">(*)</span></label>
               <input
                 type="text"
-                className={inputClass}
+                className={errors.carrera ? inputErrorClass : inputClass}
                 placeholder="Ej. Psicologia"
                 value={form.carrera}
+                maxLength={80}
                 onChange={(e) => update('carrera', e.target.value)}
                 onBlur={() => markTouched('carrera')}
               />
-              {shouldShowHelper('carrera') && <p className={helperClass}>{helperText}</p>}
+              {errors.carrera
+                ? <p className={fieldErrorClass}>{errors.carrera}</p>
+                : shouldShowHelper('carrera') && <p className={helperClass}>{helperText}</p>}
             </div>
             <div>
               <label className={labelClass}>Jornada <span className="text-red-500 font-semibold">(*)</span></label>
               <select
-                className={selectClass}
+                className={errors.jornada ? selectErrorClass : selectClass}
                 value={form.jornada}
                 onChange={(e) => update('jornada', e.target.value)}
                 onBlur={() => markTouched('jornada')}
@@ -521,12 +532,14 @@ export default function Step1PersonalInfo() {
                 <option value="Nocturna">Nocturna</option>
                 <option value="Virtual">Virtual</option>
               </select>
-              {shouldShowHelper('jornada') && <p className={helperClass}>{helperText}</p>}
+              {errors.jornada
+                ? <p className={fieldErrorClass}>{errors.jornada}</p>
+                : shouldShowHelper('jornada') && <p className={helperClass}>{helperText}</p>}
             </div>
             <div>
               <label className={labelClass}>Semestre <span className="text-red-500 font-semibold">(*)</span></label>
               <select
-                className={selectClass}
+                className={errors.semestre ? selectErrorClass : selectClass}
                 value={form.semestre}
                 onChange={(e) => update('semestre', e.target.value)}
                 onBlur={() => markTouched('semestre')}
@@ -538,7 +551,9 @@ export default function Step1PersonalInfo() {
                   </option>
                 ))}
               </select>
-              {shouldShowHelper('semestre') && <p className={helperClass}>{helperText}</p>}
+              {errors.semestre
+                ? <p className={fieldErrorClass}>{errors.semestre}</p>
+                : shouldShowHelper('semestre') && <p className={helperClass}>{helperText}</p>}
             </div>
 
           </div>
@@ -560,32 +575,38 @@ export default function Step1PersonalInfo() {
             <label className={labelClass}>Contrasena <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="password"
-              className={inputClass}
+              className={errors.password ? inputErrorClass : inputClass}
               placeholder="Minimo 8 caracteres"
               value={form.password}
+              maxLength={64}
               onChange={(e) => update('password', e.target.value)}
               onBlur={() => markTouched('password')}
             />
-            {shouldShowHelper('password') && <p className={helperClass}>{helperText}</p>}
+            {errors.password
+              ? <p className={fieldErrorClass}>{errors.password}</p>
+              : shouldShowHelper('password') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Confirmar contrasena <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="password"
-              className={inputClass}
+              className={errors.confirmPassword ? inputErrorClass : inputClass}
               placeholder="Repite la contrasena"
               value={form.confirmPassword}
+              maxLength={64}
               onChange={(e) => update('confirmPassword', e.target.value)}
               onBlur={() => markTouched('confirmPassword')}
             />
-            {shouldShowHelper('confirmPassword') && <p className={helperClass}>{helperText}</p>}
+            {errors.confirmPassword
+              ? <p className={fieldErrorClass}>{errors.confirmPassword}</p>
+              : shouldShowHelper('confirmPassword') && <p className={helperClass}>{helperText}</p>}
           </div>
         </div>
       </section>
 
-      {error && (
+      {errors._general && (
         <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium">
-          {error}
+          {errors._general}
         </div>
       )}
 

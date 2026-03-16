@@ -13,10 +13,10 @@ model informacionUsuario {
   primerNombre            String
   segundoNombre           String?
   primerApellido          String
-  segundoApellido         String?
+  segundoApellido         String
   telefonoPersonal        String    @unique
   segundoTelefono         String?
-  correo                  String   //@unique
+  correo                  String   @unique
   documento               String?  @unique
   tipoDocumento           String   @default("CC")  
   sesion                  Int      @default(0)
@@ -242,7 +242,8 @@ model InformacionSociodemografica {
   numeroHijos           Int @default(0)
   numeroHermanos        Int @default(0)
   conQuienVive          String
-  tienePersonasACargo   String @default("Si")
+  tienePersonasACargo   String @default("No")
+  personasACargoQuien   String?
   rolFamiliar           Json
   escolaridad           Escolaridad
   ocupacion             String

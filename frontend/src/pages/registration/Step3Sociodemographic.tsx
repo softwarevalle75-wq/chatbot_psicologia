@@ -6,6 +6,7 @@ import StepNavigation from '../../components/registration/StepNavigation';
 import SelectableGrid from '../../components/registration/SelectableGrid';
 import { useAuth } from '../../context/AuthContext';
 import type { Step3Data } from '../../types';
+import { validateStep3, isFormValid, type FormErrors } from '../../utils/validations';
 
 const INITIAL: Step3Data = {
   estadoCivil: '',
@@ -86,7 +87,10 @@ const NIVEL_INGRESOS = [
 
 const inputClass =
   'w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 text-sm text-gray-700 placeholder-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200';
+const inputErrorClass =
+  'w-full px-4 py-3 rounded-xl border border-red-400 bg-red-50/30 text-sm text-gray-700 placeholder-gray-400 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all duration-200';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1.5';
+const fieldErrorClass = 'mt-1.5 text-xs font-medium text-red-600';
 const helperClass =
   'mt-2 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs font-semibold px-3 py-2';
 
@@ -97,9 +101,10 @@ export default function Step3Sociodemographic() {
     const saved = sessionStorage.getItem('reg_step3');
     return saved ? JSON.parse(saved) : INITIAL;
   });
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
   const [touchedHome, setTouchedHome] = useState(false);
+  const [touchedPersonasQuien, setTouchedPersonasQuien] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   const update = <K extends keyof Step3Data>(field: K, value: Step3Data[K]) => {
@@ -108,23 +113,6 @@ export default function Step3Sociodemographic() {
       sessionStorage.setItem('reg_step3', JSON.stringify(next));
       return next;
     });
-  };
-
-  const validate = (): string | null => {
-    if (!form.estadoCivil) return 'Selecciona tu estado civil';
-    if (form.rolFamiliar.length === 0) return 'Selecciona al menos un rol familiar';
-    if (form.rolFamiliar.includes('madre') && form.rolFamiliar.includes('padre')) {
-      return 'No puedes seleccionar Madre y Padre al mismo tiempo';
-    }
-    if (!form.conQuienVive.trim()) return 'Indica con quien vives actualmente';
-    if (!form.tienePersonasACargo) return 'Indica si tienes personas a cargo';
-    if (form.tienePersonasACargo === 'Si' && !form.personasACargoQuien.trim()) {
-      return 'Debes indicar quien esta a tu cargo';
-    }
-    if (!form.escolaridad) return 'Selecciona tu nivel de escolaridad';
-    if (!form.ocupacion) return 'Selecciona tu ocupacion actual';
-    if (!form.nivelIngresos) return 'Selecciona tu nivel de ingresos';
-    return null;
   };
 
   const toggleRolFamiliar = (value: string) => {
@@ -149,12 +137,9 @@ export default function Step3Sociodemographic() {
   };
 
   const handleNext = () => {
-    const err = validate();
-    if (err) {
-      setError(err);
-      return;
-    }
-    setError('');
+    const formErrors = validateStep3(form);
+    setErrors(formErrors);
+    if (!isFormValid(formErrors)) return;
     setShowConfirm(true);
   };
 
@@ -177,7 +162,7 @@ export default function Step3Sociodemographic() {
       sessionStorage.removeItem('reg_step3');
       navigate('/registro/consentimiento');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al guardar');
+      setErrors({ _general: e instanceof Error ? e.message : 'Error al guardar' });
     } finally {
       setLoading(false);
       setShowConfirm(false);
@@ -244,6 +229,7 @@ export default function Step3Sociodemographic() {
           onChange={toggleRolFamiliar}
           variant="pill"
         />
+        {errors.rolFamiliar && <p className={fieldErrorClass}>{errors.rolFamiliar}</p>}
       </section>
 
       {/* Con quien vive */}
@@ -258,15 +244,18 @@ export default function Step3Sociodemographic() {
         <input
           id="con-quien-vive"
           type="text"
-          className={inputClass}
+          className={errors.conQuienVive ? inputErrorClass : inputClass}
           placeholder="Ej. Padres, pareja, solo/a..."
           value={form.conQuienVive}
+          maxLength={100}
           onChange={(e) => update('conQuienVive', e.target.value)}
           onBlur={() => setTouchedHome(true)}
         />
-        {touchedHome && form.conQuienVive.trim() && (
-          <p className={helperClass}>Verifique que este dato sea correcto.</p>
-        )}
+        {errors.conQuienVive
+          ? <p className={fieldErrorClass}>{errors.conQuienVive}</p>
+          : touchedHome && form.conQuienVive.trim() && (
+            <p className={helperClass}>Verifique que este dato sea correcto.</p>
+          )}
       </section>
 
       {/* Personas a cargo */}
@@ -286,6 +275,7 @@ export default function Step3Sociodemographic() {
           }}
           variant="pill"
         />
+        {errors.tienePersonasACargo && <p className={fieldErrorClass}>{errors.tienePersonasACargo}</p>}
         {form.tienePersonasACargo === 'Si' && (
           <div className="mt-4">
             <label htmlFor="personas-a-cargo-quien" className={labelClass}>
@@ -294,11 +284,18 @@ export default function Step3Sociodemographic() {
             <input
               id="personas-a-cargo-quien"
               type="text"
-              className={inputClass}
+              className={errors.personasACargoQuien ? inputErrorClass : inputClass}
               placeholder="Ej. Mi hijo menor"
               value={form.personasACargoQuien}
+              maxLength={100}
               onChange={(e) => update('personasACargoQuien', e.target.value)}
+              onBlur={() => setTouchedPersonasQuien(true)}
             />
+            {errors.personasACargoQuien
+              ? <p className={fieldErrorClass}>{errors.personasACargoQuien}</p>
+              : touchedPersonasQuien && form.personasACargoQuien.trim() && (
+                <p className={helperClass}>Verifique que este dato sea correcto.</p>
+              )}
           </div>
         )}
       </section>
@@ -346,9 +343,9 @@ export default function Step3Sociodemographic() {
         />
       </section>
 
-      {error && (
+      {errors._general && (
         <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium">
-          {error}
+          {errors._general}
         </div>
       )}
 
