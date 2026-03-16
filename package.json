@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "lint": "eslint .",
-    "dev": "npm run lint && nodemon ./src/app.js",
+    "dev": "node prisma/seed/roles.js && npm run lint && nodemon ./src/app.js",
     "bot": "node ./src/app.js",
     "start": "node start-all.js",
     "web": "node ./web/server.js",
@@ -16,6 +16,7 @@
     "test": "vitest run",
     "gen:pdf": "node ./scripts/generatePDF.js",
     "seed-test": "node prisma/seed/seed-test.js",
+    "seed:roles": "node prisma/seed/roles.js",
     "assign-pract": "node ./scripts/asignar-practicante-prueba.js",
     "unassign-pract": "node ./scripts/desvincular-practicante.js",
     "rag:reindex": "node ./scripts/reindex-rag.js",

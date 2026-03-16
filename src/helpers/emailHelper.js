@@ -41,6 +41,9 @@ export const enviarPdfPorCorreo = async (correoPracticante, pdfPath, datosInform
             testNombre = 'Test psicológico',
             fecha = new Date().toLocaleString('es-CO'),
             nombrePracticante = 'Profesional',
+            semestre = null,
+            jornada = null,
+            carrera = null,
         } = datosInforme || {}
 
         const nombreArchivo = path.basename(pdfPath)
@@ -81,6 +84,21 @@ export const enviarPdfPorCorreo = async (correoPracticante, pdfPath, datosInform
                             <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Fecha</td>
                             <td style="padding: 10px; border: 1px solid #dee2e6;">${fecha}</td>
                         </tr>
+                        ${semestre ? `
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Semestre</td>
+                            <td style="padding: 10px; border: 1px solid #dee2e6;">${semestre}</td>
+                        </tr>` : ''}
+                        ${jornada ? `
+                        <tr style="background-color: #f8f9fa;">
+                            <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Jornada</td>
+                            <td style="padding: 10px; border: 1px solid #dee2e6;">${jornada}</td>
+                        </tr>` : ''}
+                        ${carrera ? `
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Carrera</td>
+                            <td style="padding: 10px; border: 1px solid #dee2e6;">${carrera}</td>
+                        </tr>` : ''}
                     </table>
                     
                     <p>El informe técnico completo se encuentra adjunto en formato PDF.</p>

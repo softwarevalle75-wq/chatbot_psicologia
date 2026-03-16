@@ -996,6 +996,9 @@ export const pedirDocumentoProfesionalFlow = addKeyword(utils.setEvent('PEDIR_DO
           testNombre: testCompletado,
           fecha: new Date().toLocaleString('es-CO'),
           nombrePracticante: practicante.nombre,
+          semestre: patientData?.semestre || null,
+          jornada: patientData?.jornada || null,
+          carrera: patientData?.carrera || null,
         });
 
         if (resultadoEnvio.success) {

@@ -77,7 +77,7 @@ export default function Step1PersonalInfo() {
       if (!form.jornada) return 'La jornada es obligatoria si perteneces a la universidad';
       if (!form.semestre) return 'El semestre es obligatorio si perteneces a la universidad';
     }
-    if (form.perteneceUniversidad === 'Si' && form.esAspirante) return 'No puedes marcar pertenencia y aspirante al mismo tiempo';
+    if (form.perteneceUniversidad === 'Si' && form.esAspirante) return 'No puedes maRCar pertenencia y aspirante al mismo tiempo';
     if (!form.password) return 'La contrasena es obligatoria';
     if (form.password.length < 6) return 'La contrasena debe tener al menos 6 caracteres';
     if (form.password !== form.confirmPassword) return 'Las contrasenas no coinciden';
@@ -138,7 +138,7 @@ export default function Step1PersonalInfo() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-5">
           <User className="w-5 h-5 text-blue-500" />
-          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppercase">
+          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppeRCase">
             Seccion 1: Nombres
           </h3>
         </div>
@@ -192,7 +192,7 @@ export default function Step1PersonalInfo() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-5">
           <CreditCard className="w-5 h-5 text-blue-500" />
-          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppercase">
+          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppeRCase">
             Seccion 2: Identificacion
           </h3>
         </div>
@@ -205,11 +205,12 @@ export default function Step1PersonalInfo() {
               onChange={(e) => update('tipoDocumento', e.target.value)}
             >
               <option value="">Seleccione...</option>
-              <option value="(cc) Cedula de ciudadania">(cc) Cedula de ciudadania</option>
-              <option value="(ti) Tarjeta de identidad">(ti) Tarjeta de identidad</option>
-              <option value="(rc) Registro civil">(rc) Registro civil</option>
-              <option value="(ce) Cedula de extranjeria">(ce) Cedula de extranjeria</option>
-              <option value="(si) Sin identificacion">(si) Sin identificacion</option>
+              <option value="(CC) Cédula de ciudadanía">(CC) Cédula de ciudadanía</option>
+              <option value="(TI) Tarjeta de identidad">(TI) Tarjeta de identidad</option>
+              <option value="(RC) Registro civil">(RC) Registro civil</option>
+              <option value="(CE) Cédula de extranjería">(CE) Cédula de extranjería</option>
+              <option value="(PPT) Permiso por protección temporal">(PPT) Permiso por protección temporal</option>
+              <option value="(SI) Sin identificación">(SI) Sin identificación</option>
             </select>
           </div>
           <div>
@@ -231,7 +232,7 @@ export default function Step1PersonalInfo() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-5">
           <Globe className="w-5 h-5 text-blue-500" />
-          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppercase">
+          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppeRCase">
             Seccion 3: Demografia
           </h3>
         </div>
@@ -362,7 +363,7 @@ export default function Step1PersonalInfo() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-5">
           <GraduationCap className="w-5 h-5 text-blue-500" />
-          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppercase">
+          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppeRCase">
             Seccion 4: Universidad
           </h3>
         </div>
@@ -471,7 +472,7 @@ export default function Step1PersonalInfo() {
                 onChange={(e) => update('semestre', e.target.value)}
               >
                 <option value="">Seleccione...</option>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((s) => (
+                {Array.from({ length: 9 }, (_, i) => i + 1).map((s) => (
                   <option key={s} value={String(s)}>
                     {s}
                   </option>
@@ -489,7 +490,7 @@ export default function Step1PersonalInfo() {
       <section className="mb-4">
         <div className="flex items-center gap-2 mb-5">
           <Lock className="w-5 h-5 text-blue-500" />
-          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppercase">
+          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppeRCase">
             Seccion 5: Contrasena
           </h3>
         </div>
@@ -499,7 +500,7 @@ export default function Step1PersonalInfo() {
             <input
               type="password"
               className={inputClass}
-              placeholder="Minimo 6 caracteres"
+              placeholder="Minimo 8 caracteres"
               value={form.password}
               onChange={(e) => update('password', e.target.value)}
             />

@@ -10,29 +10,7 @@ const prisma = new PrismaClient();
 // Ej: h(13, 0) = 780  →  1:00 PM
 const h = (hora, minutos = 0) => hora * 60 + minutos;
 
-async function limpiarPracticantes() {
-    console.log('🧹 Limpiando tablas relacionadas con practicantes...');
-
-    // El orden importa: primero los hijos, luego el padre
-    const horarios       = await prisma.horario.deleteMany({});
-    const registroCitas  = await prisma.registroCitas.deleteMany({});
-    const citas          = await prisma.cita.deleteMany({});
-    const practicantes   = await prisma.practicante.deleteMany({});
-    const roles          = await prisma.rolChat.deleteMany({ where: { rol: 'practicante' } });
-
-    console.log(`   ✅ Horarios eliminados:       ${horarios.count}`);
-    console.log(`   ✅ Registro citas eliminados: ${registroCitas.count}`);
-    console.log(`   ✅ Citas eliminadas:          ${citas.count}`);
-    console.log(`   ✅ Practicantes eliminados:   ${practicantes.count}`);
-    console.log(`   ✅ Roles eliminados:          ${roles.count}`);
-    console.log('');
-
-    // Liberar el pool de conexiones antes de los inserts
-    await prisma.$disconnect();
-}
-
 async function main() {
-    await limpiarPracticantes();
 
     // IMPORTANTE: EL TELÉFONO NO DEBE TENER ESPACIOS, O NO LO DETECTA COMO VÁLIDO
     // Todos los teléfonos deben tener prefijo 57 (Colombia)
@@ -991,15 +969,43 @@ async function main() {
                 { dia: 'SABADO',   horaInicio: h(7), horaFin: h(10) },
             ]},
         },
+        // 999999 — Practicante prueba
+        {
+            idPracticante:    uuidv4(),
+            numero_documento: '1025461232',
+            tipo_documento:   'CC',
+            nombre:           'Jhon Barrantes',
+            genero:           'M',
+            correo:           'jhonaleba@gmail.com',
+            eps_ips:          'Sanitas',
+            clinica:          'clinica',
+            fechaInicio:      new Date('2026-03-03'),
+            fechaFin:         null,
+            citasProgramadas: 0,
+            telefono:         '3007717571',
+            horarios: { create: [
+                { dia: 'SABADO',   horaInicio: h(7), horaFin: h(10) },
+            ]},
+        },
     ];
 
 
-    console.log(`📥 Insertando ${practicantes.length} practicantes...`);
+    let sincronizados = 0;
 
     for (const p of practicantes) {
-        // Crear practicante con horarios
-        await prisma.practicante.create({
-            data: {
+        // Si otro registro tiene el mismo teléfono pero distinto documento, liberar el teléfono
+        const conflicto = await prisma.practicante.findUnique({ where: { telefono: p.telefono } });
+        if (conflicto && conflicto.numero_documento !== p.numero_documento) {
+            await prisma.practicante.update({
+                where: { telefono: p.telefono },
+                data:  { telefono: `OLD_${conflicto.numero_documento}_${Date.now()}` },
+            });
+        }
+
+        // Upsert practicante (crea o actualiza por numero_documento)
+        const practicante = await prisma.practicante.upsert({
+            where:  { numero_documento: p.numero_documento },
+            create: {
                 idPracticante:    p.idPracticante,
                 numero_documento: p.numero_documento,
                 tipo_documento:   p.tipo_documento,
@@ -1015,20 +1021,44 @@ async function main() {
                 localidad:        p.localidad   ?? null,
                 citasProgramadas: p.citasProgramadas,
                 telefono:         p.telefono,
-                horarios:         p.horarios,
-            }
+            },
+            update: {
+                tipo_documento: p.tipo_documento,
+                nombre:         p.nombre,
+                genero:         p.genero,
+                correo:         p.correo      ?? null,
+                eps_ips:        p.eps_ips     ?? null,
+                clinica:        p.clinica     ?? null,
+                fechaInicio:    p.fechaInicio ?? null,
+                fechaFin:       p.fechaFin    ?? null,
+                estrato:        p.estrato     ?? null,
+                barrio:         p.barrio      ?? null,
+                localidad:      p.localidad   ?? null,
+                telefono:       p.telefono,
+            },
         });
-        console.log(`   ✅ ${p.nombre}`);
+        sincronizados++;
 
-        // Crear rol en rolChat
-        await prisma.rolChat.create({
-            data: {
-                telefono:  p.telefono,
-                rol:       'practicante',
-                updatedAt: new Date(),
-            }
+        // Sincronizar horarios: borrar solo los de este practicante y recrear
+        await prisma.horario.deleteMany({ where: { practicanteId: practicante.idPracticante } });
+        await prisma.horario.createMany({
+            data: p.horarios.create.map(h => ({
+                practicanteId: practicante.idPracticante,
+                dia:           h.dia,
+                horaInicio:    h.horaInicio,
+                horaFin:       h.horaFin,
+            })),
+        });
+
+        // Upsert rol en rolChat
+        await prisma.rolChat.upsert({
+            where:  { telefono: p.telefono },
+            create: { telefono: p.telefono, rol: 'practicante', updatedAt: new Date() },
+            update: { rol: 'practicante', updatedAt: new Date() },
         });
     }
+
+    console.log(`✅ Se han sincronizado ${sincronizados} practicantes.\n`);
 
     // -------------------------------------------------------------------------
     // Admins
