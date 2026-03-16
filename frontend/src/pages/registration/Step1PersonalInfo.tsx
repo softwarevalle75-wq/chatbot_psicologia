@@ -534,7 +534,7 @@ export default function Step1PersonalInfo() {
                 onBlur={() => markTouched('semestre')}
               >
                 <option value="">Seleccione...</option>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((s) => (
+                {Array.from({ length: 9 }, (_, i) => i + 1).map((s) => (
                   <option key={s} value={String(s)}>
                     {s}
                   </option>
@@ -563,7 +563,7 @@ export default function Step1PersonalInfo() {
             <input
               type="password"
               className={inputClass}
-              placeholder="Minimo 6 caracteres"
+              placeholder="Minimo 8 caracteres"
               value={form.password}
               onChange={(e) => update('password', e.target.value)}
               onBlur={() => markTouched('password')}
