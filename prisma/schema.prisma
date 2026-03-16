@@ -16,7 +16,7 @@ model informacionUsuario {
   segundoApellido         String?
   telefonoPersonal        String    @unique
   segundoTelefono         String?
-  correo                  String   @unique
+  correo                  String   //@unique
   documento               String?  @unique
   tipoDocumento           String   @default("CC")  
   sesion                  Int      @default(0)
@@ -297,6 +297,21 @@ enum NivelIngresos {
   nivel_2_3_smmlv
   nivel_3_4_smmlv
   mayor_4_smmlv
+}
+
+// Tabla de historial de conversaciones — gestionada por @builderbot/database-mysql
+// Se declara aquí para que prisma db push no intente droparla
+model History {
+  id           Int       @id @default(autoincrement())
+  ref          String?
+  keyword      String?
+  answer       String?   @db.LongText
+  refSerialize String?
+  phone        String
+  options      String?   @db.LongText
+  created_at   DateTime? @default(now()) @db.Timestamp(0)
+
+  @@map("history")
 }
 
 // Configuración RAG para tests psicológicos - Sistema Unificado
