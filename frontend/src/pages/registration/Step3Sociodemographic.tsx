@@ -11,7 +11,7 @@ const INITIAL: Step3Data = {
   estadoCivil: '',
   numeroHijos: 0,
   numeroHermanos: 0,
-  rolFamiliar: '',
+  rolFamiliar: [],
   conQuienVive: '',
   tienePersonasACargo: '',
   escolaridad: '',
@@ -111,7 +111,7 @@ export default function Step3Sociodemographic() {
 
   const validate = (): string | null => {
     if (!form.estadoCivil) return 'Selecciona tu estado civil';
-    if (!form.rolFamiliar) return 'Selecciona tu rol familiar';
+    if (form.rolFamiliar.length === 0) return 'Selecciona al menos un rol familiar';
     if (!form.conQuienVive.trim()) return 'Indica con quien vives actualmente';
     if (!form.tienePersonasACargo) return 'Indica si tienes personas a cargo';
     if (!form.escolaridad) return 'Selecciona tu nivel de escolaridad';
@@ -213,7 +213,14 @@ export default function Step3Sociodemographic() {
         <SelectableGrid
           options={ROL_FAMILIAR}
           selected={form.rolFamiliar}
-          onChange={(v) => update('rolFamiliar', v)}
+          onChange={(v) =>
+            update(
+              'rolFamiliar',
+              form.rolFamiliar.includes(v)
+                ? form.rolFamiliar.filter((role) => role !== v)
+                : [...form.rolFamiliar, v],
+            )
+          }
           variant="pill"
         />
       </section>
