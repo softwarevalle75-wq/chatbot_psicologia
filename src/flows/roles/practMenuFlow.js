@@ -104,20 +104,19 @@ export const practOfrecerTestFlow__ElegirTest = addKeyword('__NUNCA__')
 .addAnswer(
     'Elige el *test* para asignar:\n' +
     '1️⃣ GHQ-12 (tamizaje general)\n' +
-    '2️⃣ DASS-21\n' +
     // '3️⃣ Beck Ansiedad (BAI)\n' +
     // '4️⃣ Riesgo suicida\n\n' +
-    'Responde con *1* o *2*.',
+    'Responde con *1*.',
     { capture: true },
     async (ctx, { state, flowDynamic, gotoFlow, fallBack }) => {
       let nextFlow = null;
       try {
-        const mapa = { '1': 'ghq12', '2': 'dass21' };
+        const mapa = { '1': 'ghq12' };
         const opt = (ctx.body || '').trim();
         const tipoTest = mapa[opt];
         
         if (!tipoTest) {
-          await flowDynamic('❌ Opción inválida. Responde *1* o *2*');
+          await flowDynamic('❌ Opción inválida. Responde *1* para asignar GHQ-12.');
           return fallBack();
         }
       let tel = await state.get('pacienteTelefono');
@@ -160,7 +159,7 @@ export const practOfrecerTestFlow__ElegirTest = addKeyword('__NUNCA__')
       await cambiarFlujoYNotificar(tel, 'testFlow', 'Se te ha asignado una prueba, escribe para iniciar.');
 
       await flowDynamic(
-        `✅ Listo. Asigné el test *${tipoTest.toUpperCase()}* al paciente *${tel}*.\n` +
+        `✅ Listo. Asigné el test *GHQ-12* al paciente *${tel}*.\n` +
         `Cuando el paciente escriba al bot, iniciará el cuestionario.`
       );
 

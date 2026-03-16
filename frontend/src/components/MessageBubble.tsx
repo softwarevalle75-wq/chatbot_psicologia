@@ -57,6 +57,22 @@ const matchQuestionLine = (line: string) => {
   return { index: match[1], text: match[2] };
 };
 
+const hasFollowingOptionLine = (lines: string[], fromIndex: number) => {
+  const maxLookAhead = Math.min(fromIndex + 5, lines.length - 1);
+
+  for (let idx = fromIndex + 1; idx <= maxLookAhead; idx += 1) {
+    const line = lines[idx];
+    const trimmed = line.trim();
+
+    if (!trimmed) continue;
+    if (isSeparator(line)) return false;
+
+    return Boolean(matchOptionLine(line));
+  }
+
+  return false;
+};
+
 const parseInlineFormatting = (text: string) => {
   const tokenRegex = /(\*[^*\n]+\*|_[^_\n]+_)/g;
   const nodes: ReactNode[] = [];
@@ -104,15 +120,24 @@ const renderBotMessage = (content: string) => {
         }
 
         const questionLine = matchQuestionLine(line);
-        if (questionLine) {
+        const numberedLine = matchNumberedLine(line);
+        const shouldRenderAsQuestionCard =
+          Boolean(questionLine) ||
+          (Boolean(numberedLine) && hasFollowingOptionLine(lines, idx));
+
+        if (shouldRenderAsQuestionCard) {
+          const questionData = questionLine || numberedLine;
+
+          if (!questionData) return null;
+
           return (
             <div key={`q-${idx}`} className="flex items-start gap-2 rounded-lg bg-blue-50/80 px-2.5 py-2 border border-blue-200/80">
               <span className="shrink-0 inline-flex min-w-6 h-6 items-center justify-center rounded-md bg-blue-600 text-white text-[11px] font-semibold">
                 ❓
               </span>
               <p className="whitespace-pre-wrap break-words text-slate-800 font-medium">
-                <span className="text-blue-700 font-semibold mr-1">{questionLine.index}.</span>
-                {parseInlineFormatting(questionLine.text)}
+                <span className="text-blue-700 font-semibold mr-1">{questionData.index}.</span>
+                {parseInlineFormatting(questionData.text)}
               </p>
             </div>
           );
@@ -133,7 +158,6 @@ const renderBotMessage = (content: string) => {
           );
         }
 
-        const numberedLine = matchNumberedLine(line);
         if (numberedLine) {
           return (
             <div key={`num-${idx}`} className="flex items-start gap-2">

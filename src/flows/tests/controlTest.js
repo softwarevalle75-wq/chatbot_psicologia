@@ -2,8 +2,8 @@
 Aqui se maneja el flujo de los cuestionarios
 */
 
-import { procesarDass21, DASS21info } from "./dass21.js";
 import { procesarGHQ12, GHQ12info } from "./ghq12.js";
+import { procesarDass21, DASS21info } from "./dass21.js";
 
 export const TIPOS_TEST = {
     GHQ12: 'ghq12',
@@ -36,9 +36,22 @@ export const procesarCuestionario = async (numeroUsuario, tipoTest, respuestas) 
 }
 
 //Mostrar los test disponibles
-export const menuCuestionarios = () => {
+export const menuCuestionarios = (allowDass21 = false) => {
     const ghqInfo = GHQ12info();
     const dassInfo = DASS21info();
+
+    const dassBlock = allowDass21
+        ? `
+2️⃣  *${dassInfo.nombre}*
+   ${dassInfo.descripcion}
+   • Tiempo estimado: ${dassInfo.tiempoEstimado}
+   • Nº de preguntas: ${dassInfo.numPreguntas}
+`
+        : ''
+
+    const selectionHint = allowDass21
+        ? '👉 *Responde con _1_ o _2_* para seleccionar el test que deseas realizar.'
+        : '👉 *Responde con _1_* para iniciar GHQ-12.'
 
     return ` 
     ═════════════════════════
@@ -50,13 +63,10 @@ export const menuCuestionarios = () => {
    • Tiempo estimado: ${ghqInfo.tiempoEstimado}
    • Nº de preguntas: ${ghqInfo.numPreguntas}
 
-2️⃣  *${dassInfo.nombre}*
-   ${dassInfo.descripcion}
-   • Tiempo estimado: ${dassInfo.tiempoEstimado}
-   • Nº de preguntas: ${dassInfo.numPreguntas}
+${dassBlock}
 
 ───────────────────────────────
-👉 *Responde con _1_ o _2_* para seleccionar el test que deseas realizar.`
+${selectionHint}`
 }
 
 export const iniciarTest = async (numeroUsuario, tipoTest) => {
@@ -79,12 +89,12 @@ export const getTestInfo = (tipoTest) => {
     }
 }
 
-export const parsearSeleccionTest = (seleccion) => {
+export const parsearSeleccionTest = (seleccion, allowDass21 = false) => {
     switch (seleccion) {
         case '1':
             return 'ghq12';	
         case '2':
-            return 'dass21';
+            return allowDass21 ? 'dass21' : null;
         default:
             return null;
     }

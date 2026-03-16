@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {
   obtenerUsuario,
+  getInfoCuestionario,
   changeTest,
   resetearEstadoPrueba,
   switchFlujo,
@@ -106,6 +107,22 @@ const validarMayorDeEdad = async (telefono) => {
 const mensajeBloqueoEdad =
   '❌ Por políticas del sistema, los cuestionarios psicológicos están disponibles solo para mayores de 18 años.';
 
+const GHQ12_HIGH_THRESHOLD = Number(process.env.GHQ12_HIGH_THRESHOLD || 12);
+
+const puedeHabilitarDass21 = async (telefono, state) => {
+  const recomendadoEnEstado = Boolean(await state.get('allowDass21')) || Boolean(await state.get('recomendarDass21'));
+  if (recomendadoEnEstado) return true;
+
+  try {
+    const info = await getInfoCuestionario(telefono, 'ghq12');
+    const puntaje = Number(info?.infoCues?.Puntaje || 0);
+    return Number.isFinite(puntaje) && puntaje >= GHQ12_HIGH_THRESHOLD;
+  } catch (error) {
+    console.log('⚠️ No se pudo validar habilitación DASS-21 por puntaje GHQ-12:', error?.message || error);
+    return false;
+  }
+};
+
 const bloquearAccesoPorMenorEdad = async (ctx, state, flowDynamic) => {
   await flowDynamic(`${mensajeBloqueoEdad}\n\n🔒 Acceso al chatbot bloqueado por restricción de edad.`);
   await state.update({
@@ -122,6 +139,21 @@ const bloquearAccesoPorMenorEdad = async (ctx, state, flowDynamic) => {
 export const welcomeFlow = addKeyword(EVENTS.WELCOME).addAction(
   async (ctx, { gotoFlow, flowDynamic, state, endFlow }) => {
     try {
+      const incomingText = String(ctx?.body || '').trim();
+
+      if (incomingText === '__web_reset__') {
+        await state.clear();
+        await state.update({
+          currentFlow: null,
+          waitingForTestResponse: false,
+          justInitializedTest: false,
+          initialized: false,
+          testActual: null,
+          user: null,
+        });
+        await switchFlujo(ctx.from, 'menuFlow');
+      }
+
       // console.log('🔍 ===== DEBUG CTX COMPLETO =====')
       // console.log('ctx.from:', ctx.from)
       // console.log('ctx.key:', JSON.stringify(ctx.key, null, 2))
@@ -475,12 +507,19 @@ export const testFlow = addKeyword(EVENTS.ACTION)
 
       let primeraPregunta;
       if (testActual === 'dass21') {
+        const allowDass21 = await puedeHabilitarDass21(ctx.from, state);
+        if (!allowDass21) {
+          await flowDynamic('⚠️ El DASS-21 se habilita solo cuando el GHQ-12 resulte alto. Regresando al menú.');
+          await state.update({ currentFlow: 'menu', waitingForTestResponse: false, justInitializedTest: false });
+          await switchFlujo(ctx.from, 'menuFlow');
+          return gotoFlow(menuFlow);
+        }
         primeraPregunta = await procesarDass21(ctx.from, null);
-      } else if (testActual === 'ghq12') {
+      } else {
         primeraPregunta = await procesarGHQ12(ctx.from, null);
       }
 
-      if (primeraPregunta?.trim()) {
+      if (typeof primeraPregunta === 'string' && primeraPregunta.trim()) {
         console.log('📤 Primera pregunta enviada');
         await flowDynamic(primeraPregunta);
 
@@ -528,10 +567,17 @@ export const procesarRespuestaTest = async (ctx, { flowDynamic, gotoFlow, state,
   }
 
   let resultado;
-  if (testActual === 'ghq12') {
-    resultado = await procesarGHQ12(ctx.from, ctx.body, provider)
-  } else if (testActual === 'dass21') {
-    resultado = await procesarDass21(ctx.from, ctx.body, provider)
+  if (testActual === 'dass21') {
+    const allowDass21 = await puedeHabilitarDass21(ctx.from, state);
+    if (!allowDass21) {
+      await flowDynamic('⚠️ El DASS-21 se habilita solo cuando el GHQ-12 resulte alto. Regresando al menú.');
+      await state.update({ currentFlow: 'menu', waitingForTestResponse: false, justInitializedTest: false });
+      await switchFlujo(ctx.from, 'menuFlow');
+      return gotoFlow(menuFlow);
+    }
+    resultado = await procesarDass21(ctx.from, ctx.body, provider);
+  } else {
+    resultado = await procesarGHQ12(ctx.from, ctx.body, provider);
   }
 
   if (resultado?.error) {
@@ -539,18 +585,20 @@ export const procesarRespuestaTest = async (ctx, { flowDynamic, gotoFlow, state,
     return;
   }
 
-  if (typeof resultado === 'string') {
-    await flowDynamic(resultado);
+  const respuestaTexto = typeof resultado === 'string' ? resultado : resultado?.message;
 
-    if (resultado.includes('completada')) {
+  if (typeof respuestaTexto === 'string') {
+    await flowDynamic(respuestaTexto);
+
+    if (resultado?.completed || respuestaTexto.includes('completada')) {
       console.log('🎉 Test completado, redirigiendo a pedir documento del profesional');
-      const testCompletado = testActual === 'ghq12' ? 'GHQ-12' : 'DASS-21';
       await state.update({
         user: user,
         currentFlow: 'pedirDocumentoProfesional',
         justInitializedTest: false,
-        testCompletado: testCompletado,
+        testCompletado: testActual === 'dass21' ? 'DASS-21' : 'GHQ-12',
         testActualCompletado: testActual,
+        recomendarDass21: testActual === 'ghq12' ? Boolean(resultado?.recomendarDass21) : false,
         waitingForTestResponse: false,
         intentosDocumento: 0,
       });
@@ -576,7 +624,8 @@ export const testSelectionFlow = addKeyword(utils.setEvent('TEST_SELECTION_FLOW'
     async (ctx, { flowDynamic, gotoFlow, state, fallBack, endFlow }) => {
       const user = state.get('user') || {};
       const msg = ctx.body.trim();
-      const tipoTest = parsearSeleccionTest(msg);
+      const allowDass21 = await puedeHabilitarDass21(ctx.from, state);
+      const tipoTest = parsearSeleccionTest(msg, allowDass21);
 
       const verificacionEdad = await validarMayorDeEdad(ctx.from);
       if (!verificacionEdad.permitido) {
@@ -587,11 +636,14 @@ export const testSelectionFlow = addKeyword(utils.setEvent('TEST_SELECTION_FLOW'
       // Ya no se requiere practicante asignado para iniciar pruebas
 
       if (!tipoTest) {
-        await flowDynamic('❌ Por favor, responde con *1* para GHQ-12 o *2* para DASS-21');
+        const errorSeleccion = allowDass21
+          ? '❌ Por favor, responde con *1* para GHQ-12 o *2* para DASS-21'
+          : '❌ Por favor, responde con *1* para iniciar el GHQ-12';
+        await flowDynamic(errorSeleccion);
         return fallBack();
       }
 
-      const testName = tipoTest === 'ghq12' ? 'GHQ-12' : 'DASS-21';
+      const testName = tipoTest === 'dass21' ? 'DASS-21' : 'GHQ-12';
 
       try {
         console.log('🔧 Configurando test:', tipoTest);
@@ -841,10 +893,11 @@ export const menuFlow = addKeyword(utils.setEvent('MENU_FLOW'))
             return endFlow();
           }
 
-          // Hacer cuestionarios - ya no requiere practicante asignado
-          await flowDynamic(menuCuestionarios());
+          // Hacer cuestionarios - DASS-21 se habilita solo si GHQ-12 fue alto
+          const allowDass21 = await puedeHabilitarDass21(ctx.from, state);
+          await flowDynamic(menuCuestionarios(allowDass21));
           await switchFlujo(ctx.from, 'testSelectionFlow')
-          await state.update({ currentFlow: 'testSelection' });
+          await state.update({ currentFlow: 'testSelection', allowDass21 });
           return gotoFlow(testSelectionFlow, { body: '' });
 
         } else {
@@ -1008,6 +1061,16 @@ export const pedirDocumentoProfesionalFlow = addKeyword(utils.setEvent('PEDIR_DO
             `📨 Copia enviada a: *chatbotpsicologia@gmail.com*\n\n` +
             'Regresando al menú principal...'
           );
+
+          const testActualCompletado = await state.get('testActualCompletado');
+          const recomendarDass21 = await state.get('recomendarDass21');
+          if (testActualCompletado === 'ghq12' && recomendarDass21) {
+            await flowDynamic(
+              '🧠 *Recomendación clínica complementaria*\n\n' +
+              'Con base en el resultado del GHQ-12, se recomienda aplicar también el *DASS-21* para ampliar la evaluación de síntomas emocionales.'
+            );
+            await state.update({ allowDass21: true });
+          }
         } else {
           await flowDynamic(
             `⚠️ No se pudo enviar el correo: ${resultadoEnvio.message}\n\n` +
@@ -1016,14 +1079,20 @@ export const pedirDocumentoProfesionalFlow = addKeyword(utils.setEvent('PEDIR_DO
         }
 
         limpiarRutaPdf(ctx.from);
-        await state.update({ currentFlow: 'menu', intentosDocumento: 0, testActual: null });
+        await state.update({
+          currentFlow: 'menu',
+          intentosDocumento: 0,
+          testActual: null,
+          recomendarDass21: false,
+          allowDass21: await puedeHabilitarDass21(ctx.from, state),
+        });
         await switchFlujo(ctx.from, 'menuFlow');
         return gotoFlow(menuFlow);
 
       } catch (error) {
         console.error('❌ Error en pedirDocumentoProfesionalFlow:', error);
         await flowDynamic('⚠️ Ocurrió un error. Regresando al menú principal...');
-        await state.update({ currentFlow: 'menu', intentosDocumento: 0 });
+        await state.update({ currentFlow: 'menu', intentosDocumento: 0, recomendarDass21: false });
         limpiarRutaPdf(ctx.from);
         await switchFlujo(ctx.from, 'menuFlow');
         return gotoFlow(menuFlow);
@@ -1494,10 +1563,12 @@ export const agendFlow = addKeyword(utils.setEvent('AGEND_FLOW'))
 
       if (msg === '1') {
         // Hacer cuestionarios
-        await flowDynamic(menuCuestionarios());
+        const allowDass21 = await puedeHabilitarDass21(ctx.from, state);
+        await flowDynamic(menuCuestionarios(allowDass21));
         await switchFlujo(ctx.from, 'testSelectionFlow');
         await state.update({
           currentFlow: 'testSelection',
+          allowDass21,
           citaConfirmada: null
         });
         return gotoFlow(testSelectionFlow);

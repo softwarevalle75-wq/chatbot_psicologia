@@ -33,6 +33,17 @@ const cuestGhq12 = {
     },
 }
 
+const GHQ12_HIGH_THRESHOLD = Number(process.env.GHQ12_HIGH_THRESHOLD || 12)
+
+export const calcularPuntajeGHQ12 = (rawResults) => {
+    let total = 0
+    for (const score of [0, 1, 2, 3]) {
+        const items = Array.isArray(rawResults?.[score]) ? rawResults[score] : []
+        total += Number(score) * items.length
+    }
+    return total
+}
+
 //--------------------------------------------------------------------------------
 
 // eslint-disable-next-line no-unused-vars
@@ -93,18 +104,25 @@ export const procesarGHQ12 = async (numeroUsuario, respuestas) => {
         if (siguientePregunta >= preguntas.length) {
             
             // Guardar estado y respuestas crudas (sin puntaje calculado)
+            const puntajeTotal = calcularPuntajeGHQ12(estado.resPreg)
+
             await saveEstadoCuestionario(
                 numeroUsuario,
                 estado.preguntaActual,
                 estado.resPreg,
                 tipoTest,
-                estado.Puntaje,
+                puntajeTotal,
             )
-            await savePuntajeUsuario(numeroUsuario, tipoTest, estado.Puntaje, estado.resPreg )
+            await savePuntajeUsuario(numeroUsuario, tipoTest, puntajeTotal, estado.resPreg )
 
             void generarInformeGHQ12Async(numeroUsuario, estado.resPreg)
 
-            return "✅ *Prueba completada con éxito.*\n\nGracias por completar la evaluación."
+            return {
+                completed: true,
+                message: "✅ *Prueba completada con éxito.*\n\nGracias por completar la evaluación.",
+                puntajeTotal,
+                recomendarDass21: puntajeTotal >= GHQ12_HIGH_THRESHOLD,
+            }
         }
 
         // Siguiente pregunta

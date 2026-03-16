@@ -35,6 +35,7 @@ export function useChat(): UseChatReturn {
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [isTyping, setIsTyping] = useState(false);
+  const initializedSession = useRef(false);
 
   // Track whether we are waiting for a bot reply
   const awaitingReply = useRef(false);
@@ -46,6 +47,7 @@ export function useChat(): UseChatReturn {
       setStatus('disconnected');
       setMessages([]);
       setIsTyping(false);
+      initializedSession.current = false;
       return;
     }
 
@@ -55,13 +57,15 @@ export function useChat(): UseChatReturn {
     const onConnected = (_data: unknown) => {
       setStatus('connected');
 
-      // Enviar mensaje inicial automático para activar el welcomeFlow del bot.
-      // BuilderBot usa EVENTS.WELCOME que se dispara con cualquier mensaje
-      // que no coincida con un keyword, así que enviamos "hola" para que
-      // el flujo existente (welcomeFlow → handleUserFlow → menuFlow) se ejecute.
-      awaitingReply.current = true;
-      setIsTyping(true);
-      wsService.send('hola');
+      if (!initializedSession.current) {
+        initializedSession.current = true;
+
+        // Al iniciar una nueva carga de página, forzamos reinicio de contexto
+        // para evitar que el chat retome un estado viejo (ej. preguntas de test).
+        awaitingReply.current = true;
+        setIsTyping(true);
+        wsService.send('__web_reset__');
+      }
     };
 
     const onMessage = (data: unknown) => {
