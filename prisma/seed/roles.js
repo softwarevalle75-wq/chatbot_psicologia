@@ -178,7 +178,7 @@ async function main() {
             tipo_documento:   'PPT',
             nombre:           'Burgos Garcia Blanca Yineth',
             genero:           'F',
-            correo:           'blanquisburgos@yahoo.es',
+            correo:           'burgosblanca0613@gmail.com',
             eps_ips:          'Salud Total',
             clinica:          'Clinica',
             fechaInicio:      new Date('2026-01-15'),
@@ -275,7 +275,7 @@ async function main() {
             tipo_documento:   'CC',
             nombre:           'Castillo Ovalle Tania Valentina',
             genero:           'F',
-            correo:           'tancaso@icloud.com',
+            correo:           'psicologataniacastillo@gmail.com',
             eps_ips:          'Salud Total',
             clinica:          'Clinica',
             fechaInicio:      new Date('2026-02-03'),
@@ -346,7 +346,7 @@ async function main() {
             tipo_documento:   'CC',
             nombre:           'Escobar Cuesto Geraldine Tatiana',
             genero:           'F',
-            correo:           'cuesto.geraldine05@gmail.com',
+            correo:           'gtescobar99@gmail.com',
             eps_ips:          'Nueva EPS',
             clinica:          'Clinica',
             fechaInicio:      new Date('2025-11-07'),
@@ -431,7 +431,7 @@ async function main() {
             tipo_documento:   'CC',
             nombre:           'Henao Velasquez Lesly Vanesa',
             genero:           'F',
-            correo:           'Lesvane2006@gmail.com',
+            correo:           'v4n3s4082816@gmail.com',
             eps_ips:          'Famisanar',
             clinica:          'Clinica',
             fechaInicio:      new Date('2025-12-02'),
@@ -616,6 +616,30 @@ async function main() {
             ]},
         },
 
+        // 28 — Marquéz Cortes Alexa Fernanda
+        // Horario: Lunes a jueves 8:00 am – 6:00 pm | Viernes 8:00 am – 1:00 pm
+        {
+            idPracticante:    uuidv4(),
+            numero_documento: '1030574029',
+            tipo_documento:   'CC',
+            nombre:           'Marquéz Cortes Alexa Fernanda',
+            genero:           'F',
+            correo:           'fernandamarquez1503@gmail.com',
+            eps_ips:          'Famisanar',
+            clinica:          'Clinica',
+            fechaInicio:      new Date('2026-03-02'),
+            fechaFin:         null,
+            citasProgramadas: 0,
+            telefono:         '573503467265',
+            horarios: { create: [
+                { dia: 'LUNES',    horaInicio: h(8),  horaFin: h(18) },
+                { dia: 'MARTES',   horaInicio: h(8),  horaFin: h(18) },
+                { dia: 'MIERCOLES',horaInicio: h(8),  horaFin: h(18) },
+                { dia: 'JUEVES',   horaInicio: h(8),  horaFin: h(18) },
+                { dia: 'VIERNES',  horaInicio: h(8),  horaFin: h(13) },
+            ]},
+        },
+
         // 28 — Perez Pulido Diana Katerin
         // Horario: Miércoles 4:00 pm – 5:00 pm
         {
@@ -752,7 +776,7 @@ async function main() {
             tipo_documento:   'CC',
             nombre:           'Rodriguez Vargas Hary Johanna',
             genero:           'F',
-            correo:           'Johana.rodrigez0406@gmail.com',
+            correo:           'hary.rodriguez2002@gmail.com',
             eps_ips:          'Nueva EPS',
             clinica:          'Clinica',
             fechaInicio:      new Date('2026-01-19'),
@@ -836,13 +860,13 @@ async function main() {
             ]},
         },
 
-        // 38 — Uzuriaga Duque Laura Melisa
+        // 38 — Uzuriaga Duque Laura Melissa
         // Horario: Lunes a miércoles 11:00 am – 5:00 pm
         {
             idPracticante:    uuidv4(),
             numero_documento: '1002862750',
             tipo_documento:   'CC',
-            nombre:           'Uzuriaga Duque Laura Melisa',
+            nombre:           'Uzuriaga Duque Laura Melissa',
             genero:           'F',
             correo:           'melissa321@hotmail.com',
             eps_ips:          'Compensar',
@@ -866,7 +890,7 @@ async function main() {
             tipo_documento:   'CC',
             nombre:           'Vera Covaleda Valentina',
             genero:           'F',
-            correo:           'valentinavera502@gmail.com',
+            correo:           'valentinatrabajordsociales@gmail.com',
             eps_ips:          'Sanitas',
             clinica:          'Clinica',
             fechaInicio:      new Date('2025-11-18'),
@@ -882,15 +906,15 @@ async function main() {
             ]},
         },
 
-        // 40 — Zapata Mayac Juliana Andrea
+        // 40 — Zapata Mayac Yuliana Andrea
         // Horario: Lunes a jueves 8:00 am – 6:00 pm | Viernes 8:00 am – 1:00 pm | Sábados 8:00 am – 10:00 am
         {
             idPracticante:    uuidv4(),
             numero_documento: '1113696886',
             tipo_documento:   'CC',
-            nombre:           'Zapata Mayac Juliana Andrea',
+            nombre:           'Zapata Mayac Yuliana Andrea',
             genero:           'F',
-            correo:           'yuliana21999@outlook.com',
+            correo:           'yuliana19992@outlook.com',
             eps_ips:          'Famisanar',
             clinica:          'Clinica',
             fechaInicio:      new Date('2026-02-02'),
