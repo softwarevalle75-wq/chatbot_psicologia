@@ -449,29 +449,59 @@ export function registerAuthRoutes(server) {
 
             const {
                 estadoCivil, numeroHijos, numeroHermanos, conQuienVive,
-                tienePersonasACargo, rolFamiliar, escolaridad, ocupacion, nivelIngresos,
+                tienePersonasACargo, personasACargoQuien, rolFamiliar, escolaridad, ocupacion, nivelIngresos,
             } = req.body;
 
-            if (!estadoCivil || !conQuienVive || !rolFamiliar || !escolaridad || !ocupacion || !nivelIngresos) {
+            const rolFamiliarNormalizado = Array.isArray(rolFamiliar)
+                ? rolFamiliar.filter(Boolean)
+                : (rolFamiliar ? [rolFamiliar] : []);
+
+            if (!estadoCivil || !conQuienVive || rolFamiliarNormalizado.length === 0 || !escolaridad || !ocupacion || !nivelIngresos) {
                 return json(res, 400, { error: 'Todos los campos son obligatorios' });
             }
 
-            await prisma.informacionSociodemografica.upsert({
-                where: { usuarioId: userId },
-                update: {
-                    estadoCivil, numeroHijos: Number(numeroHijos) || 0,
-                    numeroHermanos: Number(numeroHermanos) || 0, conQuienVive,
-                    tienePersonasACargo: tienePersonasACargo || 'No',
-                    rolFamiliar, escolaridad, ocupacion, nivelIngresos,
-                },
-                create: {
-                    usuarioId: userId, estadoCivil,
-                    numeroHijos: Number(numeroHijos) || 0,
-                    numeroHermanos: Number(numeroHermanos) || 0, conQuienVive,
-                    tienePersonasACargo: tienePersonasACargo || 'No',
-                    rolFamiliar, escolaridad, ocupacion, nivelIngresos,
-                },
+            if (tienePersonasACargo === 'Si' && !String(personasACargoQuien || '').trim()) {
+                return json(res, 400, { error: 'Debes indicar quien esta a tu cargo' });
+            }
+
+            const buildPayload = (rolValue) => ({
+                estadoCivil,
+                numeroHijos: Number(numeroHijos) || 0,
+                numeroHermanos: Number(numeroHermanos) || 0,
+                conQuienVive,
+                tienePersonasACargo: tienePersonasACargo || 'No',
+                rolFamiliar: rolValue,
+                escolaridad,
+                ocupacion,
+                nivelIngresos,
             });
+
+            try {
+                await prisma.informacionSociodemografica.upsert({
+                    where: { usuarioId: userId },
+                    update: buildPayload(rolFamiliarNormalizado),
+                    create: {
+                        usuarioId: userId,
+                        ...buildPayload(rolFamiliarNormalizado),
+                    },
+                });
+            } catch (dbError) {
+                const isLegacyRolEnum = String(dbError?.message || '').toLowerCase().includes('rolfamiliar');
+
+                if (!isLegacyRolEnum) {
+                    throw dbError;
+                }
+
+                const rolLegacy = rolFamiliarNormalizado[0] || 'otro';
+                await prisma.informacionSociodemografica.upsert({
+                    where: { usuarioId: userId },
+                    update: buildPayload(rolLegacy),
+                    create: {
+                        usuarioId: userId,
+                        ...buildPayload(rolLegacy),
+                    },
+                });
+            }
 
             return json(res, 200, { message: 'Informacion sociodemografica guardada exitosamente' });
         } catch (error) {

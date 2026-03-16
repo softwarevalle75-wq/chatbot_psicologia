@@ -14,6 +14,7 @@ const INITIAL: Step3Data = {
   rolFamiliar: [],
   conQuienVive: '',
   tienePersonasACargo: '',
+  personasACargoQuien: '',
   escolaridad: '',
   ocupacion: '',
   nivelIngresos: '',
@@ -112,12 +113,39 @@ export default function Step3Sociodemographic() {
   const validate = (): string | null => {
     if (!form.estadoCivil) return 'Selecciona tu estado civil';
     if (form.rolFamiliar.length === 0) return 'Selecciona al menos un rol familiar';
+    if (form.rolFamiliar.includes('madre') && form.rolFamiliar.includes('padre')) {
+      return 'No puedes seleccionar Madre y Padre al mismo tiempo';
+    }
     if (!form.conQuienVive.trim()) return 'Indica con quien vives actualmente';
     if (!form.tienePersonasACargo) return 'Indica si tienes personas a cargo';
+    if (form.tienePersonasACargo === 'Si' && !form.personasACargoQuien.trim()) {
+      return 'Debes indicar quien esta a tu cargo';
+    }
     if (!form.escolaridad) return 'Selecciona tu nivel de escolaridad';
     if (!form.ocupacion) return 'Selecciona tu ocupacion actual';
     if (!form.nivelIngresos) return 'Selecciona tu nivel de ingresos';
     return null;
+  };
+
+  const toggleRolFamiliar = (value: string) => {
+    const alreadySelected = form.rolFamiliar.includes(value);
+
+    if (alreadySelected) {
+      update('rolFamiliar', form.rolFamiliar.filter((role) => role !== value));
+      return;
+    }
+
+    let nextRoles = [...form.rolFamiliar, value];
+
+    if (value === 'madre') {
+      nextRoles = nextRoles.filter((role) => role !== 'padre');
+    }
+
+    if (value === 'padre') {
+      nextRoles = nextRoles.filter((role) => role !== 'madre');
+    }
+
+    update('rolFamiliar', nextRoles);
   };
 
   const handleNext = () => {
@@ -140,6 +168,8 @@ export default function Step3Sociodemographic() {
         rolFamiliar: form.rolFamiliar,
         conQuienVive: form.conQuienVive.trim(),
         tienePersonasACargo: form.tienePersonasACargo,
+        personasACargoQuien:
+          form.tienePersonasACargo === 'Si' ? form.personasACargoQuien.trim() : undefined,
         escolaridad: form.escolaridad,
         ocupacion: form.ocupacion,
         nivelIngresos: form.nivelIngresos,
@@ -156,17 +186,15 @@ export default function Step3Sociodemographic() {
 
   return (
     <RegistrationLayout currentStep={3}>
-      {error && (
-        <div className="mb-6 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium">
-          {error}
-        </div>
-      )}
+      <div className="mb-6 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 font-medium">
+        Los campos con <span className="text-red-500 font-semibold">(*)</span> son obligatorios.
+      </div>
 
       {/* Estado Civil */}
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-4">
           <Heart className="w-5 h-5 text-blue-500" />
-          <h3 className="text-base font-bold text-gray-800">Estado Civil</h3>
+          <h3 className="text-base font-bold text-gray-800">Estado Civil <span className="text-red-500 font-semibold">(*)</span></h3>
         </div>
         <SelectableGrid
           options={ESTADO_CIVIL}
@@ -180,7 +208,7 @@ export default function Step3Sociodemographic() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-4">
           <Users className="w-5 h-5 text-blue-500" />
-          <h3 className="text-base font-bold text-gray-800">Numero de hijos</h3>
+          <h3 className="text-base font-bold text-gray-800">Numero de hijos <span className="text-red-500 font-semibold">(*)</span></h3>
         </div>
         <SelectableGrid
           options={HIJOS}
@@ -194,7 +222,7 @@ export default function Step3Sociodemographic() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-4">
           <Users className="w-5 h-5 text-blue-500" />
-          <h3 className="text-base font-bold text-gray-800">Numero de hermanos</h3>
+          <h3 className="text-base font-bold text-gray-800">Numero de hermanos <span className="text-red-500 font-semibold">(*)</span></h3>
         </div>
         <SelectableGrid
           options={HERMANOS}
@@ -208,19 +236,12 @@ export default function Step3Sociodemographic() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-4">
           <UserCheck className="w-5 h-5 text-blue-500" />
-          <h3 className="text-base font-bold text-gray-800">Su rol en la familia</h3>
+          <h3 className="text-base font-bold text-gray-800">Su rol en la familia <span className="text-red-500 font-semibold">(*)</span></h3>
         </div>
         <SelectableGrid
           options={ROL_FAMILIAR}
           selected={form.rolFamiliar}
-          onChange={(v) =>
-            update(
-              'rolFamiliar',
-              form.rolFamiliar.includes(v)
-                ? form.rolFamiliar.filter((role) => role !== v)
-                : [...form.rolFamiliar, v],
-            )
-          }
+          onChange={toggleRolFamiliar}
           variant="pill"
         />
       </section>
@@ -229,10 +250,10 @@ export default function Step3Sociodemographic() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-4">
           <Home className="w-5 h-5 text-blue-500" />
-          <h3 className="text-base font-bold text-gray-800">Con quien vive actualmente?</h3>
+          <h3 className="text-base font-bold text-gray-800">Con quien vive actualmente? <span className="text-red-500 font-semibold">(*)</span></h3>
         </div>
         <label htmlFor="con-quien-vive" className={labelClass}>
-          Describe con quien compartes tu hogar
+          Describe con quien compartes tu hogar <span className="text-red-500 font-semibold">(*)</span>
         </label>
         <input
           id="con-quien-vive"
@@ -252,21 +273,41 @@ export default function Step3Sociodemographic() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-4">
           <Users className="w-5 h-5 text-blue-500" />
-          <h3 className="text-base font-bold text-gray-800">Tiene personas a cargo?</h3>
+          <h3 className="text-base font-bold text-gray-800">Tiene personas a cargo? <span className="text-red-500 font-semibold">(*)</span></h3>
         </div>
         <SelectableGrid
           options={PERSONAS_A_CARGO}
           selected={form.tienePersonasACargo}
-          onChange={(v) => update('tienePersonasACargo', v)}
+          onChange={(v) => {
+            update('tienePersonasACargo', v);
+            if (v !== 'Si') {
+              update('personasACargoQuien', '');
+            }
+          }}
           variant="pill"
         />
+        {form.tienePersonasACargo === 'Si' && (
+          <div className="mt-4">
+            <label htmlFor="personas-a-cargo-quien" className={labelClass}>
+              Quien? <span className="text-red-500 font-semibold">(*)</span>
+            </label>
+            <input
+              id="personas-a-cargo-quien"
+              type="text"
+              className={inputClass}
+              placeholder="Ej. Mi hijo menor"
+              value={form.personasACargoQuien}
+              onChange={(e) => update('personasACargoQuien', e.target.value)}
+            />
+          </div>
+        )}
       </section>
 
       {/* Escolaridad */}
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-4">
           <GraduationCap className="w-5 h-5 text-blue-500" />
-          <h3 className="text-base font-bold text-gray-800">Nivel de escolaridad</h3>
+          <h3 className="text-base font-bold text-gray-800">Nivel de escolaridad <span className="text-red-500 font-semibold">(*)</span></h3>
         </div>
         <SelectableGrid
           options={ESCOLARIDAD}
@@ -281,7 +322,7 @@ export default function Step3Sociodemographic() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-4">
           <Briefcase className="w-5 h-5 text-blue-500" />
-          <h3 className="text-base font-bold text-gray-800">Ocupacion actual</h3>
+          <h3 className="text-base font-bold text-gray-800">Ocupacion actual <span className="text-red-500 font-semibold">(*)</span></h3>
         </div>
         <SelectableGrid
           options={OCUPACION}
@@ -295,7 +336,7 @@ export default function Step3Sociodemographic() {
       <section className="mb-4">
         <div className="flex items-center gap-2 mb-4">
           <DollarSign className="w-5 h-5 text-blue-500" />
-          <h3 className="text-base font-bold text-gray-800">Nivel de ingresos</h3>
+          <h3 className="text-base font-bold text-gray-800">Nivel de ingresos <span className="text-red-500 font-semibold">(*)</span></h3>
         </div>
         <SelectableGrid
           options={NIVEL_INGRESOS}
@@ -304,6 +345,12 @@ export default function Step3Sociodemographic() {
           variant="pill"
         />
       </section>
+
+      {error && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium">
+          {error}
+        </div>
+      )}
 
       {/* Navigation */}
       <StepNavigation

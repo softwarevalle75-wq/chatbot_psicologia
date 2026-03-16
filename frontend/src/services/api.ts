@@ -75,6 +75,7 @@ export interface SociodemograficoPayload {
   rolFamiliar: string[];
   conQuienVive: string;
   tienePersonasACargo: string;
+  personasACargoQuien?: string;
   escolaridad: string;
   ocupacion: string;
   nivelIngresos: string;

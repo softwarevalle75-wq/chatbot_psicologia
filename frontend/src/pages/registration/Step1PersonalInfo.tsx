@@ -91,6 +91,7 @@ export default function Step1PersonalInfo() {
   const validate = (): string | null => {
     if (!form.primerNombre.trim()) return 'El primer nombre es obligatorio';
     if (!form.primerApellido.trim()) return 'El primer apellido es obligatorio';
+    if (!form.segundoApellido.trim()) return 'El segundo apellido es obligatorio';
     if (!form.tipoDocumento) return 'Selecciona el tipo de documento';
     if (!form.documento.trim()) return 'El numero de documento es obligatorio';
     if (!form.sexo) return 'Selecciona el sexo';
@@ -165,12 +166,9 @@ export default function Step1PersonalInfo() {
 
   return (
     <RegistrationLayout currentStep={1}>
-      {/* Error message */}
-      {error && (
-        <div className="mb-6 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium">
-          {error}
-        </div>
-      )}
+      <div className="mb-6 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 font-medium">
+        Los campos con <span className="text-red-500 font-semibold">(*)</span> son obligatorios.
+      </div>
 
       {/* SECCION 1: NOMBRES */}
       <section className="mb-8">
@@ -182,7 +180,7 @@ export default function Step1PersonalInfo() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Primer nombre</label>
+            <label className={labelClass}>Primer nombre <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="text"
               className={inputClass}
@@ -206,7 +204,7 @@ export default function Step1PersonalInfo() {
             {shouldShowHelper('segundoNombre') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
-            <label className={labelClass}>Primer apellido</label>
+            <label className={labelClass}>Primer apellido <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="text"
               className={inputClass}
@@ -218,7 +216,7 @@ export default function Step1PersonalInfo() {
             {shouldShowHelper('primerApellido') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
-            <label className={labelClass}>Segundo apellido</label>
+            <label className={labelClass}>Segundo apellido <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="text"
               className={inputClass}
@@ -244,7 +242,7 @@ export default function Step1PersonalInfo() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Tipo de documento</label>
+            <label className={labelClass}>Tipo de documento <span className="text-red-500 font-semibold">(*)</span></label>
             <select
               className={selectClass}
               value={form.tipoDocumento}
@@ -261,7 +259,7 @@ export default function Step1PersonalInfo() {
             {shouldShowHelper('tipoDocumento') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
-            <label className={labelClass}>Numero de documento</label>
+            <label className={labelClass}>Numero de documento <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="text"
               className={inputClass}
@@ -287,7 +285,7 @@ export default function Step1PersonalInfo() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Sexo</label>
+            <label className={labelClass}>Sexo <span className="text-red-500 font-semibold">(*)</span></label>
             <select
               className={selectClass}
               value={form.sexo}
@@ -300,7 +298,7 @@ export default function Step1PersonalInfo() {
             </select>
           </div>
           <div>
-            <label className={labelClass}>Identidad de genero</label>
+            <label className={labelClass}>Identidad de genero <span className="text-red-500 font-semibold">(*)</span></label>
             <select
               className={selectClass}
               value={form.identidadGenero}
@@ -314,7 +312,7 @@ export default function Step1PersonalInfo() {
             </select>
           </div>
           <div>
-            <label className={labelClass}>Orientacion sexual</label>
+            <label className={labelClass}>Orientacion sexual <span className="text-red-500 font-semibold">(*)</span></label>
             <select
               className={selectClass}
               value={form.orientacionSexual}
@@ -328,7 +326,7 @@ export default function Step1PersonalInfo() {
             </select>
           </div>
           <div>
-            <label className={labelClass}>Etnia</label>
+            <label className={labelClass}>Etnia <span className="text-red-500 font-semibold">(*)</span></label>
             <select
               className={selectClass}
               value={form.etnia}
@@ -345,7 +343,7 @@ export default function Step1PersonalInfo() {
             </select>
           </div>
           <div>
-            <label className={labelClass}>Discapacidad</label>
+            <label className={labelClass}>Discapacidad <span className="text-red-500 font-semibold">(*)</span></label>
             <select
               className={selectClass}
               value={form.discapacidad}
@@ -364,7 +362,7 @@ export default function Step1PersonalInfo() {
           </div>
           {form.discapacidad === 'Si' && (
             <div>
-              <label className={labelClass}>Cual discapacidad</label>
+              <label className={labelClass}>Cual discapacidad <span className="text-red-500 font-semibold">(*)</span></label>
               <input
                 type="text"
                 className={inputClass}
@@ -377,7 +375,7 @@ export default function Step1PersonalInfo() {
             </div>
           )}
           <div>
-            <label className={labelClass}>Fecha de nacimiento</label>
+            <label className={labelClass}>Fecha de nacimiento <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="date"
               className={inputClass}
@@ -388,7 +386,7 @@ export default function Step1PersonalInfo() {
             {shouldShowHelper('fechaNacimiento') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
-            <label className={labelClass}>Correo electronico</label>
+            <label className={labelClass}>Correo electronico <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="email"
               className={inputClass}
@@ -400,7 +398,7 @@ export default function Step1PersonalInfo() {
             {shouldShowHelper('correo') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
-            <label className={labelClass}>Telefono</label>
+            <label className={labelClass}>Telefono <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="tel"
               className={inputClass}
@@ -499,7 +497,7 @@ export default function Step1PersonalInfo() {
         {form.perteneceUniversidad === 'Si' && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-in fade-in">
             <div>
-              <label className={labelClass}>Carrera</label>
+              <label className={labelClass}>Carrera <span className="text-red-500 font-semibold">(*)</span></label>
               <input
                 type="text"
                 className={inputClass}
@@ -511,7 +509,7 @@ export default function Step1PersonalInfo() {
               {shouldShowHelper('carrera') && <p className={helperClass}>{helperText}</p>}
             </div>
             <div>
-              <label className={labelClass}>Jornada</label>
+              <label className={labelClass}>Jornada <span className="text-red-500 font-semibold">(*)</span></label>
               <select
                 className={selectClass}
                 value={form.jornada}
@@ -526,7 +524,7 @@ export default function Step1PersonalInfo() {
               {shouldShowHelper('jornada') && <p className={helperClass}>{helperText}</p>}
             </div>
             <div>
-              <label className={labelClass}>Semestre</label>
+              <label className={labelClass}>Semestre <span className="text-red-500 font-semibold">(*)</span></label>
               <select
                 className={selectClass}
                 value={form.semestre}
@@ -559,7 +557,7 @@ export default function Step1PersonalInfo() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Contrasena</label>
+            <label className={labelClass}>Contrasena <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="password"
               className={inputClass}
@@ -571,7 +569,7 @@ export default function Step1PersonalInfo() {
             {shouldShowHelper('password') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
-            <label className={labelClass}>Confirmar contrasena</label>
+            <label className={labelClass}>Confirmar contrasena <span className="text-red-500 font-semibold">(*)</span></label>
             <input
               type="password"
               className={inputClass}
@@ -584,6 +582,12 @@ export default function Step1PersonalInfo() {
           </div>
         </div>
       </section>
+
+      {error && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium">
+          {error}
+        </div>
+      )}
 
       {/* Navigation */}
       <StepNavigation
