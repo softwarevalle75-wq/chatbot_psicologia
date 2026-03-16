@@ -35,10 +35,6 @@ export interface Step1Data {
   confirmPassword: string;
 }
 
-export interface Step2Data {
-  autorizacionDatos: boolean;
-}
-
 export interface Step3Data {
   estadoCivil: string;
   numeroHijos: number;
@@ -52,17 +48,6 @@ export interface Step3Data {
   nivelIngresos: string;
 }
 
-export interface Step4Data {
-  consentimientoInformado: boolean;
-}
-
-export interface RegistrationData {
-  step1: Step1Data;
-  step2: Step2Data;
-  step3: Step3Data;
-  step4: Step4Data;
-}
-
 // ── Auth types ──────────────────────────────────────────────
 
 export interface AuthUser {
@@ -73,29 +58,4 @@ export interface AuthUser {
   consentimientoInformado: string;
   autorizacionDatos: string;
   registrationStep: number;
-}
-
-export interface AuthState {
-  user: AuthUser | null;
-  token: string | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-}
-
-export interface LoginCredentials {
-  correo: string;
-  password: string;
-}
-
-export interface RegisterResponse {
-  message: string;
-  userId: string;
-  token: string;
-  user: AuthUser;
-}
-
-export interface LoginResponse {
-  message: string;
-  token: string;
-  user: AuthUser;
 }

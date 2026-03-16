@@ -1,4 +1,3 @@
 -- AlterTable
-ALTER TABLE `informacionUsuario`
-ADD COLUMN `discapacidad` VARCHAR(191) NOT NULL DEFAULT 'No',
-ADD COLUMN `discapacidadDetalle` VARCHAR(191) NULL;
+-- Nota: columnas ya existentes en BD — migración no-op para el shadow database
+SELECT 1;

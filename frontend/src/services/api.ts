@@ -48,7 +48,7 @@ export interface RegisterPayload {
   primerNombre: string;
   segundoNombre?: string;
   primerApellido: string;
-  segundoApellido?: string;
+  segundoApellido: string;
   tipoDocumento: string;
   documento: string;
   sexo: string;
