@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, Users, GraduationCap, Briefcase, DollarSign, Home, UserCheck, X } from 'lucide-react';
+import { Heart, Users, GraduationCap, Briefcase, DollarSign, Home, UserCheck } from 'lucide-react';
 import RegistrationLayout from '../../components/registration/RegistrationLayout';
 import StepNavigation from '../../components/registration/StepNavigation';
 import SelectableGrid from '../../components/registration/SelectableGrid';
@@ -11,7 +11,7 @@ const INITIAL: Step3Data = {
   estadoCivil: '',
   numeroHijos: 0,
   numeroHermanos: 0,
-  rolFamiliar: [],
+  rolFamiliar: '',
   conQuienVive: '',
   tienePersonasACargo: '',
   escolaridad: '',
@@ -85,6 +85,9 @@ const NIVEL_INGRESOS = [
 
 const inputClass =
   'w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 text-sm text-gray-700 placeholder-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200';
+const labelClass = 'block text-sm font-medium text-gray-700 mb-1.5';
+const helperClass =
+  'mt-2 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs font-semibold px-3 py-2';
 
 export default function Step3Sociodemographic() {
   const navigate = useNavigate();
@@ -95,8 +98,8 @@ export default function Step3Sociodemographic() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showViveHint, setShowViveHint] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [touchedHome, setTouchedHome] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const update = <K extends keyof Step3Data>(field: K, value: Step3Data[K]) => {
     setForm((prev) => {
@@ -108,7 +111,7 @@ export default function Step3Sociodemographic() {
 
   const validate = (): string | null => {
     if (!form.estadoCivil) return 'Selecciona tu estado civil';
-    if (!form.rolFamiliar.length) return 'Selecciona al menos un rol familiar';
+    if (!form.rolFamiliar) return 'Selecciona tu rol familiar';
     if (!form.conQuienVive.trim()) return 'Indica con quien vives actualmente';
     if (!form.tienePersonasACargo) return 'Indica si tienes personas a cargo';
     if (!form.escolaridad) return 'Selecciona tu nivel de escolaridad';
@@ -117,18 +120,17 @@ export default function Step3Sociodemographic() {
     return null;
   };
 
-  const handleNext = async () => {
+  const handleNext = () => {
     const err = validate();
     if (err) {
       setError(err);
       return;
     }
     setError('');
-    setShowConfirmModal(true);
+    setShowConfirm(true);
   };
 
-  const handleConfirmContinue = async () => {
-    setShowConfirmModal(false);
+  const submitSociodemografico = async () => {
     setLoading(true);
     try {
       await saveSociodemografico({
@@ -148,20 +150,8 @@ export default function Step3Sociodemographic() {
       setError(e instanceof Error ? e.message : 'Error al guardar');
     } finally {
       setLoading(false);
+      setShowConfirm(false);
     }
-  };
-
-  const toggleRolFamiliar = (value: string) => {
-    setForm((prev) => {
-      const alreadySelected = prev.rolFamiliar.includes(value);
-      const nextRoles = alreadySelected
-        ? prev.rolFamiliar.filter((item) => item !== value)
-        : [...prev.rolFamiliar, value];
-
-      const next = { ...prev, rolFamiliar: nextRoles };
-      sessionStorage.setItem('reg_step3', JSON.stringify(next));
-      return next;
-    });
   };
 
   return (
@@ -218,27 +208,14 @@ export default function Step3Sociodemographic() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-4">
           <UserCheck className="w-5 h-5 text-blue-500" />
-          <h3 className="text-base font-bold text-gray-800">Su rol en la familia (puede seleccionar varios)</h3>
+          <h3 className="text-base font-bold text-gray-800">Su rol en la familia</h3>
         </div>
-        <div className="flex flex-wrap gap-3">
-          {ROL_FAMILIAR.map((opt) => {
-            const selected = form.rolFamiliar.includes(opt.value);
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => toggleRolFamiliar(opt.value)}
-                className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${
-                  selected
-                    ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
-                    : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'
-                }`}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
+        <SelectableGrid
+          options={ROL_FAMILIAR}
+          selected={form.rolFamiliar}
+          onChange={(v) => update('rolFamiliar', v)}
+          variant="pill"
+        />
       </section>
 
       {/* Con quien vive */}
@@ -247,22 +224,20 @@ export default function Step3Sociodemographic() {
           <Home className="w-5 h-5 text-blue-500" />
           <h3 className="text-base font-bold text-gray-800">Con quien vive actualmente?</h3>
         </div>
+        <label htmlFor="con-quien-vive" className={labelClass}>
+          Describe con quien compartes tu hogar
+        </label>
         <input
+          id="con-quien-vive"
           type="text"
           className={inputClass}
           placeholder="Ej. Padres, pareja, solo/a..."
           value={form.conQuienVive}
           onChange={(e) => update('conQuienVive', e.target.value)}
-          onBlur={() => {
-            if (form.conQuienVive.trim()) {
-              setShowViveHint(true);
-            }
-          }}
+          onBlur={() => setTouchedHome(true)}
         />
-        {showViveHint && (
-          <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            Verifique que este dato sea correcto.
-          </p>
+        {touchedHome && form.conQuienVive.trim() && (
+          <p className={helperClass}>Verifique que este dato sea correcto.</p>
         )}
       </section>
 
@@ -332,37 +307,40 @@ export default function Step3Sociodemographic() {
         nextDisabled={loading}
       />
 
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-gray-200">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <h4 className="text-base font-semibold text-gray-800">Confirmar datos</h4>
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Confirmar datos</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Revise que todos sus datos esten correctamente diligenciados antes de continuar. Si esta seguro presione continuar.
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={() => setShowConfirmModal(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setShowConfirm(false)}
                 aria-label="Cerrar"
               >
-                <X className="w-5 h-5" />
+                ✕
               </button>
             </div>
-            <div className="px-5 py-4 text-sm text-gray-700">
-              Revise que todos sus datos esten correctamente diligenciados antes de continuar. Si esta seguro presione continuar.
-            </div>
-            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
                 type="button"
-                onClick={() => setShowConfirmModal(false)}
-                className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+                className="flex-1 rounded-full border border-gray-300 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                onClick={() => setShowConfirm(false)}
               >
                 Revisar
               </button>
               <button
                 type="button"
-                onClick={handleConfirmContinue}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                className="flex-1 rounded-full bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                onClick={submitSociodemografico}
+                disabled={loading}
               >
-                Continuar
+                {loading ? 'Guardando...' : 'Continuar'}
               </button>
             </div>
           </div>

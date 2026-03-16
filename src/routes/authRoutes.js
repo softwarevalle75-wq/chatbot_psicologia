@@ -39,8 +39,7 @@ const SEXOS_VALIDOS = new Set(['Hombre', 'Mujer', 'Intersexual']);
 const IDENTIDADES_GENERO_VALIDAS = new Set(['Masculino', 'Femenino', 'Transexual', 'No informa']);
 const ORIENTACIONES_VALIDAS = new Set(['Heterosexual', 'Homosexual', 'Bisexual', 'No informa']);
 const ETNIAS_VALIDAS = new Set(['Afro', 'Raizal', 'Palanquero', 'Indigena', 'Rom', 'Ninguna', 'No informa']);
-const DISCAPACIDAD_VALORES = new Set(['Si', 'No']);
-const ROL_FAMILIAR_VALIDOS = new Set(['madre', 'padre', 'hijo', 'hermano', 'abuelo', 'nieto', 'tio', 'sobrino', 'otro']);
+const DISCAPACIDAD_VALIDOS = new Set(['Si', 'No']);
 
 const rateLimitStore = new Map();
 
@@ -112,7 +111,7 @@ const validateRegisterPayload = (payload) => {
     if (!IDENTIDADES_GENERO_VALIDAS.has(identidadGenero)) errors.push('Identidad de genero invalida');
     if (!ORIENTACIONES_VALIDAS.has(orientacionSexual)) errors.push('Orientacion sexual invalida');
     if (!ETNIAS_VALIDAS.has(etnia)) errors.push('Etnia invalida');
-    if (!DISCAPACIDAD_VALORES.has(discapacidad)) errors.push('Discapacidad invalida');
+    if (!DISCAPACIDAD_VALIDOS.has(discapacidad)) errors.push('Discapacidad invalida');
     if (discapacidad === 'Si' && (discapacidadDetalle.length < 2 || discapacidadDetalle.length > 120)) {
         errors.push('Debes indicar cual discapacidad tienes');
     }
@@ -226,7 +225,8 @@ export function registerAuthRoutes(server) {
 
             const {
                 primerNombre, segundoNombre, primerApellido, segundoApellido,
-                tipoDocumento, documento, sexo, identidadGenero, orientacionSexual, etnia, discapacidad, discapacidadDetalle,
+                tipoDocumento, documento, sexo, identidadGenero, orientacionSexual, etnia, discapacidad,
+                discapacidadDetalle,
                 correo, telefonoPersonal,
                 fechaNacimiento, perteneceUniversidad, carrera, jornada, semestre,
                 password, esAspirante,
@@ -350,9 +350,6 @@ export function registerAuthRoutes(server) {
             });
         } catch (error) {
             console.error('Error en /v1/auth/register:', error);
-            if (error?.code === 'P2002') {
-                return json(res, 400, { error: 'Ya existe un usuario con esos datos. Cambia documento/correo/telefono o nombres.' });
-            }
             return json(res, 500, { error: 'Error interno del servidor' });
         }
     });
@@ -455,16 +452,8 @@ export function registerAuthRoutes(server) {
                 tienePersonasACargo, rolFamiliar, escolaridad, ocupacion, nivelIngresos,
             } = req.body;
 
-            const rolesFamiliares = Array.isArray(rolFamiliar)
-                ? rolFamiliar.map((r) => normalizeSpaces(r).toLowerCase()).filter(Boolean)
-                : [];
-
-            if (!estadoCivil || !conQuienVive || !rolesFamiliares.length || !escolaridad || !ocupacion || !nivelIngresos) {
+            if (!estadoCivil || !conQuienVive || !rolFamiliar || !escolaridad || !ocupacion || !nivelIngresos) {
                 return json(res, 400, { error: 'Todos los campos son obligatorios' });
-            }
-
-            if (!rolesFamiliares.every((role) => ROL_FAMILIAR_VALIDOS.has(role))) {
-                return json(res, 400, { error: 'Rol familiar invalido' });
             }
 
             await prisma.informacionSociodemografica.upsert({
@@ -473,14 +462,14 @@ export function registerAuthRoutes(server) {
                     estadoCivil, numeroHijos: Number(numeroHijos) || 0,
                     numeroHermanos: Number(numeroHermanos) || 0, conQuienVive,
                     tienePersonasACargo: tienePersonasACargo || 'No',
-                    rolFamiliar: rolesFamiliares, escolaridad, ocupacion, nivelIngresos,
+                    rolFamiliar, escolaridad, ocupacion, nivelIngresos,
                 },
                 create: {
                     usuarioId: userId, estadoCivil,
                     numeroHijos: Number(numeroHijos) || 0,
                     numeroHermanos: Number(numeroHermanos) || 0, conQuienVive,
                     tienePersonasACargo: tienePersonasACargo || 'No',
-                    rolFamiliar: rolesFamiliares, escolaridad, ocupacion, nivelIngresos,
+                    rolFamiliar, escolaridad, ocupacion, nivelIngresos,
                 },
             });
 

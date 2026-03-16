@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User, CreditCard, Globe, Lock, GraduationCap } from 'lucide-react';
 import RegistrationLayout from '../../components/registration/RegistrationLayout';
@@ -36,6 +36,9 @@ const inputClass =
 const selectClass =
   'w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 text-sm text-gray-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200 appearance-none cursor-pointer';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1.5';
+const helperClass =
+  'mt-2 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs font-semibold px-3 py-2';
+const helperText = 'Verifique que este dato sea correcto.';
 
 export default function Step1PersonalInfo() {
   const navigate = useNavigate();
@@ -46,6 +49,17 @@ export default function Step1PersonalInfo() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [touched, setTouched] = useState<Partial<Record<keyof Step1Data, boolean>>>({});
+
+  const displayValue = (value?: string | number | boolean) => {
+    if (value === undefined || value === null) return '—';
+    if (typeof value === 'boolean') return value ? 'Si' : 'No';
+    if (typeof value === 'number') return value.toString();
+    const trimmed = value.toString().trim();
+    return trimmed.length ? trimmed : '—';
+  };
+
 
   const update = (field: keyof Step1Data, value: string | boolean) => {
     setForm((prev) => {
@@ -54,6 +68,25 @@ export default function Step1PersonalInfo() {
       return next;
     });
   };
+
+  const markTouched = (field: keyof Step1Data) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+  };
+
+  const shouldShowHelper = (field: keyof Step1Data) => {
+    if (!touched[field]) return false;
+    const value = form[field];
+    if (typeof value === 'string') return value.trim().length > 0;
+    if (typeof value === 'number') return true;
+    if (typeof value === 'boolean') return value;
+    return Boolean(value);
+  };
+
+  useEffect(() => {
+    if (form.correo.trim() && !touched.correo) {
+      setTouched((prev) => ({ ...prev, correo: true }));
+    }
+  }, [form.correo, touched.correo]);
 
   const validate = (): string | null => {
     if (!form.primerNombre.trim()) return 'El primer nombre es obligatorio';
@@ -64,7 +97,7 @@ export default function Step1PersonalInfo() {
     if (!form.identidadGenero) return 'Selecciona la identidad de genero';
     if (!form.orientacionSexual) return 'Selecciona la orientacion sexual';
     if (!form.etnia) return 'Selecciona la etnia';
-    if (!form.discapacidad) return 'Selecciona si tienes alguna discapacidad';
+    if (!form.discapacidad) return 'Selecciona si tienes discapacidad';
     if (form.discapacidad === 'Si' && !form.discapacidadDetalle.trim()) {
       return 'Indica cual discapacidad tienes';
     }
@@ -77,7 +110,7 @@ export default function Step1PersonalInfo() {
       if (!form.jornada) return 'La jornada es obligatoria si perteneces a la universidad';
       if (!form.semestre) return 'El semestre es obligatorio si perteneces a la universidad';
     }
-    if (form.perteneceUniversidad === 'Si' && form.esAspirante) return 'No puedes maRCar pertenencia y aspirante al mismo tiempo';
+    if (form.perteneceUniversidad === 'Si' && form.esAspirante) return 'No puedes marcar pertenencia y aspirante al mismo tiempo';
     if (!form.password) return 'La contrasena es obligatoria';
     if (form.password.length < 6) return 'La contrasena debe tener al menos 6 caracteres';
     if (form.password !== form.confirmPassword) return 'Las contrasenas no coinciden';
@@ -91,6 +124,10 @@ export default function Step1PersonalInfo() {
       return;
     }
     setError('');
+    setShowConfirm(true);
+  };
+
+  const submitRegistration = async () => {
     setLoading(true);
     try {
       await register({
@@ -122,6 +159,7 @@ export default function Step1PersonalInfo() {
       setError(e instanceof Error ? e.message : 'Error al registrar');
     } finally {
       setLoading(false);
+      setShowConfirm(false);
     }
   };
 
@@ -138,7 +176,7 @@ export default function Step1PersonalInfo() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-5">
           <User className="w-5 h-5 text-blue-500" />
-          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppeRCase">
+          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppercase">
             Seccion 1: Nombres
           </h3>
         </div>
@@ -151,7 +189,9 @@ export default function Step1PersonalInfo() {
               placeholder="Ej. Juan"
               value={form.primerNombre}
               onChange={(e) => update('primerNombre', e.target.value)}
+              onBlur={() => markTouched('primerNombre')}
             />
+            {shouldShowHelper('primerNombre') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Segundo nombre</label>
@@ -161,7 +201,9 @@ export default function Step1PersonalInfo() {
               placeholder="Ej. Alberto"
               value={form.segundoNombre}
               onChange={(e) => update('segundoNombre', e.target.value)}
+              onBlur={() => markTouched('segundoNombre')}
             />
+            {shouldShowHelper('segundoNombre') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Primer apellido</label>
@@ -171,7 +213,9 @@ export default function Step1PersonalInfo() {
               placeholder="Ej. Perez"
               value={form.primerApellido}
               onChange={(e) => update('primerApellido', e.target.value)}
+              onBlur={() => markTouched('primerApellido')}
             />
+            {shouldShowHelper('primerApellido') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Segundo apellido</label>
@@ -181,7 +225,9 @@ export default function Step1PersonalInfo() {
               placeholder="Ej. Gomez"
               value={form.segundoApellido}
               onChange={(e) => update('segundoApellido', e.target.value)}
+              onBlur={() => markTouched('segundoApellido')}
             />
+            {shouldShowHelper('segundoApellido') && <p className={helperClass}>{helperText}</p>}
           </div>
         </div>
       </section>
@@ -192,7 +238,7 @@ export default function Step1PersonalInfo() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-5">
           <CreditCard className="w-5 h-5 text-blue-500" />
-          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppeRCase">
+          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppercase">
             Seccion 2: Identificacion
           </h3>
         </div>
@@ -203,15 +249,16 @@ export default function Step1PersonalInfo() {
               className={selectClass}
               value={form.tipoDocumento}
               onChange={(e) => update('tipoDocumento', e.target.value)}
+              onBlur={() => markTouched('tipoDocumento')}
             >
               <option value="">Seleccione...</option>
-              <option value="(CC) Cédula de ciudadanía">(CC) Cédula de ciudadanía</option>
-              <option value="(TI) Tarjeta de identidad">(TI) Tarjeta de identidad</option>
-              <option value="(RC) Registro civil">(RC) Registro civil</option>
-              <option value="(CE) Cédula de extranjería">(CE) Cédula de extranjería</option>
-              <option value="(PPT) Permiso por protección temporal">(PPT) Permiso por protección temporal</option>
-              <option value="(SI) Sin identificación">(SI) Sin identificación</option>
+              <option value="(cc) Cedula de ciudadania">(cc) Cedula de ciudadania</option>
+              <option value="(ti) Tarjeta de identidad">(ti) Tarjeta de identidad</option>
+              <option value="(rc) Registro civil">(rc) Registro civil</option>
+              <option value="(ce) Cedula de extranjeria">(ce) Cedula de extranjeria</option>
+              <option value="(si) Sin identificacion">(si) Sin identificacion</option>
             </select>
+            {shouldShowHelper('tipoDocumento') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Numero de documento</label>
@@ -221,7 +268,9 @@ export default function Step1PersonalInfo() {
               placeholder="000.000.000"
               value={form.documento}
               onChange={(e) => update('documento', e.target.value)}
+              onBlur={() => markTouched('documento')}
             />
+            {shouldShowHelper('documento') && <p className={helperClass}>{helperText}</p>}
           </div>
         </div>
       </section>
@@ -232,7 +281,7 @@ export default function Step1PersonalInfo() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-5">
           <Globe className="w-5 h-5 text-blue-500" />
-          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppeRCase">
+          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppercase">
             Seccion 3: Demografia
           </h3>
         </div>
@@ -314,7 +363,7 @@ export default function Step1PersonalInfo() {
             </select>
           </div>
           {form.discapacidad === 'Si' && (
-            <div className="sm:col-span-2">
+            <div>
               <label className={labelClass}>Cual discapacidad</label>
               <input
                 type="text"
@@ -322,7 +371,9 @@ export default function Step1PersonalInfo() {
                 placeholder="Especifica cual"
                 value={form.discapacidadDetalle}
                 onChange={(e) => update('discapacidadDetalle', e.target.value)}
+                onBlur={() => markTouched('discapacidadDetalle')}
               />
+              {shouldShowHelper('discapacidadDetalle') && <p className={helperClass}>{helperText}</p>}
             </div>
           )}
           <div>
@@ -332,7 +383,9 @@ export default function Step1PersonalInfo() {
               className={inputClass}
               value={form.fechaNacimiento}
               onChange={(e) => update('fechaNacimiento', e.target.value)}
+              onBlur={() => markTouched('fechaNacimiento')}
             />
+            {shouldShowHelper('fechaNacimiento') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Correo electronico</label>
@@ -342,7 +395,9 @@ export default function Step1PersonalInfo() {
               placeholder="correo@ejemplo.com"
               value={form.correo}
               onChange={(e) => update('correo', e.target.value)}
+              onBlur={() => markTouched('correo')}
             />
+            {shouldShowHelper('correo') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Telefono</label>
@@ -352,7 +407,9 @@ export default function Step1PersonalInfo() {
               placeholder="3001234567"
               value={form.telefonoPersonal}
               onChange={(e) => update('telefonoPersonal', e.target.value)}
+              onBlur={() => markTouched('telefonoPersonal')}
             />
+            {shouldShowHelper('telefonoPersonal') && <p className={helperClass}>{helperText}</p>}
           </div>
         </div>
       </section>
@@ -363,7 +420,7 @@ export default function Step1PersonalInfo() {
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-5">
           <GraduationCap className="w-5 h-5 text-blue-500" />
-          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppeRCase">
+          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppercase">
             Seccion 4: Universidad
           </h3>
         </div>
@@ -449,7 +506,9 @@ export default function Step1PersonalInfo() {
                 placeholder="Ej. Psicologia"
                 value={form.carrera}
                 onChange={(e) => update('carrera', e.target.value)}
+                onBlur={() => markTouched('carrera')}
               />
+              {shouldShowHelper('carrera') && <p className={helperClass}>{helperText}</p>}
             </div>
             <div>
               <label className={labelClass}>Jornada</label>
@@ -457,12 +516,14 @@ export default function Step1PersonalInfo() {
                 className={selectClass}
                 value={form.jornada}
                 onChange={(e) => update('jornada', e.target.value)}
+                onBlur={() => markTouched('jornada')}
               >
                 <option value="">Seleccione...</option>
                 <option value="Diurna">Diurna</option>
                 <option value="Nocturna">Nocturna</option>
                 <option value="Virtual">Virtual</option>
               </select>
+              {shouldShowHelper('jornada') && <p className={helperClass}>{helperText}</p>}
             </div>
             <div>
               <label className={labelClass}>Semestre</label>
@@ -470,14 +531,16 @@ export default function Step1PersonalInfo() {
                 className={selectClass}
                 value={form.semestre}
                 onChange={(e) => update('semestre', e.target.value)}
+                onBlur={() => markTouched('semestre')}
               >
                 <option value="">Seleccione...</option>
-                {Array.from({ length: 9 }, (_, i) => i + 1).map((s) => (
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((s) => (
                   <option key={s} value={String(s)}>
                     {s}
                   </option>
                 ))}
               </select>
+              {shouldShowHelper('semestre') && <p className={helperClass}>{helperText}</p>}
             </div>
 
           </div>
@@ -490,7 +553,7 @@ export default function Step1PersonalInfo() {
       <section className="mb-4">
         <div className="flex items-center gap-2 mb-5">
           <Lock className="w-5 h-5 text-blue-500" />
-          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppeRCase">
+          <h3 className="text-sm font-bold text-blue-500 tracking-wider uppercase">
             Seccion 5: Contrasena
           </h3>
         </div>
@@ -500,10 +563,12 @@ export default function Step1PersonalInfo() {
             <input
               type="password"
               className={inputClass}
-              placeholder="Minimo 8 caracteres"
+              placeholder="Minimo 6 caracteres"
               value={form.password}
               onChange={(e) => update('password', e.target.value)}
+              onBlur={() => markTouched('password')}
             />
+            {shouldShowHelper('password') && <p className={helperClass}>{helperText}</p>}
           </div>
           <div>
             <label className={labelClass}>Confirmar contrasena</label>
@@ -513,7 +578,9 @@ export default function Step1PersonalInfo() {
               placeholder="Repite la contrasena"
               value={form.confirmPassword}
               onChange={(e) => update('confirmPassword', e.target.value)}
+              onBlur={() => markTouched('confirmPassword')}
             />
+            {shouldShowHelper('confirmPassword') && <p className={helperClass}>{helperText}</p>}
           </div>
         </div>
       </section>
@@ -525,6 +592,71 @@ export default function Step1PersonalInfo() {
         nextDisabled={loading}
         showBack={false}
       />
+
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Confirmar datos</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Revisa que todos tus datos estén correctamente diligenciados antes de continuar. Si estás seguro, presiona continuar.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setShowConfirm(false)}
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50/80 p-4">
+              <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-2">
+                Resumen rápido
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-700">
+                <div>
+                  <span className="text-xs text-gray-500 uppercase tracking-wide">Nombre completo</span>
+                  <p className="font-semibold text-gray-900">
+                    {`${displayValue(form.primerNombre)} ${displayValue(form.segundoNombre)} ${displayValue(form.primerApellido)} ${displayValue(form.segundoApellido)}`}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-xs text-gray-500 uppercase tracking-wide">Documento</span>
+                  <p className="font-semibold text-gray-900">{displayValue(form.documento)}</p>
+                </div>
+                <div>
+                  <span className="text-xs text-gray-500 uppercase tracking-wide">Correo</span>
+                  <p className="font-semibold text-gray-900">{displayValue(form.correo)}</p>
+                </div>
+                <div>
+                  <span className="text-xs text-gray-500 uppercase tracking-wide">Teléfono</span>
+                  <p className="font-semibold text-gray-900">{displayValue(form.telefonoPersonal)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                className="flex-1 rounded-full border border-gray-300 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                onClick={() => setShowConfirm(false)}
+              >
+                Revisar datos
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-full bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                onClick={submitRegistration}
+                disabled={loading}
+              >
+                {loading ? 'Guardando...' : 'Continuar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </RegistrationLayout>
   );
 }

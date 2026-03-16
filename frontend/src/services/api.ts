@@ -21,10 +21,22 @@ async function request<T>(
     headers,
   });
 
-  const data = await res.json();
+  const raw = await res.text();
+  let data: unknown = {};
+
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error('Respuesta invalida del servidor');
+    }
+  }
 
   if (!res.ok) {
-    throw new Error(data.error || 'Error en la solicitud');
+    const errorMessage = typeof data === 'object' && data !== null && 'error' in data
+      ? (data as { error?: string }).error
+      : undefined;
+    throw new Error(errorMessage || 'Error en la solicitud');
   }
 
   return data as T;

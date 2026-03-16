@@ -78,7 +78,7 @@ export default function LoginPage() {
             Iniciar Sesion
           </h2>
           <p className="text-gray-500 text-sm mt-1.5 mb-7 leading-relaxed">
-            Bienvenido de nuevo. Por favor, ingresa tus datos.
+            ¡Bienvenido! Si eres nuevo, por favor regístrate antes de ingresar tus datos.
           </p>
 
           {/* Error */}
@@ -106,18 +106,9 @@ export default function LoginPage() {
 
             {/* Contrasena */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-semibold text-gray-800">
-                  Contrasena
-                </label>
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  className="text-xs font-semibold text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
-                >
-                  Olvidaste tu contrasena?
-                </button>
-              </div>
+              <label className="block text-sm font-semibold text-gray-800 mb-2">
+                Contrasena
+              </label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -153,15 +144,17 @@ export default function LoginPage() {
           </form>
 
           {/* Link a registro */}
-          <p className="text-center text-sm text-gray-500 mt-7">
-            No tienes cuenta?{' '}
+          <div className="mt-7 text-center">
+            <p className="text-xs text-gray-500 mb-2 tracking-wide uppercase">
+              ¿Aún no tienes una cuenta?
+            </p>
             <Link
               to="/registro"
-              className="font-semibold text-blue-500 hover:text-blue-600 transition-colors"
+              className="inline-flex items-center justify-center rounded-full border border-blue-500 text-blue-600 hover:text-white hover:bg-blue-500 font-semibold text-sm px-6 py-2 transition-all duration-200"
             >
-              Registrarse
+              Registrarme
             </Link>
-          </p>
+          </div>
         </div>
       </div>
     </div>
