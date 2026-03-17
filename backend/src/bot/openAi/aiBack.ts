@@ -1,51 +1,61 @@
-/*  ------------------------ aiBack.js ---------------------------
-	Este archivo se encarga de manejar la conexion con OpenAI
-    Especificamente es para las respuestas con IA 
-	Back se refiere a que se usará para logica interna
-    Solicita el historial (para contexto) y la acción a realizar
-	--------------------------------------------------------------
-*/
+/**
+ * Funciones de IA para lógica interna del bot.
+ * Usa el singleton openai de lib/openai.ts (no instancia uno propio).
+ */
 
-import OpenAI from 'openai'
+import { openai } from "../../lib/openai.js";
 
-const aiBack = new OpenAI({
-	apiKey: process.env.OPENAI_API_KEY,
-})
+type ConversationMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
 
-export async function apiBack(conversationHistory, action) {
-	try {
-		const hist = conversationHistory.slice(-6)
-		hist.push({ role: 'system', content: action }) // Agregar acción al final
+/**
+ * Respuesta de IA con las últimas 6 entradas del historial.
+ * Usado para lógica interna donde no es necesario el historial completo.
+ */
+export async function apiBack(
+  conversationHistory: ConversationMessage[],
+  action: string
+): Promise<string> {
+  try {
+    const hist = conversationHistory.slice(-6);
+    hist.push({ role: "system", content: action });
 
-		const completion = await aiBack.chat.completions.create({
-			model: 'gpt-4o-mini',
-			messages: hist,
-			temperature: 0,
-		})
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: hist,
+      temperature: 0,
+    });
 
-		const responseBack = completion.choices[0].message.content
-		return responseBack
-	} catch (error) {
-		console.error('Error en la API de OpenAI:', error.message)
-		throw new Error('Hubo un problema al obtener la respuesta de la IA.')
-	}
+    return completion.choices[0].message.content ?? "";
+  } catch (error) {
+    console.error("[aiBack] Error al llamar OpenAI:", error);
+    throw new Error("Hubo un problema al obtener la respuesta de la IA.");
+  }
 }
 
-export async function apiBack1(conversationHistory, action) {
-	try {
-		const hist = [...conversationHistory]
-		hist.push({ role: 'system', content: action }) // Agregar acción al final
+/**
+ * Respuesta de IA con el historial completo.
+ * Usado cuando se necesita contexto total (ej: evaluación de resultados).
+ */
+export async function apiBack1(
+  conversationHistory: ConversationMessage[],
+  action: string
+): Promise<string> {
+  try {
+    const hist = [...conversationHistory];
+    hist.push({ role: "system", content: action });
 
-		const completion = await aiBack.chat.completions.create({
-			model: 'gpt-4o-mini',
-			messages: hist,
-			temperature: 0,
-		})
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: hist,
+      temperature: 0,
+    });
 
-		const responseBack = completion.choices[0].message.content
-		return responseBack
-	} catch (error) {
-		console.error('Error en la API de OpenAI:', error.message)
-		throw new Error('Hubo un problema al obtener la respuesta de la IA.')
-	}
+    return completion.choices[0].message.content ?? "";
+  } catch (error) {
+    console.error("[apiBack1] Error al llamar OpenAI:", error);
+    throw new Error("Hubo un problema al obtener la respuesta de la IA.");
+  }
 }

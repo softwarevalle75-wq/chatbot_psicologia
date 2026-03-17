@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
-import { fetchDashboardSummary } from "../services/dashboard.service.js";
+import { fetchDashboardSummary } from "./dashboard.service.js";
 
-export async function getDashboardSummary(
+export async function getDashboardSummaryController(
   _req: Request,
   res: Response,
   next: NextFunction

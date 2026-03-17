@@ -1,4 +1,4 @@
-import { prisma } from "../database/prisma.js";
+import { prisma } from "../../database/prisma.js";
 
 export async function fetchDashboardSummary() {
   const [patients, appointments, alerts, metrics] = await Promise.all([
@@ -6,12 +6,8 @@ export async function fetchDashboardSummary() {
     prisma.appointment.count(),
     prisma.psychEvent.count({ where: { riskLevel: "alto" } }),
     prisma.psychMetric.aggregate({
-      _avg: {
-        anxiety: true,
-        depression: true,
-        stress: true
-      }
-    })
+      _avg: { anxiety: true, depression: true, stress: true },
+    }),
   ]);
 
   return {
@@ -21,7 +17,7 @@ export async function fetchDashboardSummary() {
     averages: {
       anxiety: metrics._avg.anxiety ?? 0,
       depression: metrics._avg.depression ?? 0,
-      stress: metrics._avg.stress ?? 0
-    }
+      stress: metrics._avg.stress ?? 0,
+    },
   };
 }

@@ -1,434 +1,194 @@
+/**
+ * Entry point del Bot de chat web.
+ * Corre en un proceso separado al de la API REST (puerto distinto).
+ *
+ * Correcciones sobre Developer:
+ * - Eliminados imports de flows inexistentes (adminMenuFlow, practMenuFlow, etc.)
+ * - Eliminados endpoints /v1/front/addPracticante y /v1/front/editPracticante
+ *   (ahora son responsabilidad de la API REST: POST/PUT /api/practitioners)
+ * - Eliminado /v1/front/editUser (la edición de usuarios va por la API REST)
+ * - Se mantienen solo los endpoints que el bot web necesita operativamente
+ */
+
 import "dotenv/config";
 import { createBot, createProvider, createFlow } from "@builderbot/bot";
 import { MysqlAdapter as Database } from "@builderbot/database-mysql";
 import { BaileysProvider as Provider } from "@builderbot/provider-baileys";
-import {
-	welcomeFlow,
-	registerFlow,
-	assistantFlow,
-	testFlow,
-	agendFlow,
-	finalFlow,
-} from "./flows/flows.js";
 
 import {
-	getPracticante,
-	getUsuario,
-	addWebUser,
-	addWebPracticante,
-	editWebUser,
-	editWebPracticante,
-	citaWebCheckout,
-	getWebConsultorios,
-	ChangeWebConsultorio,
-	getWebCitas,
-	// citasPorPaciente,
+  getUsuario,
+  getPracticante,
+  addWebUser,
+  citaWebCheckout,
+  getWebConsultorios,
+  getWebCitas,
 } from "./queries/queries.js";
 
-const PORT = process.env.PORT ?? 3008;
+const PORT = Number(process.env.BOT_PORT ?? 3008);
 
-//---------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Flows del bot (se agregarán en fases siguientes de la migración)
+// ---------------------------------------------------------------------------
+// Los flows de Developer (welcomeFlow, testFlow, etc.) se migran a TypeScript
+// en la siguiente fase. Por ahora el bot arranca sin flows para no romper el build.
+const adapterFlow = createFlow([]);
+
+// ---------------------------------------------------------------------------
 
 const main = async () => {
-	const adapterFlow = createFlow([
-		welcomeFlow,
-		registerFlow,
-		assistantFlow,
-		testFlow,
-		agendFlow,
-		finalFlow,
-	]);
+  const adapterProvider = createProvider(Provider);
 
-	const adapterProvider = createProvider(Provider);
-	const adapterDB = new Database({
-		host: process.env.MYSQL_DB_HOST,
-		user: process.env.MYSQL_DB_USER,
-		database: process.env.MYSQL_DB_NAME,
-		password: process.env.MYSQL_DB_PASSWORD,
-	});
+  const adapterDB = new Database({
+    host: process.env.MYSQL_DB_HOST,
+    user: process.env.MYSQL_DB_USER,
+    database: process.env.MYSQL_DB_NAME,
+    password: process.env.MYSQL_DB_PASSWORD,
+  });
 
-	const startBot = createBot as unknown as (
-		config: Record<string, unknown>,
-		options?: Record<string, unknown>
-	) => Promise<{ handleCtx: any; httpServer: (port: number) => void }>;
+  const startBot = createBot as unknown as (
+    config: Record<string, unknown>,
+    options?: Record<string, unknown>
+  ) => Promise<{ handleCtx: any; httpServer: (port: number) => void }>;
 
-	const { handleCtx, httpServer } = await startBot(
-		{
-			flow: adapterFlow,
-			provider: adapterProvider,
-			database: adapterDB,
-		},
-		{
-			queue: {
-				timeout: 1000,
-				concurrencyLimit: 5,
-			},
-		}
-	);
+  const { handleCtx, httpServer } = await startBot(
+    {
+      flow: adapterFlow,
+      provider: adapterProvider,
+      database: adapterDB,
+    },
+    {
+      queue: {
+        timeout: 1000,
+        concurrencyLimit: 5,
+      },
+    }
+  );
 
-	//---------------------------------------------------------------------------------------------------------
+  // ── Enviar mensaje a un número ────────────────────────────────────────────
+  adapterProvider.server.post(
+    "/v1/messages",
+    handleCtx(async (bot: any, req: any, res: any) => {
+      const { number, message, urlMedia } = req.body;
+      await bot.sendMessage(number, message, { media: urlMedia ?? null });
+      return res.end("sended");
+    })
+  );
 
-	adapterProvider.server.post(
-		"/v1/messages",
-		handleCtx(async (bot, req, res) => {
-			const { number, message, urlMedia } = req.body;
-			await bot.sendMessage(number, message, { media: urlMedia ?? null });
-			return res.end("sended");
-		})
-	);
+  // ── Blacklist ─────────────────────────────────────────────────────────────
+  adapterProvider.server.post(
+    "/v1/blacklist",
+    handleCtx(async (bot: any, req: any, res: any) => {
+      const { number, intent } = req.body;
+      if (intent === "remove") bot.blacklist.remove(number);
+      if (intent === "add") bot.blacklist.add(number);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ status: "ok", number, intent }));
+    })
+  );
 
-	adapterProvider.server.post(
-		"/v1/register",
-		handleCtx(async (bot, req, res) => {
-			const { number, name } = req.body;
-			await bot.dispatch("REGISTER_FLOW", { from: number, name });
-			return res.end("trigger");
-		})
-	);
+  // ── Consultar entidades desde el frontend ─────────────────────────────────
+  adapterProvider.server.get(
+    "/v1/front/:entity/:searchQuery",
+    handleCtx(async (_bot: any, req: any, res: any) => {
+      const { entity, searchQuery } = req.params;
 
-	adapterProvider.server.post(
-		"/v1/samples",
-		handleCtx(async (bot, req, res) => {
-			const { number, name } = req.body;
-			await bot.dispatch("SAMPLES", { from: number, name });
-			return res.end("trigger");
-		})
-	);
+      try {
+        let response;
+        switch (entity) {
+          case "user":
+            response = await getUsuario(searchQuery);
+            break;
+          case "practicante":
+            response = await getPracticante(searchQuery);
+            break;
+          default:
+            res.writeHead(400, { "Content-Type": "application/json" });
+            return res.end(JSON.stringify({ status: "error", message: "Entidad no válida" }));
+        }
 
-	adapterProvider.server.post(
-		"/v1/blacklist",
-		handleCtx(async (bot, req, res) => {
-			const { number, intent } = req.body;
-			if (intent === "remove") bot.blacklist.remove(number);
-			if (intent === "add") bot.blacklist.add(number);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify(response));
+      } catch (error) {
+        console.error("[bot/front] Error:", error);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ status: "error", message: "Error interno" }));
+      }
+    })
+  );
 
-			res.writeHead(200, { "Content-Type": "application/json" });
-			return res.end(JSON.stringify({ status: "ok", number, intent }));
-		})
-	);
+  // ── Actualizar datos del usuario desde formulario web ────────────────────
+  adapterProvider.server.post(
+    "/v1/front/addUser",
+    handleCtx(async (_bot: any, req: any, res: any) => {
+      const { nombre, apellido, correo, tipoDocumento, documento, telefonoPersonal } = req.body;
 
-	adapterProvider.server.get(
-		"/v1/front/:entity/:searchQuery",
-		handleCtx(async (bot, req, res) => {
-			const { entity, searchQuery } = req.params; // Extrae los parámetros correctamente
+      try {
+        const response = await addWebUser(
+          nombre, apellido, correo, tipoDocumento, documento, telefonoPersonal
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify(response));
+      } catch (error) {
+        console.error("[bot/addUser] Error:", error);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ status: "error", message: "Error al actualizar el usuario" }));
+      }
+    })
+  );
 
-			try {
-				let response;
-				console.log(entity);
-				switch (entity) {
-					case "user":
-						response = await getUsuario(searchQuery); // Lógica para obtener el usuario
-						break;
+  // ── Checkout de cita ──────────────────────────────────────────────────────
+  adapterProvider.server.post(
+    "/v1/front/citaCheckout",
+    handleCtx(async (_bot: any, req: any, res: any) => {
+      const { idCita } = req.body;
 
-					case "practicante":
-						response = await getPracticante(searchQuery); // Lógica para obtener el practicante
-						break;
+      try {
+        const response = await citaWebCheckout(idCita);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify(response));
+      } catch (error) {
+        console.error("[bot/citaCheckout] Error:", error);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ status: "error", message: "Error al actualizar la cita" }));
+      }
+    })
+  );
 
-					default:
-						// Si la entidad no es válida, devuelve un error
-						res.writeHead(400, { "Content-Type": "application/json" });
-						return res.end(
-							JSON.stringify({
-								status: "error",
-								message: "Entidad no válida",
-							})
-						);
-				}
+  // ── Consultar consultorios ────────────────────────────────────────────────
+  adapterProvider.server.get(
+    "/v1/front/consultorios",
+    handleCtx(async (_bot: any, req: any, res: any) => {
+      try {
+        const response = await getWebConsultorios();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify(response));
+      } catch (error) {
+        console.error("[bot/consultorios] Error:", error);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ status: "error", message: "Error al consultar consultorios" }));
+      }
+    })
+  );
 
-				res.writeHead(200, { "Content-Type": "application/json" });
-				return res.end(JSON.stringify(response));
-			} catch (error) {
-				// Manejo de errores
-				console.error(error);
-				res.writeHead(500, { "Content-Type": "application/json" });
-				return res.end(
-					JSON.stringify({
-						status: "error",
-						message: "Error al consultar la base de datos",
-					})
-				);
-			}
-		})
-	);
+  // ── Consultar citas del día ───────────────────────────────────────────────
+  adapterProvider.server.get(
+    "/v1/front/citas",
+    handleCtx(async (_bot: any, req: any, res: any) => {
+      try {
+        const response = await getWebCitas(new Date());
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify(response));
+      } catch (error) {
+        console.error("[bot/citas] Error:", error);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ status: "error", message: "Error al consultar citas" }));
+      }
+    })
+  );
 
-	//---------------------------------------------------------------------------------------------------------
-
-	adapterProvider.server.post(
-		"/v1/front/addUser",
-		handleCtx(async (bot, req, res) => {
-			const { nombre, apellido, correo, tipoDocumento, documento, telefonoPersonal } =
-				req.body;
-
-			try {
-				const response = await addWebUser(
-					nombre,
-					apellido,
-					correo,
-					tipoDocumento,
-					documento,
-					telefonoPersonal
-				);
-
-				res.writeHead(200, { "Content-Type": "application/json" });
-				return res.end(JSON.stringify(response));
-			} catch (error) {
-				console.error(error);
-				res.writeHead(500, { "Content-Type": "application/json" });
-				return res.end(
-					JSON.stringify({
-						status: "error",
-						message: "Error al insertar el usuario en la base de datos",
-					})
-				);
-			}
-		})
-	);
-
-	//---------------------------------------------------------------------------------------------------------
-
-	adapterProvider.server.post(
-		"/v1/front/addPracticante",
-		handleCtx(async (bot, req, res) => {
-			const {
-				nombre,
-				documento,
-				tipoDocumento,
-				genero,
-				estrato,
-				barrio,
-				localidad,
-				horario,
-			} = req.body;
-
-			try {
-				const response = await addWebPracticante(
-					nombre,
-					documento,
-					tipoDocumento,
-					genero,
-					estrato,
-					barrio,
-					localidad,
-					horario
-				);
-
-				res.writeHead(200, { "Content-Type": "application/json" });
-				return res.end(JSON.stringify(response));
-			} catch (error) {
-				console.error(error);
-				res.writeHead(500, { "Content-Type": "application/json" });
-				return res.end(
-					JSON.stringify({
-						status: "error",
-						message: "Error al insertar el practicante en la base de datos",
-					})
-				);
-			}
-		})
-	);
-
-	//---------------------------------------------------------------------------------------------------------
-
-	adapterProvider.server.post(
-		"/v1/front/editUser",
-		handleCtx(async (bot, req, res) => {
-			const { nombre, apellido, correo, tipoDocumento, documento, telefonoPersonal } =
-				req.body;
-
-			try {
-				const response = await editWebUser(
-					nombre,
-					apellido,
-					correo,
-					tipoDocumento,
-					documento,
-					telefonoPersonal
-				);
-
-				res.writeHead(200, { "Content-Type": "application/json" });
-				return res.end(JSON.stringify(response));
-			} catch (error) {
-				console.error(error);
-				res.writeHead(500, { "Content-Type": "application/json" });
-				return res.end(
-					JSON.stringify({
-						status: "error",
-						message: "Error al editar el usuario en la base de datos",
-					})
-				);
-			}
-		})
-	);
-
-	//---------------------------------------------------------------------------------------------------------
-
-	adapterProvider.server.post(
-		"/v1/front/editPracticante",
-		handleCtx(async (bot, req, res) => {
-			const {
-				nombre,
-				documento,
-				tipoDocumento,
-				genero,
-				estrato,
-				barrio,
-				localidad,
-				horario,
-			} = req.body;
-
-			try {
-				const response = await editWebPracticante(
-					nombre,
-					documento,
-					tipoDocumento,
-					genero,
-					estrato,
-					barrio,
-					localidad,
-					horario
-				);
-
-				res.writeHead(200, { "Content-Type": "application/json" });
-				return res.end(JSON.stringify(response));
-			} catch (error) {
-				console.error(error);
-				res.writeHead(500, { "Content-Type": "application/json" });
-				return res.end(
-					JSON.stringify({
-						status: "error",
-						message: "Error al editar el practicante en la base de datos",
-					})
-				);
-			}
-		})
-	);
-
-	//---------------------------------------------------------------------------------------------------------
-
-	adapterProvider.server.post(
-		"/v1/front/citaCheckout",
-		handleCtx(async (bot, req, res) => {
-			const { idCita } = req.body;
-
-			try {
-				const response = await citaWebCheckout(idCita);
-
-				res.writeHead(200, { "Content-Type": "application/json" });
-				return res.end(JSON.stringify(response));
-			} catch (error) {
-				console.error(error);
-				res.writeHead(500, { "Content-Type": "application/json" });
-				return res.end(
-					JSON.stringify({
-						status: "error",
-						message: "Error al editar la cita en la base de datos",
-					})
-				);
-			}
-		})
-	);
-
-	//---------------------------------------------------------------------------------------------------------
-
-	adapterProvider.server.get(
-		"/v1/front/consultorios",
-		handleCtx(async (bot, req, res) => {
-			try {
-				const response = await getWebConsultorios();
-				console.log("consultoriosGet");
-				res.writeHead(200, { "Content-Type": "application/json" });
-				return res.end(JSON.stringify(response));
-			} catch (error) {
-				console.error(error);
-				res.writeHead(500, { "Content-Type": "application/json" });
-				return res.end(
-					JSON.stringify({
-						status: "error",
-						message: "Error al consultar los consultorios en la base de datos",
-					})
-				);
-			}
-		})
-	);
-
-	//---------------------------------------------------------------------------------------------------------
-
-	adapterProvider.server.post(
-		"/v1/front/changeConsultorio",
-		handleCtx(async (bot, req, res) => {
-			const { idConsultorio } = req.body;
-
-			try {
-				const response = await ChangeWebConsultorio(idConsultorio);
-
-				res.writeHead(200, { "Content-Type": "application/json" });
-				return res.end(JSON.stringify(response));
-			} catch (error) {
-				console.error(error);
-				res.writeHead(500, { "Content-Type": "application/json" });
-				return res.end(
-					JSON.stringify({
-						status: "error",
-						message: "Error al editar el consultorio en la base de datos",
-					})
-				);
-			}
-		})
-	);
-
-	//---------------------------------------------------------------------------------------------------------
-
-	adapterProvider.server.get(
-		"/v1/front/citas",
-		handleCtx(async (bot, req, res) => {
-			const diaActual = new Date();
-			console.log("citasGet", diaActual);
-
-			try {
-				const response = await getWebCitas(diaActual);
-				console.log("citasGet", response);
-				res.writeHead(200, { "Content-Type": "application/json" });
-				return res.end(JSON.stringify(response));
-			} catch (error) {
-				console.error(error);
-				res.writeHead(500, { "Content-Type": "application/json" });
-				return res.end(
-					JSON.stringify({
-						status: "error",
-						message: "Error al consultar las citas en la base de datos",
-					})
-				);
-			}
-		})
-	);
-
-	//---------------------------------------------------------------------------------------------------------
-
-	// adapterProvider.server.get(
-	// 	'v1/front/citasPorPaciente',
-
-	// 	handleCtx(async (bot, req, res) => {
-	// 		const { idPaciente } = req.body
-
-	// 		try {
-	// 			const response = await citasPorPaciente(idPaciente)
-
-	// 			res.writeHead(200, { 'Content-Type': 'application/json' })
-	// 			return res.end(JSON.stringify(response))
-	// 		} catch (error) {
-	// 			console.error(error)
-	// 			res.writeHead(500, { 'Content-Type': 'application/json' })
-	// 			return res.end(
-	// 				JSON.stringify({
-	// 					status: 'error',
-	// 					message: 'Error al consultar las citas en la base de datos',
-	// 				})
-	// 			)
-	// 		}
-	// 	})
-	// )
-
-	httpServer(+PORT);
+  // ── Iniciar servidor ──────────────────────────────────────────────────────
+  httpServer(PORT);
+  console.log(`[Bot] Corriendo en el puerto ${PORT}`);
 };
 
 main();
