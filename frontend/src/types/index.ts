@@ -52,10 +52,12 @@ export interface Step3Data {
 
 export interface AuthUser {
   id: string;
-  primerNombre: string;
-  correo: string;
-  documento: string;
-  consentimientoInformado: string;
-  autorizacionDatos: string;
-  registrationStep: number;
+  primerNombre?: string;
+  correo?: string;
+  documento?: string;
+  consentimientoInformado?: string;
+  autorizacionDatos?: string;
+  registrationStep?: number;
+  role: 'admin' | 'practicante' | 'usuario';
+  profileId?: string | null;
 }

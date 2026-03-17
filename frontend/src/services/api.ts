@@ -1,5 +1,7 @@
 const rawApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
 const API_BASE = rawApiBase ? rawApiBase.replace(/\/+$/, '') : '/v1/auth';
+const rawCoreApiBase = import.meta.env.VITE_CORE_API_BASE_URL?.trim();
+const CORE_API_BASE = rawCoreApiBase ? rawCoreApiBase.replace(/\/+$/, '') : '/api';
 
 async function request<T>(
   endpoint: string,
@@ -35,6 +37,47 @@ async function request<T>(
   if (!res.ok) {
     const errorMessage = typeof data === 'object' && data !== null && 'error' in data
       ? (data as { error?: string }).error
+      : undefined;
+    throw new Error(errorMessage || 'Error en la solicitud');
+  }
+
+  return data as T;
+}
+
+async function coreRequest<T>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const token = localStorage.getItem('token');
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${CORE_API_BASE}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
+  const raw = await res.text();
+  let data: unknown = {};
+
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error('Respuesta invalida del servidor');
+    }
+  }
+
+  if (!res.ok) {
+    const errorMessage = typeof data === 'object' && data !== null && 'message' in data
+      ? (data as { message?: string }).message
       : undefined;
     throw new Error(errorMessage || 'Error en la solicitud');
   }
@@ -81,6 +124,37 @@ export interface SociodemograficoPayload {
   nivelIngresos: string;
 }
 
+export type SessionUser = {
+  id: string;
+  email?: string;
+  role: 'admin' | 'practicante' | 'usuario';
+  profileId?: string | null;
+  primerNombre?: string;
+  correo?: string;
+  documento?: string;
+  consentimientoInformado?: string;
+  autorizacionDatos?: string;
+  registrationStep?: number;
+};
+
+export type PdfRecord = {
+  id: string;
+  filename: string;
+  path: string;
+  sizeBytes?: number | null;
+  uploadedAt: string;
+  patient?: {
+    id: string;
+    name: string;
+    documentNumber?: string | null;
+  } | null;
+  practitioner?: {
+    id: string;
+    name: string;
+    documentNumber?: string;
+  } | null;
+};
+
 export const api = {
   register(data: RegisterPayload) {
     return request<{ message: string; userId: string; token: string; user: unknown }>(
@@ -89,11 +163,26 @@ export const api = {
     );
   },
 
-  login(correo: string, password: string) {
-    return request<{ message: string; token: string; user: unknown }>(
-      '/login',
-      { method: 'POST', body: JSON.stringify({ correo, password }) },
-    );
+  async login(correo: string, password: string) {
+    try {
+      return await coreRequest<{ token: string; user: SessionUser }>(
+        '/auth/login',
+        { method: 'POST', body: JSON.stringify({ email: correo, password }) },
+      );
+    } catch {
+      const legacy = await request<{ message: string; token: string; user: unknown }>(
+        '/login',
+        { method: 'POST', body: JSON.stringify({ correo, password }) },
+      );
+
+      return {
+        token: legacy.token,
+        user: {
+          ...(legacy.user as Record<string, unknown>),
+          role: 'usuario' as const,
+        },
+      };
+    }
   },
 
   saveTratamientoDatos() {
@@ -122,5 +211,26 @@ export const api = {
       registrationStep: number;
       user: unknown;
     }>('/check-status', { method: 'GET' });
+  },
+
+  getMe() {
+    return coreRequest<{ user: SessionUser }>('/auth/me', { method: 'GET' });
+  },
+
+  getPdfHistory() {
+    return coreRequest<PdfRecord[]>('/pdfs', { method: 'GET' });
+  },
+
+  createStudent(data: {
+    name: string;
+    lastName?: string;
+    email: string;
+    documentNumber: string;
+    documentType?: string;
+  }) {
+    return coreRequest('/practitioners', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 };

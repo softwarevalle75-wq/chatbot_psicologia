@@ -7,6 +7,7 @@ import dashboardRoutes from "./routes/dashboard.routes.js";
 import patientRoutes from "./routes/patient.routes.js";
 import practitionerRoutes from "./routes/practitioner.routes.js";
 import appointmentRoutes from "./routes/appointment.routes.js";
+import pdfRoutes from "./routes/pdf.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import { authGuard } from "./middlewares/auth.middleware.js";
 
@@ -21,6 +22,7 @@ app.use("/api/dashboard", authGuard, dashboardRoutes);
 app.use("/api/patients", authGuard, patientRoutes);
 app.use("/api/practitioners", authGuard, practitionerRoutes);
 app.use("/api/appointments", authGuard, appointmentRoutes);
+app.use("/api/pdfs", authGuard, pdfRoutes);
 
 app.use(errorHandler);
 
