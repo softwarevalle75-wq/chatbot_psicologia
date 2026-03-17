@@ -38,9 +38,8 @@ enum NotificationType {
 }
 
 enum MetricOrigin {
-  chat
   ghq12
-  dass12
+  dass21
   pdf
 }
 
