@@ -447,17 +447,33 @@ export function registerAuthRoutes(server) {
             } else {
                 validPassword = user.password === String(password);
                 if (validPassword) {
-                    await prisma.informacionUsuario.update({
-                        where: { idUsuario: user.idUsuario },
-                        data: { password: await bcrypt.hash(String(password), 10) },
-                    });
+                    try {
+                        await prisma.$executeRawUnsafe(
+                            'UPDATE informacionUsuario SET password = ? WHERE idUsuario = ?',
+                            await bcrypt.hash(String(password), 10),
+                            user.idUsuario,
+                        );
+                    } catch {
+                        // ignore hash upgrade failure
+                    }
                 }
             }
 
             if (!validPassword) return json(res, 401, { error: 'Credenciales invalidas' });
 
-            const { step } = await getRegistrationStep(user.idUsuario);
-            const roleInfo = await resolveUserRole(user);
+            let step = 5;
+            let roleInfo = { role: 'usuario', profileId: null };
+            try {
+                const regStep = await getRegistrationStep(user.idUsuario);
+                step = regStep.step;
+            } catch {
+                // default to step 5
+            }
+            try {
+                roleInfo = await resolveUserRole(user);
+            } catch {
+                // default to usuario
+            }
             const token = jwt.sign({ userId: user.idUsuario, correo: user.correo }, JWT_SECRET, { expiresIn: '7d', algorithm: 'HS256' });
 
             return json(res, 200, {
@@ -600,12 +616,16 @@ export function registerAuthRoutes(server) {
             const decoded = verifyToken(req);
             if (!decoded?.userId) return json(res, 401, { error: 'No autenticado' });
 
-            const { step, user } = await getRegistrationStep(decoded.userId);
+            const user = await prisma.informacionUsuario.findUnique({ where: { idUsuario: decoded.userId } });
             if (!user) return json(res, 404, { error: 'Usuario no encontrado' });
-            const roleInfo = await resolveUserRole(user);
+
+            let step = 5;
+            try { step = (await getRegistrationStep(decoded.userId)).step; } catch { /* default 5 */ }
+            let roleInfo = { role: 'usuario', profileId: null };
+            try { roleInfo = await resolveUserRole(user); } catch { /* default */ }
 
             return json(res, 200, {
-                registrationStep: step,
+                registrationStep: roleInfo.role === 'admin' || roleInfo.role === 'practicante' ? 5 : step,
                 user: safeUser(user, step, roleInfo),
             });
         } catch (error) {
@@ -623,7 +643,8 @@ export function registerAuthRoutes(server) {
             const user = await prisma.informacionUsuario.findUnique({ where: { idUsuario: decoded.userId } });
             if (!user) return json(res, 404, { error: 'Usuario no encontrado' });
 
-            const roleInfo = await resolveUserRole(user);
+            let roleInfo = { role: 'usuario', profileId: null };
+            try { roleInfo = await resolveUserRole(user); } catch { /* default */ }
             return json(res, 200, {
                 user: {
                     id: user.idUsuario,
