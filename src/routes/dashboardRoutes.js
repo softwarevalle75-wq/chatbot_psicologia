@@ -193,40 +193,38 @@ const getDashboardSummary = async (period) => {
     growthRows,
     workloadRows,
   ] = await Promise.all([
-    prisma.informacionUsuario.count(),
-    prisma.informacionUsuario.count({ where: { fechaCreacion: { gte: periodStart, lte: now } } }),
-    prisma.informacionUsuario.count({ where: { fechaCreacion: { gte: previousStart, lt: periodStart } } }),
-    prisma.registroCitas.count(),
-    prisma.registroCitas.count({ where: { estado: { in: ['pendiente', 'programada'] } } }),
-    prisma.registroCitas.count({ where: { estado: { in: ['completada', 'atendida', 'finalizada'] } } }),
-    prisma.registroCitas.count({ where: { estado: { startsWith: 'cancel' } } }),
-    prisma.registroCitas.count({ where: { estado: { startsWith: 'reagend' } } }),
-    prisma.informacionUsuario.groupBy({ by: ['testActual'], _count: { _all: true } }),
-    prisma.practicante.count(),
-    prisma.ghq12.findMany({ select: { Puntaje: true, resPreg: true, informePdfFecha: true } }),
-    prisma.dass21.findMany({ select: { puntajeDep: true, puntajeAns: true, puntajeEstr: true, informePdfFecha: true } }),
+    prisma.informacionUsuario.count().catch(() => 0),
+    prisma.informacionUsuario.count({ where: { fechaCreacion: { gte: periodStart, lte: now } } }).catch(() => 0),
+    prisma.informacionUsuario.count({ where: { fechaCreacion: { gte: previousStart, lt: periodStart } } }).catch(() => 0),
+    prisma.registroCitas.count().catch(() => 0),
+    prisma.registroCitas.count({ where: { estado: { in: ['pendiente', 'programada'] } } }).catch(() => 0),
+    prisma.registroCitas.count({ where: { estado: { in: ['completada', 'atendida', 'finalizada'] } } }).catch(() => 0),
+    prisma.registroCitas.count({ where: { estado: { startsWith: 'cancel' } } }).catch(() => 0),
+    prisma.registroCitas.count({ where: { estado: { startsWith: 'reagend' } } }).catch(() => 0),
+    prisma.informacionUsuario.groupBy({ by: ['testActual'], _count: { _all: true } }).catch(() => []),
+    prisma.practicante.count().catch(() => 0),
+    prisma.ghq12.findMany({ select: { Puntaje: true, resPreg: true, informePdfFecha: true } }).catch(() => []),
+    prisma.dass21.findMany({ select: { puntajeDep: true, puntajeAns: true, puntajeEstr: true, informePdfFecha: true } }).catch(() => []),
     prisma.$queryRawUnsafe(`
       SELECT COUNT(*) AS c
       FROM informacion_sociodemografica
       WHERE LOWER(COALESCE(conQuienVive, '')) LIKE '%solo%'
     `).catch(() => [{ c: 0 }]),
-    prisma.informacionUsuario.findMany({ select: { flujo: true, estado: true, fechaCreacion: true } }),
-    prisma.registroCitas.count({ where: { fechaHora: { gte: periodStart, lte: now } } }),
-    prisma.registroCitas.count({ where: { fechaHora: { gte: previousStart, lt: periodStart } } }),
-    prisma.informacionUsuario.findMany({ where: { fechaCreacion: { gte: new Date(now.getFullYear() - 1, now.getMonth(), 1), lte: now } }, select: { fechaCreacion: true } }),
+    prisma.informacionUsuario.findMany({ select: { flujo: true, estado: true, fechaCreacion: true } }).catch(() => []),
+    prisma.registroCitas.count({ where: { fechaHora: { gte: periodStart, lte: now } } }).catch(() => 0),
+    prisma.registroCitas.count({ where: { fechaHora: { gte: previousStart, lt: periodStart } } }).catch(() => 0),
+    prisma.informacionUsuario.findMany({ where: { fechaCreacion: { gte: new Date(now.getFullYear() - 1, now.getMonth(), 1), lte: now } }, select: { fechaCreacion: true } }).catch(() => []),
     prisma.$queryRawUnsafe(`
       SELECT p.idPracticante AS id, p.nombre AS name,
-             (COUNT(DISTINCT u.idUsuario) + COUNT(DISTINCT g.idGhq12) + COUNT(DISTINCT d.idDass21)) AS patients,
+             COUNT(DISTINCT u.idUsuario) AS patients,
              COUNT(DISTINCT rc.idCita) AS appointments
       FROM practicante p
-      LEFT JOIN informacionusuario u ON u.practicanteAsignado = p.idPracticante
-      LEFT JOIN ghq12 g ON g.telefono = u.telefonoPersonal
-      LEFT JOIN dass21 d ON d.telefono = u.telefonoPersonal
-      LEFT JOIN registrocitas rc ON rc.idPracticante = p.idPracticante
+      LEFT JOIN informacionUsuario u ON u.practicanteAsignado = p.idPracticante
+      LEFT JOIN registroCitas rc ON rc.idPracticante = p.idPracticante
       GROUP BY p.idPracticante, p.nombre
       ORDER BY patients DESC
       LIMIT 10
-    `),
+    `).catch(() => []),
   ]);
 
   const ghqSourceRows = ghqRows;
