@@ -140,10 +140,13 @@ model Practitioner {
   documentType   String         @default("CC")
   name           String
   lastName       String?
-  gender         String
-  estrato        String
-  barrio         String
-  localidad      String
+  gender         String?
+  eps            String?
+  phone          String?
+  email          String?
+  clinic         String?
+  startDate      DateTime?
+  endDate        DateTime?
   schedule       Json
   sessionsCount  Int            @default(0)
   active         Boolean        @default(true)

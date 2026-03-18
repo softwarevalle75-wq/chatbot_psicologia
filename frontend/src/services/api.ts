@@ -227,6 +227,13 @@ export const api = {
     email: string;
     documentNumber: string;
     documentType?: string;
+    gender?: string;
+    eps?: string;
+    phone?: string;
+    clinic?: string;
+    startDate?: string;
+    endDate?: string;
+    active?: boolean;
   }) {
     return coreRequest('/practitioners', {
       method: 'POST',

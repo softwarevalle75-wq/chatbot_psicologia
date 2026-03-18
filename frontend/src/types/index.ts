@@ -61,3 +61,25 @@ export interface AuthUser {
   role: 'admin' | 'practicante' | 'usuario';
   profileId?: string | null;
 }
+
+// ── Practitioner/Student types ──────────────────────────────────────
+
+export interface Practitioner {
+  id: string;
+  name: string;
+  lastName?: string;
+  fullName?: string;
+  documentNumber: string;
+  documentType?: string;
+  email?: string;
+  phone?: string;
+  gender?: string;
+  eps?: string;
+  clinic?: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  schedule?: unknown;
+  active?: boolean;
+  sessionsCount?: number;
+  createdAt?: string;
+}
