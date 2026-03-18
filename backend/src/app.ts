@@ -18,6 +18,7 @@ import patientRoutes      from "./services/patients/patient.routes.js";
 import practitionerRoutes from "./services/practitioners/practitioner.routes.js";
 import appointmentRoutes  from "./services/appointments/appointment.routes.js";
 import dashboardRoutes    from "./services/dashboard/dashboard.routes.js";
+import pdfRoutes          from "./services/dashboard/pdf.routes.js";
 
 // Middlewares globales
 import { authGuard }      from "./middlewares/auth.middleware.js";
@@ -63,6 +64,9 @@ app.use("/api/practitioners", authGuard, practitionerRoutes);
 
 // Citas — solo autenticados
 app.use("/api/appointments", authGuard, appointmentRoutes);
+
+// PDFs — autenticados (admin ve todo, practicante solo sus casos)
+app.use("/api/pdfs", authGuard, pdfRoutes);
 
 // Dashboard — solo admin
 app.use("/api/dashboard", authGuard, requireRole("admin"), dashboardRoutes);

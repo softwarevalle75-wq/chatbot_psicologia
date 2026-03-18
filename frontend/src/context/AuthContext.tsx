@@ -11,12 +11,13 @@ interface AuthContextType {
   isLoading: boolean;
   registrationStep: number;
   register: (data: RegisterPayload) => Promise<void>;
-  login: (correo: string, password: string) => Promise<void>;
+  login: (correo: string, password: string) => Promise<'admin' | 'practicante' | 'usuario'>;
   logout: () => void;
   saveTratamientoDatos: () => Promise<void>;
   saveSociodemografico: (data: SociodemograficoPayload) => Promise<void>;
   saveConsentimiento: () => Promise<void>;
   setRegistrationStep: (step: number) => void;
+  role: 'admin' | 'practicante' | 'usuario' | null;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -28,6 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [registrationStep, setRegistrationStep] = useState(1);
 
   const isAuthenticated = !!token && !!user;
+  const role = user?.role ?? null;
 
   // Check auth status on mount
   useEffect(() => {
@@ -38,10 +40,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        const res = await api.checkStatus();
-        setUser(res.user as AuthUser);
-        setRegistrationStep(res.registrationStep);
-        setToken(storedToken);
+        try {
+          const me = await api.getMe();
+          setUser({
+            role: me.user.role,
+            correo: me.user.email,
+            profileId: me.user.profileId,
+            id: me.user.id,
+          });
+          setRegistrationStep(5);
+          setToken(storedToken);
+        } catch {
+          const res = await api.checkStatus();
+          const legacyUser = res.user as AuthUser;
+          setUser({
+            ...legacyUser,
+            role: legacyUser.role || 'usuario',
+          });
+          setRegistrationStep(res.registrationStep);
+          setToken(storedToken);
+        }
       } catch {
         localStorage.removeItem('token');
         setToken(null);
@@ -65,14 +83,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await api.login(correo, password);
     localStorage.setItem('token', res.token);
     setToken(res.token);
-    setUser(res.user as AuthUser);
-    // After login, check which step they need to complete
-    try {
-      const status = await api.checkStatus();
-      setRegistrationStep(status.registrationStep);
-    } catch {
-      setRegistrationStep(2);
+    const incomingUser = res.user as AuthUser;
+    const normalizedRole = incomingUser.role || 'usuario';
+    setUser({
+      ...incomingUser,
+      role: normalizedRole,
+    });
+
+    if (normalizedRole === 'usuario') {
+      try {
+        const status = await api.checkStatus();
+        setRegistrationStep(status.registrationStep);
+      } catch {
+        setRegistrationStep(2);
+      }
+    } else {
+      setRegistrationStep(5);
     }
+
+    return normalizedRole;
   }, []);
 
   const logout = useCallback(() => {
@@ -108,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         token,
         isAuthenticated,
+        role,
         isLoading,
         registrationStep,
         register,
