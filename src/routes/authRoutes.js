@@ -15,6 +15,7 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { Resolver } from 'dns/promises';
+import crypto from 'node:crypto';
 import { validateRegisterPayload, validateSociodemograficoPayload } from '../utils/validations.js';
 
 const prisma = new PrismaClient();
@@ -40,6 +41,45 @@ const canonicalYesNo = (v) => {
 const isYes = (v) => canonicalYesNo(v) === 'si';
 
 const normalizeSpaces = (v) => String(v || '').replace(/\s+/g, ' ').trim();
+
+const adminEmailSet = new Set([
+    'chatbotpsicologia@gmail.com',
+    ...String(process.env.ADMIN_EMAILS || '')
+        .split(',')
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean),
+]);
+
+const resolveUserRole = async (user) => {
+    const email = normalizeEmail(user?.correo);
+    if (adminEmailSet.has(email)) {
+        return { role: 'admin', profileId: null };
+    }
+
+    const phone = String(user?.telefonoPersonal || '').trim();
+    const roleRow = phone ? await prisma.rolChat.findUnique({ where: { telefono: phone } }).catch(() => null) : null;
+    const role = roleRow?.rol || 'usuario';
+
+    if (role === 'practicante') {
+        const pract = await prisma.practicante.findFirst({
+            where: {
+                OR: [
+                    { telefono: phone || undefined },
+                    { correo: user?.correo || undefined },
+                    { numero_documento: user?.documento || undefined },
+                ],
+            },
+            select: { idPracticante: true },
+        }).catch(() => null);
+
+        return {
+            role,
+            profileId: pract?.idPracticante || null,
+        };
+    }
+
+    return { role, profileId: null };
+};
 
 const getClientIp = (req) => {
     const forwarded = req.headers?.['x-forwarded-for'];
@@ -146,14 +186,24 @@ const verifyToken = (req) => {
 const getRegistrationStep = async (userId) => {
     const user = await prisma.informacionUsuario.findUnique({
         where: { idUsuario: userId },
-        include: { informacionSociodemografica: true },
     });
     if (!user) return { step: 1, user: null };
+
+    let hasSociodemografico = false;
+    try {
+        const rows = await prisma.$queryRawUnsafe(
+            'SELECT COUNT(*) AS c FROM informacion_sociodemografica WHERE usuarioId = ? LIMIT 1',
+            userId,
+        );
+        hasSociodemografico = Number(rows?.[0]?.c || 0) > 0;
+    } catch {
+        hasSociodemografico = false;
+    }
 
     // Step 2: data treatment
     if (!isYes(user.autorizacionDatos)) return { step: 2, user };
     // Step 3: sociodemographic
-    if (!user.informacionSociodemografica) return { step: 3, user };
+    if (!hasSociodemografico) return { step: 3, user };
     // Step 4: consent
     if (!isYes(user.consentimientoInformado)) return { step: 4, user };
     // All done
@@ -161,7 +211,7 @@ const getRegistrationStep = async (userId) => {
 };
 
 /** Build a safe user object to return to the frontend */
-const safeUser = (user, step) => ({
+const safeUser = (user, step, roleInfo = { role: 'usuario', profileId: null }) => ({
     id: user.idUsuario,
     primerNombre: user.primerNombre,
     correo: user.correo,
@@ -169,6 +219,8 @@ const safeUser = (user, step) => ({
     consentimientoInformado: canonicalYesNo(user.consentimientoInformado),
     autorizacionDatos: canonicalYesNo(user.autorizacionDatos),
     registrationStep: step,
+    role: roleInfo.role,
+    profileId: roleInfo.profileId,
 });
 
 // ── DNS email domain validation ─────────────────────────────
@@ -347,7 +399,7 @@ export function registerAuthRoutes(server) {
                 message: 'Usuario registrado exitosamente',
                 userId: user.idUsuario,
                 token,
-                user: safeUser(user, 2),
+                user: safeUser(user, 2, { role: 'usuario', profileId: null }),
             });
         } catch (error) {
             console.error('Error en /v1/auth/register:', error);
@@ -358,8 +410,8 @@ export function registerAuthRoutes(server) {
     // ── POST /v1/auth/login ─────────────────────────────────
     server.post('/v1/auth/login', async (req, res) => {
         try {
-            const { correo, password } = req.body;
-            const identificador = String(correo || '').trim();
+            const identificador = String(req.body?.correo ?? req.body?.email ?? '').trim();
+            const password = req.body?.password;
 
             const loginIp = getClientIp(req);
             const rateByIp = isAllowedRate('login-ip', loginIp, 30, 15 * 60 * 1000);
@@ -405,12 +457,13 @@ export function registerAuthRoutes(server) {
             if (!validPassword) return json(res, 401, { error: 'Credenciales invalidas' });
 
             const { step } = await getRegistrationStep(user.idUsuario);
+            const roleInfo = await resolveUserRole(user);
             const token = jwt.sign({ userId: user.idUsuario, correo: user.correo }, JWT_SECRET, { expiresIn: '7d', algorithm: 'HS256' });
 
             return json(res, 200, {
                 message: 'Login exitoso',
                 token,
-                user: safeUser(user, step),
+                user: safeUser(user, step, roleInfo),
             });
         } catch (error) {
             console.error('Error en /v1/auth/login:', error);
@@ -465,47 +518,51 @@ export function registerAuthRoutes(server) {
                 return json(res, 400, { error: socioErrors[0] });
             }
 
-            const buildPayload = (rolValue) => ({
+            const socioId = crypto.randomUUID();
+            const rolFamiliarJson = JSON.stringify(rolFamiliarNormalizado);
+
+            await prisma.$executeRawUnsafe(
+                `
+                INSERT INTO informacion_sociodemografica (
+                    id,
+                    usuarioId,
+                    estadoCivil,
+                    numeroHijos,
+                    numeroHermanos,
+                    conQuienVive,
+                    tienePersonasACargo,
+                    escolaridad,
+                    ocupacion,
+                    nivelIngresos,
+                    rolFamiliar,
+                    fechaCreacion,
+                    fechaActualizacion
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                ON DUPLICATE KEY UPDATE
+                    estadoCivil = VALUES(estadoCivil),
+                    numeroHijos = VALUES(numeroHijos),
+                    numeroHermanos = VALUES(numeroHermanos),
+                    conQuienVive = VALUES(conQuienVive),
+                    tienePersonasACargo = VALUES(tienePersonasACargo),
+                    escolaridad = VALUES(escolaridad),
+                    ocupacion = VALUES(ocupacion),
+                    nivelIngresos = VALUES(nivelIngresos),
+                    rolFamiliar = VALUES(rolFamiliar),
+                    fechaActualizacion = NOW()
+                `,
+                socioId,
+                userId,
                 estadoCivil,
-                numeroHijos: Number(numeroHijos) || 0,
-                numeroHermanos: Number(numeroHermanos) || 0,
+                Number(numeroHijos) || 0,
+                Number(numeroHermanos) || 0,
                 conQuienVive,
-                tienePersonasACargo: tienePersonasACargo || 'No',
-                personasACargoQuien: tienePersonasACargo === 'Si'
-                    ? String(personasACargoQuien || '').trim()
-                    : null,
-                rolFamiliar: rolValue,
+                tienePersonasACargo || 'No',
                 escolaridad,
                 ocupacion,
                 nivelIngresos,
-            });
-
-            try {
-                await prisma.informacionSociodemografica.upsert({
-                    where: { usuarioId: userId },
-                    update: buildPayload(rolFamiliarNormalizado),
-                    create: {
-                        usuarioId: userId,
-                        ...buildPayload(rolFamiliarNormalizado),
-                    },
-                });
-            } catch (dbError) {
-                const isLegacyRolEnum = String(dbError?.message || '').toLowerCase().includes('rolfamiliar');
-
-                if (!isLegacyRolEnum) {
-                    throw dbError;
-                }
-
-                const rolLegacy = rolFamiliarNormalizado[0] || 'otro';
-                await prisma.informacionSociodemografica.upsert({
-                    where: { usuarioId: userId },
-                    update: buildPayload(rolLegacy),
-                    create: {
-                        usuarioId: userId,
-                        ...buildPayload(rolLegacy),
-                    },
-                });
-            }
+                rolFamiliarJson,
+            );
 
             return json(res, 200, { message: 'Informacion sociodemografica guardada exitosamente' });
         } catch (error) {
@@ -545,13 +602,38 @@ export function registerAuthRoutes(server) {
 
             const { step, user } = await getRegistrationStep(decoded.userId);
             if (!user) return json(res, 404, { error: 'Usuario no encontrado' });
+            const roleInfo = await resolveUserRole(user);
 
             return json(res, 200, {
                 registrationStep: step,
-                user: safeUser(user, step),
+                user: safeUser(user, step, roleInfo),
             });
         } catch (error) {
             console.error('Error en /v1/auth/check-status:', error);
+            return json(res, 500, { error: 'Error interno del servidor' });
+        }
+    });
+
+    // ── GET /v1/auth/me ─────────────────────────────────────
+    server.get('/v1/auth/me', async (req, res) => {
+        try {
+            const decoded = verifyToken(req);
+            if (!decoded?.userId) return json(res, 401, { error: 'No autenticado' });
+
+            const user = await prisma.informacionUsuario.findUnique({ where: { idUsuario: decoded.userId } });
+            if (!user) return json(res, 404, { error: 'Usuario no encontrado' });
+
+            const roleInfo = await resolveUserRole(user);
+            return json(res, 200, {
+                user: {
+                    id: user.idUsuario,
+                    email: user.correo,
+                    role: roleInfo.role,
+                    profileId: roleInfo.profileId,
+                },
+            });
+        } catch (error) {
+            console.error('Error en /v1/auth/me:', error);
             return json(res, 500, { error: 'Error interno del servidor' });
         }
     });
