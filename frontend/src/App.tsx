@@ -7,6 +7,10 @@ import Step3Sociodemographic from './pages/registration/Step3Sociodemographic';
 import Step4Consent from './pages/registration/Step4Consent';
 import ChatPage from './pages/ChatPage';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminHomePage from './pages/dashboard/AdminHomePage';
+import AdminStudentsPage from './pages/dashboard/AdminStudentsPage';
+import AdminPdfsPage from './pages/dashboard/AdminPdfsPage';
+import PractitionerPdfsPage from './pages/dashboard/PractitionerPdfsPage';
 
 function App() {
   return (
@@ -25,8 +29,44 @@ function App() {
         <Route
           path="/chat"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedRoles={['usuario']}>
               <ChatPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/dashboard/admin"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminHomePage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/dashboard/admin/estudiantes"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminStudentsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/dashboard/admin/pdfs"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminPdfsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/dashboard/practicante"
+          element={
+            <ProtectedRoute allowedRoles={['practicante']}>
+              <PractitionerPdfsPage />
             </ProtectedRoute>
           }
         />

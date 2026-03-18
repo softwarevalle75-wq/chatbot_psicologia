@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 
 interface ProtectedRouteProps {
   children: ReactNode;
+  allowedRoles?: Array<'admin' | 'practicante' | 'usuario'>;
 }
 
 /**
@@ -11,8 +12,8 @@ interface ProtectedRouteProps {
  * registrationStep: 1 = needs registration, 2 = needs data treatment, 
  * 3 = needs sociodemographic, 4 = needs consent, 5 = all done.
  */
-export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, registrationStep } = useAuth();
+export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
+  const { isAuthenticated, isLoading, registrationStep, role } = useAuth();
 
   if (isLoading) {
     return (
@@ -27,6 +28,12 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (allowedRoles?.length && role && !allowedRoles.includes(role)) {
+    if (role === 'admin') return <Navigate to="/dashboard/admin" replace />;
+    if (role === 'practicante') return <Navigate to="/dashboard/practicante" replace />;
+    return <Navigate to="/chat" replace />;
   }
 
   // Redirect to the appropriate registration step
