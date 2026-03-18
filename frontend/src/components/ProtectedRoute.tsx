@@ -36,15 +36,16 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     return <Navigate to="/chat" replace />;
   }
 
-  // Redirect to the appropriate registration step
-  const stepRoutes: Record<number, string> = {
-    2: '/registro/tratamiento-datos',
-    3: '/registro/sociodemografico',
-    4: '/registro/consentimiento',
-  };
-
-  if (registrationStep < 5 && stepRoutes[registrationStep]) {
-    return <Navigate to={stepRoutes[registrationStep]} replace />;
+  // Redirect to the appropriate registration step (only for regular users)
+  if (role === 'usuario' && registrationStep < 5) {
+    const stepRoutes: Record<number, string> = {
+      2: '/registro/tratamiento-datos',
+      3: '/registro/sociodemografico',
+      4: '/registro/consentimiento',
+    };
+    if (stepRoutes[registrationStep]) {
+      return <Navigate to={stepRoutes[registrationStep]} replace />;
+    }
   }
 
   return <>{children}</>;

@@ -53,11 +53,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch {
           const res = await api.checkStatus();
           const legacyUser = res.user as AuthUser;
+          const detectedRole = legacyUser.role || 'usuario';
           setUser({
             ...legacyUser,
-            role: legacyUser.role || 'usuario',
+            role: detectedRole,
           });
-          setRegistrationStep(res.registrationStep);
+          setRegistrationStep(detectedRole === 'admin' || detectedRole === 'practicante' ? 5 : res.registrationStep);
           setToken(storedToken);
         }
       } catch {
