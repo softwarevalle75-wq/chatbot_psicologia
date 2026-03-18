@@ -65,6 +65,7 @@ import { initializeRAG } from "./RAG/index.js";
 
 // Auth routes for web chatbot frontend
 import { registerAuthRoutes } from "./routes/authRoutes.js";
+import { registerDashboardRoutes } from "./routes/dashboardRoutes.js";
 
 const PORT = process.env.PORT ?? 3000;
 
@@ -245,6 +246,7 @@ const main = async () => {
 
 	// ── Auth routes for web chatbot frontend ──
 	registerAuthRoutes(adapterProvider.server);
+	registerDashboardRoutes(adapterProvider.server);
 
 	// Ruta raíz
 	adapterProvider.server.get("/", (req, res) => {

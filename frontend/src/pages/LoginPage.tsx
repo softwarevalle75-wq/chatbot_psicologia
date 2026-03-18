@@ -25,8 +25,14 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      await login(identificador.trim(), password);
-      navigate('/chat', { replace: true });
+      const role = await login(identificador.trim(), password);
+      if (role === 'admin') {
+        navigate('/dashboard/admin', { replace: true });
+      } else if (role === 'practicante') {
+        navigate('/dashboard/practicante', { replace: true });
+      } else {
+        navigate('/chat', { replace: true });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al iniciar sesion');
     } finally {
