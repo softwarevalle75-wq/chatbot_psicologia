@@ -1,167 +1,160 @@
-/*  ------------------------ aiBack.js ---------------------------
-	Este archivo se encarga de manejar la conexion con OpenAI
-    Especificamente es para las respuestas con IA
-	Back se refiere a que se usará para logica interna
-    Solicita el historial (para contexto) y la acción a realizar
-	--------------------------------------------------------------
-*/
+/**
+ * Asistente de IA empático — único punto de uso de IA conversacional en el bot.
+ */
 
-import OpenAI from 'openai'
-import axios from 'axios'
-import { obtenerHist, saveHist, switchAyudaPsicologica } from '../../queries/queries.js'
-import { assistantPrompt } from '../../openAi/prompts.js'
-import { apiBack } from '../../openAi/aiBack.js'
+import { openai } from "../../../lib/openai.js";
+import { obtenerHist, saveHist, switchAyudaPsicologica } from "../../queries/queries.js";
+import { assistantPrompt } from "../../openAi/prompts.js";
+import { apiBack } from "../../openAi/aiBack.js";
 
 type ConversationMessage = {
-	role: 'system' | 'user' | 'assistant'
-	content: string
-}
+  role: "system" | "user" | "assistant";
+  content: string;
+};
 
 type OpenAiTool = {
-	type: 'function'
-	function: {
-		name: string
-		description?: string
-		parameters?: {
-			type: string
-			properties: Record<string, unknown>
-			required?: string[]
-		}
-	}
-	strict?: boolean
+  type: "function";
+  function: {
+    name: string;
+    description?: string;
+    parameters?: {
+      type: string;
+      properties: Record<string, unknown>;
+      required?: string[];
+    };
+  };
+  strict?: boolean;
+};
+
+// ---------------------------------------------------------------------------
+
+async function cambiarEstado(numero: string, hist: ConversationMessage[]) {
+  const raw = await apiBack(
+    hist,
+    `Devuelve "1" si el usuario NO quiere ayuda. Si SÍ quiere ayuda devuelve "2".
+    IMPORTANTE: SOLO devuelve el número, sin texto adicional.`
+  );
+  const opcion = parseInt(raw ?? "1", 10);
+  await switchAyudaPsicologica(numero, opcion);
+  return { success: true, result: opcion };
 }
 
-//---------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
-const aiRegister = new OpenAI({
-	apiKey: process.env.OPENAI_API_KEY,
-})
-
-let c = 0
-
-//---------------------------------------------------------------------------------------------------------
-
-async function cambiarEstado(num, hist) {
-	const opcion = parseInt(
-		await apiBack(
-			hist,
-			`Devuelve "1" si el usuario no quiere ayuda. De lo contrario, si el usuario SI quiere ayuda devuelve "2"
-			IMPORTANTE: SOLO DEVOLVERAS EL NUMERO`
-		)
-	)
-	await switchAyudaPsicologica(num, opcion)
-	return {
-		success: true,
-		result: opcion,
-		message: 'Estado del usuario cambiado',
-	}
-}
-
-//---------------------------------------------------------------------------------------------------------
-
-// Definición de herramientas
 const tools: OpenAiTool[] = [
-	{
-		type: 'function',
-		function: {
-			name: 'cambiarEstado',
-			description: `
-            IMPORTANTE: Esta función SOLO debe ser llamada cuando:
-            1. El usuario esté interesado en recibir ayuda Psicologia
-			2. Si el usuario menciona que quiere una cita de Psicologia
-            
-            NO llamar esta función:
-            - Si el usuario solo está conversando normalmente
-            - Si el usuario menciona temas de psicología pero no en respuesta a un ofrecimiento de ayuda
-            `,
-			parameters: {
-				type: 'object',
-				properties: {},
-			},
-		},
-	},
-]
+  {
+    type: "function",
+    function: {
+      name: "cambiarEstado",
+      description: `
+        IMPORTANTE: Esta función SOLO debe llamarse cuando:
+        1. El usuario esté interesado en recibir ayuda psicológica.
+        2. El usuario mencione que quiere una cita de psicología.
 
-//---------------------------------------------------------------------------------------------------------
+        NO llamar esta función:
+        - Si el usuario solo está conversando normalmente.
+        - Si menciona psicología sin pedir ayuda directamente.
+      `,
+      parameters: {
+        type: "object",
+        properties: {},
+      },
+    },
+  },
+];
 
-export async function apiAssistant1(numero, msg) {
-	const conversationHistory = (await obtenerHist(numero)) as ConversationMessage[]
-	conversationHistory.unshift({
-		role: 'system',
-		content: assistantPrompt,
-	})
-	if (Math.floor(Math.random() * 10) <= 7) {
-		c = c + 1
-		console.log('Numero aleatorio')
-		console.log(c)
-		if (c >= 3) {
-			conversationHistory.push({
-				role: 'system',
-				content: `\nIMPORTANTE:\nDEBES preguntar al usuario si quiere recibir ayuda psicológica. 
-					para saber como cambiar el estado del usuario `,
-			})
-		}
-	}
+// ---------------------------------------------------------------------------
 
-	conversationHistory.push({ role: 'user', content: msg })
+/**
+ * Asistente empático con detección de intención de ayuda psicológica.
+ * El HELP_THRESHOLD controla cada cuántos mensajes se sugiere la ayuda.
+ *
+ * @returns string con la respuesta, o `true` si el usuario quiere ayuda
+ *          (señal para que el flow redirija al testFlow)
+ */
+const HELP_THRESHOLD = 3;
 
-	try {
-		const response = await aiRegister.chat.completions.create({
-			model: 'gpt-4o-mini',
-			messages: conversationHistory as any,
-			tools: tools as any,
-			tool_choice: 'auto', //* Importante usar tool choice
-		})
+export async function apiAssistant1(
+  numero: string,
+  msg: string,
+  helpStage: number
+): Promise<string | true> {
+  const conversationHistory = (await obtenerHist(numero)) as ConversationMessage[];
 
-		const assistantMessage = response.choices[0].message.content
-		const toolCalls = response.choices[0].message.tool_calls
+  conversationHistory.unshift({
+    role: "system",
+    content: assistantPrompt,
+  });
 
-		if (toolCalls && toolCalls.length > 0) {
-			for (const call of toolCalls) {
-				if (call.type === 'function' && call.function.name === 'cambiarEstado') {
-					await cambiarEstado(numero, conversationHistory)
-					await axios.post('http://localhost:3000/v1/messages', {
-						number: numero,
-						message:
-							'Con el fin de brindarte la mejor atención posible, te invitamos a realizar estas dos sencillos Tests. Tu colaboración es muy importante para nosotros. ¿Empezamos?',
-					})
-					return true
-				}
-			}
-		} else {
-			conversationHistory.push({ role: 'assistant', content: assistantMessage })
-			conversationHistory.shift()
-			await saveHist(numero, conversationHistory)
-			return assistantMessage
-		}
-	} catch (error) {
-		console.error('Error al obtener la respuesta de OpenAI:', error)
-		throw new Error('Hubo un error al procesar la solicitud.')
-	}
+  // Sugerir ayuda psicológica cuando el contador del usuario (por BD) llega al umbral
+  if (helpStage >= HELP_THRESHOLD) {
+    conversationHistory.push({
+      role: "system",
+      content: `IMPORTANTE: Debes preguntar al usuario si quiere recibir ayuda psicológica profesional.`,
+    });
+  }
+
+  conversationHistory.push({ role: "user", content: msg });
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: conversationHistory as Parameters<typeof openai.chat.completions.create>[0]["messages"],
+      tools: tools as Parameters<typeof openai.chat.completions.create>[0]["tools"],
+      tool_choice: "auto",
+    });
+
+    const assistantMessage = response.choices[0].message.content;
+    const toolCalls = response.choices[0].message.tool_calls;
+
+    if (toolCalls && toolCalls.length > 0) {
+      for (const call of toolCalls) {
+        if (call.type === "function" && call.function.name === "cambiarEstado") {
+          await cambiarEstado(numero, conversationHistory);
+          // Devuelve true como señal — el welcomeFlow redirige al testFlow
+          return true;
+        }
+      }
+    }
+
+    // Guardar historial sin el system prompt (no persistir en BD)
+    conversationHistory.push({ role: "assistant", content: assistantMessage ?? "" });
+    conversationHistory.shift(); // elimina el system prompt del inicio
+    await saveHist(numero, conversationHistory);
+
+    return assistantMessage ?? "";
+  } catch (error) {
+    console.error("[aiAssistant] Error al llamar OpenAI:", error);
+    throw new Error("Hubo un error al procesar la solicitud del asistente.");
+  }
 }
 
-//---------------------------------------------------------------------------------------------------------
+/**
+ * Asistente simple — sin tool calls ni lógica de detección.
+ * Usado cuando el usuario ya está en un estado avanzado del flujo.
+ */
+export async function apiAssistant2(
+  numero: string,
+  msg: string
+): Promise<string> {
+  const conversationHistory = (await obtenerHist(numero)) as ConversationMessage[];
+  conversationHistory.unshift({ role: "system", content: assistantPrompt });
+  conversationHistory.push({ role: "user", content: msg });
 
-export async function apiAssistant2(numero: string, msg: string) {
-	const conversationHistory = (await obtenerHist(numero)) as ConversationMessage[]
-	conversationHistory.unshift({ role: 'system', content: assistantPrompt })
-	conversationHistory.push({ role: 'user', content: msg })
-	try {
-		const response = await aiRegister.chat.completions.create({
-			model: 'gpt-4o-mini',
-			messages: conversationHistory as any,
-		})
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: conversationHistory as Parameters<typeof openai.chat.completions.create>[0]["messages"],
+    });
 
-		const assistantMessage = response.choices[0].message.content
+    const assistantMessage = response.choices[0].message.content ?? "";
+    conversationHistory.push({ role: "assistant", content: assistantMessage });
+    conversationHistory.shift();
+    await saveHist(numero, conversationHistory);
 
-		conversationHistory.push({ role: 'assistant', content: assistantMessage })
-		conversationHistory.shift()
-		await saveHist(numero, conversationHistory)
-		return assistantMessage
-	} catch (error) {
-		console.error('Error al obtener la respuesta de OpenAI:', error)
-		throw new Error('Hubo un error al procesar la solicitud.')
-	}
+    return assistantMessage;
+  } catch (error) {
+    console.error("[aiAssistant2] Error al llamar OpenAI:", error);
+    throw new Error("Hubo un error al procesar la solicitud del asistente.");
+  }
 }
-
-//---------------------------------------------------------------------------------------------------------

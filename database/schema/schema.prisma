@@ -17,10 +17,13 @@ enum PatientState {
 
 enum FlowState {
   register
+  menuFlow
   assistantFlow
   testFlow
+  testSelectionFlow
   agendFlow
   finalFlow
+  bloqueadoMenorEdad
 }
 
 enum AppointmentStatus {
@@ -106,18 +109,62 @@ model Patient {
   id               String        @id @default(uuid())
   userId           String?       @unique
   whatsappNumber   String        @unique
-  name             String?
-  lastName         String?
   email            String?       @unique
   documentType     String        @default("CC")
   documentNumber   String?       @unique
+
+  // ── Nombres separados ─────────────────────────────────────────────────────
+  name             String?       // primerNombre (compat legacy)
+  lastName         String?       // primerApellido + segundoApellido (compat legacy)
+  firstName        String?       // primerNombre
+  secondName       String?       // segundoNombre (opcional)
+  firstLastName    String?       // primerApellido
+  secondLastName   String?       // segundoApellido (opcional)
+
+  // ── Datos demográficos (Paso 1 del registro) ─────────────────────────────
+  birthDate           DateTime?
+  sex                 String?       // Hombre, Mujer, Intersexual
+  genderIdentity      String?       // Masculino, Femenino, Transexual, No informa
+  sexualOrientation   String?       // Heterosexual, Homosexual, Bisexual, No informa
+  ethnicity           String?       // Afro, Raizal, Palanquero, Indigena, Rom, Ninguna, No informa
+  disability          String?       // Si, No
+  disabilityDetail    String?       // solo si disability = "Si"
+
+  // ── Universidad ───────────────────────────────────────────────────────────
+  belongsToUniversity Boolean       @default(false)
+  isAspirant          Boolean       @default(false)
+  career              String?
+  academicSchedule    String?       // jornada: Diurna, Nocturna, Virtual
+  semester            Int?
+
+  // ── Estado del flujo ──────────────────────────────────────────────────────
   state            PatientState  @default(aspirante)
   flow             FlowState     @default(register)
   helpStage        Int           @default(1)
   testActual       String        @default("ghq12")
   availability     Json          @default("{}")
   motivo           String?
-  dataAgreement    Boolean       @default(false)
+
+  // ── Consentimientos y pasos de registro ───────────────────────────────────
+  dataAgreement             Boolean    @default(false)  // Paso 2: tratamiento de datos
+  dataAgreementAt           DateTime?                   // cuándo aceptó tratamiento
+  sociodemograficoCompleted Boolean    @default(false)  // Paso 3: datos sociodemográficos
+  consentimientoAt          DateTime?                   // Paso 4: cuándo aceptó consentimiento
+  consentimientoVersion     String?                     // qué versión del texto aceptó
+
+  // ── Datos sociodemográficos (Paso 3, normalizados) ────────────────────────
+  estadoCivil         String?
+  numeroHijos         Int?
+  numeroHermanos      Int?
+  rolFamiliar         Json?       // array de strings
+  conQuienVive        String?
+  tienePersonasACargo Boolean     @default(false)
+  personasACargoQuien String?
+  escolaridad         String?
+  ocupacion           String?
+  nivelIngresos       String?
+
+  // ── Relaciones ────────────────────────────────────────────────────────────
   practitionerId   String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
@@ -323,4 +370,16 @@ model AccessAudit {
   createdAt   DateTime  @default(now())
 
   user        User      @relation(fields: [userId], references: [id])
+}
+
+// ── RAG ───────────────────────────────────────────────────────────────────────
+
+model RagConfig {
+  id                 String   @id @default("general")
+  systemInstructions String   @db.Text
+  promptTemplate     String   @db.Text
+  metadata           Json?
+  version            String   @default("1.0")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }

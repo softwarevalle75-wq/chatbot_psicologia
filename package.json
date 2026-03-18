@@ -2,11 +2,6 @@
   "name": "mi-proyecto",
   "version": "0.1.0",
   "private": true,
-  "workspaces": [
-    "frontend",
-    "backend",
-    "database"
-  ],
   "packageManager": "pnpm@9.12.1",
   "scripts": {
     "dev:frontend": "pnpm --filter @chatbot-psico/web dev",
@@ -14,7 +9,12 @@
     "dev:bot": "pnpm --filter @chatbot-psico/backend dev:bot",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
-    "prisma:generate": "pnpm --filter @chatbot-psico/backend prisma:generate",
-    "db:migrate": "pnpm --filter @chatbot-psico/backend prisma:migrate"
+    "prisma:generate": "pnpm --filter @chatbot-psico/database generate",
+    "db:migrate:dev": "pnpm --filter @chatbot-psico/database migrate:dev",
+    "db:migrate": "pnpm --filter @chatbot-psico/database migrate:deploy",
+    "db:studio": "pnpm --filter @chatbot-psico/database studio",
+    "seed:roles": "pnpm --filter @chatbot-psico/database seed:roles",
+    "seed:rag": "pnpm --filter @chatbot-psico/database seed:rag",
+    "seed:all": "pnpm --filter @chatbot-psico/database seed:all"
   }
 }

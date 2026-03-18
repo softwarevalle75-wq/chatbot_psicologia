@@ -7,3 +7,10 @@ dist/
 coverage/
 .idea/
 .vscode/
+
+# BuilderBot runtime files
+*.class.log
+nul
+temp/
+bot_sessions/
+store/

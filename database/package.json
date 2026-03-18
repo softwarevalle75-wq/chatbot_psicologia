@@ -1,5 +1,20 @@
 {
   "name": "@chatbot-psico/database",
   "version": "1.0.0",
-  "private": true
+  "private": true,
+  "scripts": {
+    "generate": "prisma generate --schema ./schema/schema.prisma",
+    "migrate:dev": "prisma migrate dev --schema ./schema/schema.prisma",
+    "migrate:deploy": "prisma migrate deploy --schema ./schema/schema.prisma",
+    "studio": "prisma studio --schema ./schema/schema.prisma",
+    "seed:roles": "node seeders/seed-roles.mjs",
+    "seed:rag": "node seeders/seed-rag-config.mjs",
+    "seed:all": "node seeders/seed-roles.mjs && node seeders/seed-rag-config.mjs"
+  },
+  "devDependencies": {
+    "prisma": "6.1.0"
+  },
+  "dependencies": {
+    "@prisma/client": "6.1.0"
+  }
 }
