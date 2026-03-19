@@ -152,6 +152,13 @@ const parseResponses = (raw) => {
   try { return JSON.parse(raw); } catch { return null; }
 };
 
+const normalizeHistorialTestType = (value) => {
+  const normalized = normalizeText(value);
+  if (normalized.includes('ghq12')) return 'ghq12';
+  if (normalized.includes('dass21')) return 'dass21';
+  return null;
+};
+
 const ghqRiskLevel = (score) => {
   if (score >= 20) return 'critico';
   if (score >= 16) return 'alto';
@@ -209,8 +216,7 @@ const getDashboardSummary = async (period) => {
     rescheduledAppointments,
     testsPendingRows,
     activePractitioners,
-    ghqRows,
-    dassRows,
+    historialRows,
     socialIsolationRows,
     patientRows,
     appointmentPeriod,
@@ -228,8 +234,10 @@ const getDashboardSummary = async (period) => {
     prisma.registroCitas.count({ where: { estado: { startsWith: 'reagend' } } }).catch(() => 0),
     prisma.informacionUsuario.groupBy({ by: ['testActual'], _count: { _all: true } }).catch(() => []),
     prisma.practicante.count().catch(() => 0),
-    prisma.ghq12.findMany({ select: { Puntaje: true, resPreg: true, informePdfFecha: true } }).catch(() => []),
-    prisma.dass21.findMany({ select: { puntajeDep: true, puntajeAns: true, puntajeEstr: true, respuestas: true, resPreg: true, informePdfFecha: true } }).catch(() => []),
+    prisma.historialTest.findMany({
+      select: { usuarioId: true, tipoTest: true, fechaCompletado: true },
+      orderBy: { fechaCompletado: 'desc' },
+    }).catch(() => []),
     prisma.$queryRawUnsafe(`
       SELECT COUNT(*) AS c
       FROM informacion_sociodemografica
@@ -252,6 +260,77 @@ const getDashboardSummary = async (period) => {
     `).catch(() => []),
   ]);
 
+  const allTestLogs = historialRows
+    .map((row) => ({
+      usuarioId: String(row.usuarioId || ''),
+      tipo: normalizeHistorialTestType(row.tipoTest),
+      fechaCompletado: row.fechaCompletado ? new Date(row.fechaCompletado) : null,
+    }))
+    .filter((row) => row.usuarioId && row.tipo && row.fechaCompletado && !Number.isNaN(row.fechaCompletado.getTime()));
+
+  const testsCompleted = allTestLogs.length;
+  const testsCompletedThisPeriod = allTestLogs.filter((row) => row.fechaCompletado >= periodStart && row.fechaCompletado <= now).length;
+  const testsCompletedPrevPeriod = allTestLogs.filter((row) => row.fechaCompletado >= previousStart && row.fechaCompletado < periodStart).length;
+
+  const latestByUserAndType = new Map();
+  for (const row of allTestLogs) {
+    const key = `${row.usuarioId}|${row.tipo}`;
+    if (!latestByUserAndType.has(key)) {
+      latestByUserAndType.set(key, row);
+    }
+  }
+  const latestTestLogs = [...latestByUserAndType.values()];
+  const latestGhqLogs = latestTestLogs.filter((row) => row.tipo === 'ghq12');
+  const latestDassLogs = latestTestLogs.filter((row) => row.tipo === 'dass21');
+
+  const latestUserIds = [...new Set(latestTestLogs.map((row) => row.usuarioId))];
+  const latestUsers = latestUserIds.length
+    ? await prisma.informacionUsuario.findMany({
+      where: { idUsuario: { in: latestUserIds } },
+      select: { idUsuario: true, telefonoPersonal: true },
+    }).catch(() => [])
+    : [];
+  const phoneByUserId = new Map(
+    latestUsers
+      .filter((u) => u.idUsuario && u.telefonoPersonal)
+      .map((u) => [u.idUsuario, u.telefonoPersonal]),
+  );
+
+  const phonesForLatestLogs = [...new Set(latestUsers.map((u) => u.telefonoPersonal).filter(Boolean))];
+  const [ghqRowsByPhone, dassRowsByPhone] = phonesForLatestLogs.length
+    ? await Promise.all([
+      prisma.ghq12.findMany({
+        where: { telefono: { in: phonesForLatestLogs } },
+        select: { telefono: true, Puntaje: true, resPreg: true, informePdfFecha: true },
+      }).catch(() => []),
+      prisma.dass21.findMany({
+        where: { telefono: { in: phonesForLatestLogs } },
+        select: { telefono: true, puntajeDep: true, puntajeAns: true, puntajeEstr: true, respuestas: true, resPreg: true, informePdfFecha: true },
+      }).catch(() => []),
+    ])
+    : [[], []];
+
+  const ghqByPhone = new Map(ghqRowsByPhone.map((row) => [row.telefono, row]));
+  const dassByPhone = new Map(dassRowsByPhone.map((row) => [row.telefono, row]));
+
+  const ghqSourceRows = latestGhqLogs
+    .map((log) => {
+      const phone = phoneByUserId.get(log.usuarioId);
+      const row = phone ? ghqByPhone.get(phone) : null;
+      if (!row) return null;
+      return { ...row, completedAt: log.fechaCompletado };
+    })
+    .filter(Boolean);
+
+  const dassSourceRowsRaw = latestDassLogs
+    .map((log) => {
+      const phone = phoneByUserId.get(log.usuarioId);
+      const row = phone ? dassByPhone.get(phone) : null;
+      if (!row) return null;
+      return { ...row, completedAt: log.fechaCompletado };
+    })
+    .filter(Boolean);
+
   // ── DASS-21: calculate real scores from respuestas if puntaje fields are 0 ──
   // DASS-21 subscale item indices (1-based): Dep=3,5,10,13,16,17,21  Anx=2,4,7,9,15,19,20  Str=1,6,8,11,12,14,18
   const DASS_DEP_ITEMS = [3, 5, 10, 13, 16, 17, 21];
@@ -267,7 +346,7 @@ const getDashboardSummary = async (period) => {
     return { dep: sumItems(DASS_DEP_ITEMS), anx: sumItems(DASS_ANX_ITEMS), str: sumItems(DASS_STR_ITEMS) };
   };
 
-  const dassSourceRows = dassRows.map((row) => {
+  const dassSourceRows = dassSourceRowsRaw.map((row) => {
     const hasScores = Number(row.puntajeDep || 0) > 0 || Number(row.puntajeAns || 0) > 0 || Number(row.puntajeEstr || 0) > 0;
     if (hasScores) return row;
     const calculated = calcDassFromResponses(row.respuestas);
@@ -277,10 +356,8 @@ const getDashboardSummary = async (period) => {
     return row;
   });
 
-  const ghqSourceRows = ghqRows;
   const ghqCount = ghqSourceRows.length;
   const dassCount = dassSourceRows.length;
-  const testsCompleted = ghqCount + dassCount;
 
   const riskTotals = { bajo: 0, medio: 0, alto: 0, critico: 0 };
   const ghqRiskTotals = { bajo: 0, medio: 0, alto: 0, critico: 0 };
@@ -350,8 +427,8 @@ const getDashboardSummary = async (period) => {
   const strAvg = dassSourceRows.length > 0 ? Number((strSum / dassSourceRows.length).toFixed(1)) : 0;
 
   const activityBuckets = getBuckets(period, now);
-  const activityDates = [...ghqSourceRows, ...dassSourceRows]
-    .map((row) => row.informePdfFecha)
+  const activityDates = latestTestLogs
+    .map((row) => row.fechaCompletado)
     .filter(Boolean)
     .map((d) => new Date(d))
     .filter((d) => !Number.isNaN(d.getTime()));
@@ -400,8 +477,8 @@ const getDashboardSummary = async (period) => {
   ];
 
   const testsByType = [
-    { name: 'GHQ12', completed: ghqCount, pending: testsPendingRows.find((row) => String(row.testActual || '').toUpperCase().includes('GHQ'))?._count?._all || 0 },
-    { name: 'DASS21', completed: dassCount, pending: testsPendingRows.find((row) => String(row.testActual || '').toUpperCase().includes('DASS'))?._count?._all || 0 },
+    { name: 'GHQ12', completed: latestGhqLogs.length, pending: testsPendingRows.find((row) => String(row.testActual || '').toUpperCase().includes('GHQ'))?._count?._all || 0 },
+    { name: 'DASS21', completed: latestDassLogs.length, pending: testsPendingRows.find((row) => String(row.testActual || '').toUpperCase().includes('DASS'))?._count?._all || 0 },
   ];
 
   const highRiskAlerts = riskTotals.alto + riskTotals.critico;
@@ -422,7 +499,7 @@ const getDashboardSummary = async (period) => {
       patients: safeTrend(newPatientsThisPeriod, prevPeriodPatients),
       appointments: safeTrend(appointmentPeriod, appointmentPrev),
       alerts: safeTrend(highRiskAlerts, 0),
-      tests: safeTrend(testsCompleted, 0),
+      tests: safeTrend(testsCompletedThisPeriod, testsCompletedPrevPeriod),
     },
     averages: { anxiety: anxAvg, depression: depAvg, stress: strAvg },
     activityData,
