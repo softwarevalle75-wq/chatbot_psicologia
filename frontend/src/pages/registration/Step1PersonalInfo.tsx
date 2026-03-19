@@ -46,6 +46,19 @@ const helperClass =
 const fieldErrorClass = 'mt-1.5 text-xs font-medium text-red-600';
 const helperText = 'Verifique que este dato sea correcto.';
 
+const CAREER_OPTIONS = [
+  'Psicologia',
+  'Derecho',
+  'Arquitectura',
+  'Ingenieria Industrial',
+  'Ingenieria de Software',
+  'Ingenieria de Sistemas',
+  'Contaduria Publica',
+  'Administracion de Empresas',
+  'Medicina Veterinaria y Zootecnia',
+  'Otra',
+];
+
 export default function Step1PersonalInfo() {
   const navigate = useNavigate();
   const { register } = useAuth();
@@ -506,15 +519,19 @@ export default function Step1PersonalInfo() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-in fade-in">
             <div>
               <label className={labelClass}>Carrera <span className="text-red-500 font-semibold">(*)</span></label>
-              <input
-                type="text"
-                className={errors.carrera ? inputErrorClass : inputClass}
-                placeholder="Ej. Psicologia"
+              <select
+                className={errors.carrera ? selectErrorClass : selectClass}
                 value={form.carrera}
-                maxLength={80}
                 onChange={(e) => update('carrera', e.target.value)}
                 onBlur={() => markTouched('carrera')}
-              />
+              >
+                <option value="">Seleccione...</option>
+                {CAREER_OPTIONS.map((career) => (
+                  <option key={career} value={career}>
+                    {career}
+                  </option>
+                ))}
+              </select>
               {errors.carrera
                 ? <p className={fieldErrorClass}>{errors.carrera}</p>
                 : shouldShowHelper('carrera') && <p className={helperClass}>{helperText}</p>}
