@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import jwt from 'jsonwebtoken';
 import fs from 'node:fs';
-
-const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
 
 const RISK_LEVELS = ['bajo', 'medio', 'alto', 'critico'];
@@ -30,8 +28,11 @@ const getTokenPayload = (req) => {
   }
 };
 
+const ENV_ADMIN_EMAIL = (process.env.ADMIN_DASHBOARD_EMAIL || '').trim().toLowerCase();
+
 const adminEmailSet = new Set([
   'chatbotpsicologia@gmail.com',
+  ...(ENV_ADMIN_EMAIL ? [ENV_ADMIN_EMAIL] : []),
   ...String(process.env.ADMIN_EMAILS || '')
     .split(',')
     .map((v) => v.trim().toLowerCase())
@@ -64,6 +65,12 @@ const requireAuth = async (req, res) => {
     json(res, 401, { error: 'No autenticado' });
     return null;
   }
+
+  // Admin autenticado por variables de entorno — no existe en BD
+  if (payload.userId === 'admin-env') {
+    return { user: { correo: payload.correo || ENV_ADMIN_EMAIL }, role: 'admin', profileId: null };
+  }
+
   const user = await prisma.informacionUsuario.findUnique({ where: { idUsuario: payload.userId } }).catch(() => null);
   if (!user) {
     json(res, 401, { error: 'Sesion invalida' });

@@ -18,6 +18,12 @@
     "recharts": "^2.15.4",
     "tailwindcss": "^4.2.1"
   },
+  "overrides": {
+    "recharts": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",

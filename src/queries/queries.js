@@ -1,5 +1,5 @@
-import Prisma from '@prisma/client'
-export const prisma = new Prisma.PrismaClient()
+import { prisma } from '../lib/prisma.js'
+export { prisma }
 import { adapterProvider } from '../app.js'
 // import { ensureJid } from '../helpers/jidHelper.js' // Desactivado: ya no se usan JIDs de WhatsApp
 import fs from 'fs'

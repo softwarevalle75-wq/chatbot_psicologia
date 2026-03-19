@@ -11,14 +11,12 @@
  *   GET  /v1/auth/check-status      - Check which registration step needs completion
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { Resolver } from 'dns/promises';
 import crypto from 'node:crypto';
 import { validateRegisterPayload, validateSociodemograficoPayload } from '../utils/validations.js';
-
-const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
 
 if (!JWT_SECRET || JWT_SECRET.length < 16) {
@@ -42,8 +40,12 @@ const isYes = (v) => canonicalYesNo(v) === 'si';
 
 const normalizeSpaces = (v) => String(v || '').replace(/\s+/g, ' ').trim();
 
+const ENV_ADMIN_EMAIL = (process.env.ADMIN_DASHBOARD_EMAIL || '').trim().toLowerCase();
+const ENV_ADMIN_PASSWORD = process.env.ADMIN_DASHBOARD_PASSWORD || '';
+
 const adminEmailSet = new Set([
     'chatbotpsicologia@gmail.com',
+    ...(ENV_ADMIN_EMAIL ? [ENV_ADMIN_EMAIL] : []),
     ...String(process.env.ADMIN_EMAILS || '')
         .split(',')
         .map((value) => value.trim().toLowerCase())
@@ -425,6 +427,31 @@ export function registerAuthRoutes(server) {
             }
 
             const correoNorm = normalizeEmail(identificador);
+
+            // ── Admin por variables de entorno (sin BD) ──
+            if (ENV_ADMIN_EMAIL && ENV_ADMIN_PASSWORD && correoNorm === ENV_ADMIN_EMAIL && password === ENV_ADMIN_PASSWORD) {
+                const token = jwt.sign(
+                    { userId: 'admin-env', correo: ENV_ADMIN_EMAIL },
+                    JWT_SECRET,
+                    { expiresIn: '7d', algorithm: 'HS256' },
+                );
+                return json(res, 200, {
+                    message: 'Login exitoso',
+                    token,
+                    user: {
+                        id: 'admin-env',
+                        primerNombre: 'Administrador',
+                        correo: ENV_ADMIN_EMAIL,
+                        documento: '',
+                        consentimientoInformado: 'si',
+                        autorizacionDatos: 'si',
+                        registrationStep: 5,
+                        role: 'admin',
+                        profileId: null,
+                    },
+                });
+            }
+
             const phoneCandidates = buildPhoneCandidates(identificador);
 
             const user = await prisma.informacionUsuario.findFirst({
@@ -616,6 +643,24 @@ export function registerAuthRoutes(server) {
             const decoded = verifyToken(req);
             if (!decoded?.userId) return json(res, 401, { error: 'No autenticado' });
 
+            // Admin autenticado por variables de entorno — no existe en BD
+            if (decoded.userId === 'admin-env') {
+                return json(res, 200, {
+                    registrationStep: 5,
+                    user: {
+                        id: 'admin-env',
+                        primerNombre: 'Administrador',
+                        correo: decoded.correo || ENV_ADMIN_EMAIL,
+                        documento: '',
+                        consentimientoInformado: 'si',
+                        autorizacionDatos: 'si',
+                        registrationStep: 5,
+                        role: 'admin',
+                        profileId: null,
+                    },
+                });
+            }
+
             const user = await prisma.informacionUsuario.findUnique({ where: { idUsuario: decoded.userId } });
             if (!user) return json(res, 404, { error: 'Usuario no encontrado' });
 
@@ -639,6 +684,18 @@ export function registerAuthRoutes(server) {
         try {
             const decoded = verifyToken(req);
             if (!decoded?.userId) return json(res, 401, { error: 'No autenticado' });
+
+            // Admin autenticado por variables de entorno — no existe en BD
+            if (decoded.userId === 'admin-env') {
+                return json(res, 200, {
+                    user: {
+                        id: 'admin-env',
+                        email: decoded.correo || ENV_ADMIN_EMAIL,
+                        role: 'admin',
+                        profileId: null,
+                    },
+                });
+            }
 
             const user = await prisma.informacionUsuario.findUnique({ where: { idUsuario: decoded.userId } });
             if (!user) return json(res, 404, { error: 'Usuario no encontrado' });

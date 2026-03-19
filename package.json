@@ -10,6 +10,7 @@
     "dev": "node prisma/seed/roles.js && npm run lint && nodemon ./src/app.js",
     "bot": "node ./src/app.js",
     "start": "node start-all.js",
+    "start:prod": "node scripts/start-production.js",
     "web": "node ./web/server.js",
     "dev-all": "npm run lint && nodemon ./start-all.js",
     "start-all": "node ./start-all.js",
@@ -58,6 +59,7 @@
     "pdfjs-dist": "^5.4.624",
     "pdfkit": "^0.17.2",
     "pdfreader": "^3.0.8",
+    "recharts": "^3.8.0",
     "uuid": "^11.1.0",
     "ws": "^8.19.0"
   },

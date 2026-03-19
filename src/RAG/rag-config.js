@@ -1,7 +1,5 @@
 // Módulo standalone para configuración RAG — solo Prisma, sin dependencia de app.js/WhatsApp
-import Prisma from '@prisma/client'
-const { PrismaClient } = Prisma
-const prisma = new PrismaClient()
+import { prisma } from '../lib/prisma.js'
 
 /**
  * Obtiene la configuración RAG (systemInstructions + promptTemplate) desde la BD.

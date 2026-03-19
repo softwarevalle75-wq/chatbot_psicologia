@@ -1,5 +1,6 @@
 import { createBot, createProvider, createFlow } from "@builderbot/bot";
 import { MysqlAdapter as Database } from "@builderbot/database-mysql";
+import { prisma } from "./lib/prisma.js";
 
 // ── Provider: WebSocket (reemplaza WhatsApp/Baileys) ──
 import { WebSocketProvider } from "./provider/WebSocketProvider.js";
@@ -186,6 +187,65 @@ const main = async () => {
 		adapterDB = null;
 	}
 
+	// ── Patch: reconexion automatica para conexion mysql2 del adapter ──
+	// @builderbot/database-mysql usa mysql.createConnection() (conexion unica, sin pool,
+	// sin reconexion, sin event handlers). Si MySQL cierra la conexion por idle timeout
+	// o restart, el adapter queda muerto y crashea el proceso.
+	// Este patch agrega deteccion de desconexion + reconexion automatica.
+	if (adapterDB) {
+		const MYSQL2_RECONNECT_DELAY_MS = 3000;
+		const MYSQL2_PING_INTERVAL_MS = 60000 * 5; // ping cada 5 min para evitar idle timeout
+
+		const patchMysql2Connection = () => {
+			// Esperar a que init() del adapter termine de crear this.db
+			const waitForDb = setInterval(() => {
+				if (!adapterDB.db) return;
+				clearInterval(waitForDb);
+
+				adapterDB.db.on('error', (err) => {
+					console.error('[mysql2-adapter] Connection error:', err.code, err.message);
+					if (err.fatal) {
+						console.log(`[mysql2-adapter] Reconectando en ${MYSQL2_RECONNECT_DELAY_MS}ms...`);
+						setTimeout(() => {
+							adapterDB.init().then(() => {
+								console.log('[mysql2-adapter] Reconexion exitosa');
+								patchMysql2Connection(); // re-attach handlers a la nueva conexion
+							}).catch((e) => {
+								console.error('[mysql2-adapter] Reconexion fallida:', e.message);
+							});
+						}, MYSQL2_RECONNECT_DELAY_MS);
+					}
+				});
+
+				adapterDB.db.on('end', () => {
+					console.warn('[mysql2-adapter] Conexion cerrada por el servidor');
+					setTimeout(() => {
+						adapterDB.init().then(() => {
+							console.log('[mysql2-adapter] Reconexion exitosa (tras end)');
+							patchMysql2Connection();
+						}).catch((e) => {
+							console.error('[mysql2-adapter] Reconexion fallida (tras end):', e.message);
+						});
+					}, MYSQL2_RECONNECT_DELAY_MS);
+				});
+
+				// Ping periodico para mantener la conexion viva y evitar idle timeout
+				setInterval(() => {
+					if (adapterDB.db && !adapterDB.db._closing) {
+						adapterDB.db.ping((err) => {
+							if (err) {
+								console.error('[mysql2-adapter] Ping failed:', err.message);
+							}
+						});
+					}
+				}, MYSQL2_PING_INTERVAL_MS);
+
+				console.log('[mysql2-adapter] Patch de reconexion y keepalive aplicado');
+			}, 500); // poll cada 500ms hasta que this.db exista
+		};
+
+		patchMysql2Connection();
+	}
 
 	console.log('🤖 Creando bot...');
 	const { handleCtx, httpServer } = await createBot({
@@ -530,6 +590,27 @@ const main = async () => {
 	try {
 		httpServer(+PORT);
 		console.log(`✅ Servidor HTTP + WebSocket iniciado en puerto ${PORT}`);
+
+		// ── Graceful shutdown ──────────────────────────────────────
+		const shutdown = async (signal) => {
+			console.log(`\n🛑 ${signal} recibido. Cerrando conexiones...`);
+			try {
+				// Cerrar conexion mysql2 del adapter
+				if (adapterDB?.db) {
+					adapterDB.db.end(() => console.log('[shutdown] mysql2 adapter cerrado'));
+				}
+				// Cerrar PrismaClient singleton
+				await prisma.$disconnect();
+				console.log('[shutdown] Prisma desconectado');
+			} catch (e) {
+				console.error('[shutdown] Error cerrando conexiones:', e.message);
+			}
+			process.exit(0);
+		};
+
+		process.on('SIGTERM', () => shutdown('SIGTERM'));
+		process.on('SIGINT', () => shutdown('SIGINT'));
+
 		await new Promise(() => { });
 	} catch (error) {
 		console.error('❌ Error iniciando servidor HTTP:', error);

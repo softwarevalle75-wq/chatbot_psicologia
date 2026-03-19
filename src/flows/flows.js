@@ -34,8 +34,8 @@ import {
   formatearHorariosDisponibles
 } from '../helpers/agendHelper.js';
 import { obtenerRutaPdf, limpiarRutaPdf } from '../helpers/pdfStore.js'
-import Prisma from '@prisma/client'
-export const prisma = new Prisma.PrismaClient()
+import { prisma } from '../lib/prisma.js'
+export { prisma }
 //---------------------------------------------------------------------------------------------------------
 
 const ensureTempDir = () => {
