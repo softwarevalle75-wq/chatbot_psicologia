@@ -86,21 +86,33 @@ export default function AdminPdfsPage() {
   const startIndex = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const endIndex = Math.min(page * pageSize, total);
 
-  const openPdf = (item: PdfRecord) => {
-    const url = api.getPdfFileUrl(item, false);
-    window.open(url, '_blank', 'noopener,noreferrer');
+  const openPdf = async (item: PdfRecord) => {
+    try {
+      setError('');
+      const { blob } = await api.getPdfFile(item, false);
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo abrir el PDF');
+    }
   };
 
-  const downloadPdf = (item: PdfRecord) => {
-    const url = api.getPdfFileUrl(item, true);
-    // Use a hidden iframe to trigger download without navigating away
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = url;
-    document.body.appendChild(iframe);
-    window.setTimeout(() => {
-      try { document.body.removeChild(iframe); } catch { /* ignore */ }
-    }, 60_000);
+  const downloadPdf = async (item: PdfRecord) => {
+    try {
+      setError('');
+      const { blob, filename } = await api.getPdfFile(item, true);
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename || item.filename || 'documento.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo descargar el PDF');
+    }
   };
 
   const onSearchChange = (value: string) => {

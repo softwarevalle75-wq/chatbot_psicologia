@@ -19,8 +19,10 @@ const json = (res, statusCode, data) => {
 
 const getTokenPayload = (req) => {
   const header = req.headers?.authorization;
-  if (!header) return null;
-  const token = header.startsWith('Bearer ') ? header.slice(7) : header;
+  const queryToken = String(req.query?.token || '').trim();
+  const headerToken = header ? (header.startsWith('Bearer ') ? header.slice(7) : header) : '';
+  const token = headerToken || queryToken;
+  if (!token) return null;
   try {
     return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
   } catch {
@@ -633,6 +635,51 @@ export function registerDashboardRoutes(server) {
         }
 
         const userByPhone = new Map(users.map((u) => [u.telefonoPersonal, u]));
+
+        const unresolvedUsers = users.filter((u) => {
+          const assigned = u.practicanteAsignado || (u.idUsuario ? latestPractitionerByUser.get(u.idUsuario) : null);
+          return !assigned;
+        });
+
+        const userKey = (u) => `${String(u.primerNombre || '').trim().toLowerCase()}|${String(u.segundoNombre || '').trim().toLowerCase()}|${String(u.primerApellido || '').trim().toLowerCase()}`;
+        const unresolvedByKey = new Map(unresolvedUsers.map((u) => [userKey(u), u]));
+
+        const citasByUserKey = unresolvedUsers.length
+          ? await prisma.cita.findMany({
+            where: {
+              OR: unresolvedUsers.map((u) => ({
+                primerNombre: String(u.primerNombre || ''),
+                segundoNombre: String(u.segundoNombre || ''),
+                primerApellido: String(u.primerApellido || ''),
+              })),
+            },
+            select: {
+              primerNombre: true,
+              segundoNombre: true,
+              primerApellido: true,
+              nombrePracticante: true,
+              fechaHora: true,
+            },
+            orderBy: { fechaHora: 'desc' },
+          })
+          : [];
+
+        const latestPractitionerNameByUserKey = new Map();
+        for (const cita of citasByUserKey) {
+          const key = `${String(cita.primerNombre || '').trim().toLowerCase()}|${String(cita.segundoNombre || '').trim().toLowerCase()}|${String(cita.primerApellido || '').trim().toLowerCase()}`;
+          if (!unresolvedByKey.has(key) || latestPractitionerNameByUserKey.has(key)) continue;
+          latestPractitionerNameByUserKey.set(key, String(cita.nombrePracticante || '').trim());
+        }
+
+        const practNamesFromCitas = [...new Set([...latestPractitionerNameByUserKey.values()].filter(Boolean))];
+        const practitionersByName = practNamesFromCitas.length
+          ? await prisma.practicante.findMany({
+            where: { nombre: { in: practNamesFromCitas } },
+            select: { idPracticante: true, nombre: true },
+          })
+          : [];
+        const practByName = new Map(practitionersByName.map((p) => [p.nombre, p]));
+
         const practIds = [...new Set([
           ...users.map((u) => u.practicanteAsignado).filter(Boolean),
           ...latestAssignments.map((r) => r.idPracticante).filter(Boolean),
@@ -643,15 +690,21 @@ export function registerDashboardRoutes(server) {
         for (const row of ghqDb) {
           const user = userByPhone.get(row.telefono);
           const patientName = user ? [user.primerNombre, user.segundoNombre, user.primerApellido, user.segundoApellido].filter(Boolean).join(' ') : 'Sin paciente';
-          const practId = user?.practicanteAsignado || (user?.idUsuario ? latestPractitionerByUser.get(user.idUsuario) : null);
-          const practName = practId ? practById.get(practId) : null;
+          const directPractId = user?.practicanteAsignado || (user?.idUsuario ? latestPractitionerByUser.get(user.idUsuario) : null);
+          const fallbackPractName = user ? latestPractitionerNameByUserKey.get(userKey(user)) : null;
+          const fallbackPract = fallbackPractName ? practByName.get(fallbackPractName) : null;
+          const practId = directPractId || fallbackPract?.idPracticante || null;
+          const practName = (directPractId ? practById.get(directPractId) : null) || fallbackPract?.nombre || null;
           records.push({ id: `ghq12:${row.idGhq12}`, filename: row.informePdfNombre || `reporte_ghq12_${row.idGhq12}.pdf`, path: `/v1/pdfs/file?source=database&id=ghq12:${row.idGhq12}`, uploadedAt: row.informePdfFecha || new Date(), source: 'database', patient: { id: row.telefono, name: patientName }, practitioner: practName ? { id: String(practId || ''), name: practName } : null });
         }
         for (const row of dassDb) {
           const user = userByPhone.get(row.telefono);
           const patientName = user ? [user.primerNombre, user.segundoNombre, user.primerApellido, user.segundoApellido].filter(Boolean).join(' ') : 'Sin paciente';
-          const practId = user?.practicanteAsignado || (user?.idUsuario ? latestPractitionerByUser.get(user.idUsuario) : null);
-          const practName = practId ? practById.get(practId) : null;
+          const directPractId = user?.practicanteAsignado || (user?.idUsuario ? latestPractitionerByUser.get(user.idUsuario) : null);
+          const fallbackPractName = user ? latestPractitionerNameByUserKey.get(userKey(user)) : null;
+          const fallbackPract = fallbackPractName ? practByName.get(fallbackPractName) : null;
+          const practId = directPractId || fallbackPract?.idPracticante || null;
+          const practName = (directPractId ? practById.get(directPractId) : null) || fallbackPract?.nombre || null;
           records.push({ id: `dass21:${row.idDass21}`, filename: row.informePdfNombre || `reporte_dass21_${row.idDass21}.pdf`, path: `/v1/pdfs/file?source=database&id=dass21:${row.idDass21}`, uploadedAt: row.informePdfFecha || new Date(), source: 'database', patient: { id: row.telefono, name: patientName }, practitioner: practName ? { id: String(practId || ''), name: practName } : null });
         }
       }
