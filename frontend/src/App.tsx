@@ -11,6 +11,7 @@ import AdminHomePage from './pages/dashboard/AdminHomePage';
 import AdminStudentsPage from './pages/dashboard/AdminStudentsPage';
 import AdminPdfsPage from './pages/dashboard/AdminPdfsPage';
 import PractitionerPdfsPage from './pages/dashboard/PractitionerPdfsPage';
+import UserDashboardPage from './pages/dashboard/UserDashboardPage';
 
 function App() {
   return (
@@ -24,6 +25,16 @@ function App() {
         <Route path="/registro/tratamiento-datos" element={<Step2DataTreatment />} />
         <Route path="/registro/sociodemografico" element={<Step3Sociodemographic />} />
         <Route path="/registro/consentimiento" element={<Step4Consent />} />
+
+        {/* User dashboard */}
+        <Route
+          path="/dashboard/usuario"
+          element={
+            <ProtectedRoute allowedRoles={['usuario']}>
+              <UserDashboardPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Protected chat */}
         <Route

@@ -3,30 +3,9 @@ import jwt from 'jsonwebtoken';
 import fs from 'node:fs';
 const JWT_SECRET = process.env.JWT_SECRET;
 
-const RISK_LEVELS = ['bajo', 'medio', 'alto', 'critico'];
-const RISK_COLORS = { bajo: '#15803d', medio: '#b45309', alto: '#dc2626', critico: '#991b1b' };
-const APPOINTMENT_COLORS = { programada: '#2f6ee5', completada: '#15803d', cancelada: '#dc2626', reagendada: '#b45309' };
-const PERIODS = new Set(['week', 'month', 'year']);
-
-const normalizePeriod = (value) => (PERIODS.has(value) ? value : 'month');
-const toDayKey = (date) => date.toISOString().slice(0, 10);
-const toMonthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-const normalizeText = (value) => String(value || '')
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .toLowerCase()
-  .replace(/\s+/g, ' ')
-  .trim();
-const buildNameKey = (firstName, lastName) => `${normalizeText(firstName)}|${normalizeText(lastName)}`;
-const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
-const buildPhoneCandidates = (value) => {
-  const base = normalizePhone(value);
-  if (!base) return [];
-  const out = new Set([base]);
-  if (base.startsWith('57') && base.length > 2) out.add(base.slice(2));
-  else out.add(`57${base}`);
-  return [...out];
-};
+if (!JWT_SECRET || JWT_SECRET.length < 16) {
+    throw new Error('JWT_SECRET no configurado o demasiado corto (minimo 16 caracteres)');
+}
 
 const json = (res, statusCode, data) => {
   res.writeHead(statusCode, { 'Content-Type': 'application/json' });
@@ -84,7 +63,6 @@ const requireAuth = async (req, res) => {
     return null;
   }
 
-  // Admin autenticado por variables de entorno — no existe en BD
   if (payload.userId === 'admin-env') {
     return { user: { correo: payload.correo || ENV_ADMIN_EMAIL }, role: 'admin', profileId: null };
   }
@@ -97,438 +75,992 @@ const requireAuth = async (req, res) => {
   return { user, ...(await resolveRole(user)) };
 };
 
-const getPeriodStart = (period, now) => {
-  const start = new Date(now);
-  if (period === 'week') start.setDate(now.getDate() - 6);
-  else if (period === 'month') start.setDate(now.getDate() - 29);
-  else {
-    start.setFullYear(now.getFullYear() - 1);
-    start.setDate(1);
+/* ─────────────────────────────────────────────────────────────
+ *  DASS-21 subscale item indices (1-based)
+ * ───────────────────────────────────────────────────────────── */
+const DASS_DEP_ITEMS = [3, 5, 10, 13, 16, 17, 21];
+const DASS_ANX_ITEMS = [2, 4, 7, 9, 15, 19, 20];
+const DASS_STR_ITEMS = [1, 6, 8, 11, 12, 14, 18];
+
+/* ─────────────────────────────────────────────────────────────
+ *  Parse "items=1=V, 2=V, ..." from HistorialTest.resultados
+ *  Handles both  "items=1=V, 2=V…"  and  "1=V, 2=V…" formats.
+ *  Returns a Map<number, number> of item -> score, or null.
+ * ───────────────────────────────────────────────────────────── */
+const parseItemScores = (raw) => {
+  if (!raw || typeof raw !== 'string') return null;
+  // Find the items portion: everything after "items=" or the whole string
+  let itemsPart = raw;
+  const itemsIdx = raw.indexOf('items=');
+  if (itemsIdx !== -1) {
+    itemsPart = raw.substring(itemsIdx + 6);
   }
-  start.setHours(0, 0, 0, 0);
-  return start;
+  // Remove any trailing lines (fecha lines, etc.)
+  itemsPart = itemsPart.split('\n')[0].trim();
+
+  const map = new Map();
+  // Match patterns like "1=2" or "21=3"
+  const re = /(\d+)\s*=\s*(\d+)/g;
+  let match;
+  while ((match = re.exec(itemsPart)) !== null) {
+    map.set(Number(match[1]), Number(match[2]));
+  }
+  return map.size > 0 ? map : null;
 };
 
-const safeTrend = (current, previous) => {
-  if (previous === 0 && current > 0) return 100;
-  if (previous === 0) return 0;
-  return Number((((current - previous) / previous) * 100).toFixed(1));
-};
-
-const getBuckets = (period, now) => {
-  if (period === 'year') {
-    const out = [];
-    const base = new Date(now.getFullYear(), now.getMonth(), 1);
-    for (let i = 11; i >= 0; i -= 1) {
-      const start = new Date(base.getFullYear(), base.getMonth() - i, 1);
-      out.push({ key: toMonthKey(start), name: start.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '') });
-    }
-    return out;
-  }
-
-  const days = period === 'week' ? 7 : 30;
-  const out = [];
-  for (let i = days - 1; i >= 0; i -= 1) {
-    const start = new Date(now);
-    start.setDate(now.getDate() - i);
-    start.setHours(0, 0, 0, 0);
-    out.push({ key: toDayKey(start), name: start.toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit' }).replace('.', '') });
-  }
-  return out;
-};
-
-const aggregateByBucket = (dates, buckets, keyBuilder) => {
-  const map = new Map(buckets.map((b) => [b.key, 0]));
-  for (const d of dates) {
-    const key = keyBuilder(d);
-    map.set(key, (map.get(key) || 0) + 1);
-  }
-  return buckets.map((b) => ({ name: b.name, value: map.get(b.key) || 0 }));
-};
-
-const parseResponses = (raw) => {
+/* ─────────────────────────────────────────────────────────────
+ *  Parse date from HistorialTest.resultados text
+ *  Looks for "fecha=2026-03-12T21:07:04.340Z" inside the text
+ * ───────────────────────────────────────────────────────────── */
+const parseDateFromResultados = (raw) => {
   if (!raw) return null;
-  if (typeof raw === 'object') return raw;
-  try { return JSON.parse(raw); } catch { return null; }
-};
-
-const normalizeHistorialTestType = (value) => {
-  const normalized = normalizeText(value);
-  if (normalized.includes('ghq12')) return 'ghq12';
-  if (normalized.includes('dass21')) return 'dass21';
+  const m = raw.match(/fecha=([^\n]+)/);
+  if (m) {
+    const d = new Date(m[1].trim());
+    if (!isNaN(d.getTime())) return d;
+  }
   return null;
 };
 
-const ghqRiskLevel = (score) => {
-  if (score >= 20) return 'critico';
-  if (score >= 16) return 'alto';
-  if (score >= 12) return 'medio';
-  return 'bajo';
+/* ─────────────────────────────────────────────────────────────
+ *  DASS-21 severity classification (uses doubled raw score)
+ * ───────────────────────────────────────────────────────────── */
+const dassDepressionLevel = (raw) => {
+  const s = raw * 2;
+  if (s >= 28) return 'Extremadamente severo';
+  if (s >= 21) return 'Severo';
+  if (s >= 14) return 'Moderado';
+  if (s >= 10) return 'Leve';
+  return 'Normal';
+};
+const dassAnxietyLevel = (raw) => {
+  const s = raw * 2;
+  if (s >= 20) return 'Extremadamente severo';
+  if (s >= 15) return 'Severo';
+  if (s >= 10) return 'Moderado';
+  if (s >= 8) return 'Leve';
+  return 'Normal';
+};
+const dassStressLevel = (raw) => {
+  const s = raw * 2;
+  if (s >= 34) return 'Extremadamente severo';
+  if (s >= 26) return 'Severo';
+  if (s >= 19) return 'Moderado';
+  if (s >= 15) return 'Leve';
+  return 'Normal';
 };
 
-const dassBand = (subscale, score) => {
-  if (subscale === 'dep') {
-    if (score >= 14) return 'extremo';
-    if (score >= 11) return 'severo';
-    if (score >= 7) return 'moderado';
-    if (score >= 5) return 'leve';
-    return 'normal';
+/* ─────────────────────────────────────────────────────────────
+ *  Age-range helper
+ * ───────────────────────────────────────────────────────────── */
+const ageRange = (birthDate) => {
+  if (!birthDate) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age--;
+  if (age < 15) return '<15';
+  if (age <= 19) return '15-19';
+  if (age <= 24) return '20-24';
+  if (age <= 29) return '25-29';
+  if (age <= 34) return '30-34';
+  if (age <= 39) return '35-39';
+  if (age <= 44) return '40-44';
+  if (age <= 49) return '45-49';
+  if (age <= 54) return '50-54';
+  if (age <= 59) return '55-59';
+  return '60+';
+};
+
+/* ─────────────────────────────────────────────────────────────
+ *  Escolaridad enum → human-readable
+ * ───────────────────────────────────────────────────────────── */
+const escolaridadMap = {
+  primaria_incompleta: 'Primaria incompleta',
+  primaria_completa: 'Primaria completa',
+  secundaria_incompleta: 'Secundaria incompleta',
+  secundaria_completa: 'Secundaria completa',
+  tecnico_incompleto: 'Técnico incompleto',
+  tecnico_completo: 'Técnico completo',
+  universitario_incompleto: 'Universitario incompleto',
+  universitario_completo: 'Universitario completo',
+  posgrado_incompleto: 'Posgrado incompleto',
+  posgrado_completo: 'Posgrado completo',
+};
+
+/* ─────────────────────────────────────────────────────────────
+ *  Nivel ingresos enum → human-readable
+ * ───────────────────────────────────────────────────────────── */
+const ingresosMap = {
+  nivel_0_1_smmlv: '0-1 SMMLV',
+  nivel_1_2_smmlv: '1-2 SMMLV',
+  nivel_2_3_smmlv: '2-3 SMMLV',
+  nivel_3_4_smmlv: '3-4 SMMLV',
+  mayor_4_smmlv: '>4 SMMLV',
+};
+
+/* ─────────────────────────────────────────────────────────────
+ *  Estado civil enum → human-readable
+ * ───────────────────────────────────────────────────────────── */
+const estadoCivilMap = {
+  soltero: 'Soltero/a',
+  casado: 'Casado/a',
+  union_libre: 'Unión libre',
+  divorciado: 'Divorciado/a',
+  viudo: 'Viudo/a',
+  separado: 'Separado/a',
+};
+
+/* ─────────────────────────────────────────────────────────────
+ *  Helper: group-count from array, returns sorted [{label, count}]
+ * ───────────────────────────────────────────────────────────── */
+const groupCount = (arr) => {
+  const map = new Map();
+  for (const v of arr) {
+    const key = v || 'Sin dato';
+    map.set(key, (map.get(key) || 0) + 1);
   }
-  if (subscale === 'anx') {
-    if (score >= 10) return 'extremo';
-    if (score >= 8) return 'severo';
-    if (score >= 6) return 'moderado';
-    if (score >= 4) return 'leve';
-    return 'normal';
+  return [...map.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count);
+};
+
+/* ─────────────────────────────────────────────────────────────
+ *  Sum items from a Map
+ * ───────────────────────────────────────────────────────────── */
+const sumItems = (itemMap, indices) =>
+  indices.reduce((sum, idx) => sum + (itemMap.get(idx) || 0), 0);
+
+/* ─────────────────────────────────────────────────────────────
+ *  Career normalization — comprehensive (catches 60+ variants)
+ *  Returns exactly 9 canonical careers + 'Otra' catch-all
+ * ───────────────────────────────────────────────────────────── */
+const normalizeCareer = (raw) => {
+  if (!raw) return 'Sin información';
+  const lower = String(raw).trim().toLowerCase();
+
+  // 1. Psicología
+  if (lower.includes('psicolog') || lower.includes('paicolog') || lower.includes('piscolog')) return 'Psicología';
+
+  // 2. Medicina Veterinaria y Zootecnia (MUST be before generic checks)
+  if (lower.includes('veterinar') || lower.includes('zootecn') || lower === 'mvz' || lower === 'mzv' || lower.includes('mvz')) return 'Medicina Veterinaria y Zootecnia';
+
+  // 3. Derecho
+  if (lower.includes('derecho') || lower.includes('jurisprudencia')) return 'Derecho';
+
+  // 4. Arquitectura
+  if (lower.includes('arquitect')) return 'Arquitectura';
+
+  // 5. Ingeniería Industrial
+  if (lower.includes('industrial') || lower.includes('imdustrial')) return 'Ingeniería Industrial';
+
+  // 6. Ingeniería de Software
+  if (lower.includes('software')) return 'Ingeniería de Software';
+
+  // 7. Ingeniería de Sistemas
+  if (lower.includes('sistema')) return 'Ingeniería de Sistemas';
+
+  // 8. Contaduría Pública
+  if (lower.includes('contad') || lower.includes('contab') || lower.includes('auxiliar contable')) return 'Contaduría Pública';
+
+  // 9. Administración de Empresas
+  if (lower.includes('administra') || lower.includes('admon')) return 'Administración de Empresas';
+
+  // Catch-all for anything else
+  return 'Otra';
+};
+
+/* ═══════════════════════════════════════════════════════════════
+ *  getDashboardSummary — complete rewrite
+ * ═══════════════════════════════════════════════════════════════ */
+const getDashboardSummary = async (practitionerEmail = null) => {
+  /* ── 0. Practitioner filter: resolve phone list ─────────── */
+  let filterPhones = null; // null = no filter (show all)
+
+  if (practitionerEmail === 'sin_asignar') {
+    // Patients with NO practitioner linked in envios_correo
+    const [allGhq12Phones, linkedPhones] = await Promise.all([
+      prisma.$queryRawUnsafe(`SELECT DISTINCT telefono COLLATE utf8mb4_unicode_ci AS telefono FROM ghq12`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT DISTINCT telefono_paciente COLLATE utf8mb4_unicode_ci AS telefono_paciente FROM envios_correo`).catch(() => []),
+    ]);
+    const linkedSet = new Set(linkedPhones.map((r) => String(r.telefono_paciente)));
+    filterPhones = allGhq12Phones.map((r) => String(r.telefono)).filter((t) => !linkedSet.has(t));
+    if (filterPhones.length === 0) filterPhones = ['__NO_MATCH__'];
+  } else if (practitionerEmail && practitionerEmail !== 'all') {
+    const phoneRows = await prisma.$queryRawUnsafe(
+      `SELECT DISTINCT telefono_paciente FROM envios_correo WHERE correo_practicante = ?`,
+      practitionerEmail,
+    ).catch(() => []);
+    filterPhones = phoneRows.map((r) => r.telefono_paciente);
+    if (filterPhones.length === 0) filterPhones = ['__NO_MATCH__']; // ensure empty result set
   }
-  if (score >= 17) return 'extremo';
-  if (score >= 13) return 'severo';
-  if (score >= 10) return 'moderado';
-  if (score >= 8) return 'leve';
-  return 'normal';
-};
 
-const riskFromDassBand = (band) => {
-  if (band === 'extremo') return 'critico';
-  if (band === 'severo') return 'alto';
-  if (band === 'moderado') return 'medio';
-  return 'bajo';
-};
+  // SQL IN-clause helper for phone filtering
+  const phoneInClause = (col) => {
+    if (!filterPhones) return '';
+    const escaped = filterPhones.map((p) => `'${String(p).replace(/'/g, "''")}'`).join(',');
+    return ` AND ${col} IN (${escaped})`;
+  };
 
-const worstRisk = (levels) => {
-  const order = { bajo: 0, medio: 1, alto: 2, critico: 3 };
-  return levels.reduce((a, b) => (order[b] > order[a] ? b : a), 'bajo');
-};
-
-const getDashboardSummary = async (period) => {
-  const now = new Date();
-  const periodStart = getPeriodStart(period, now);
-  const previousStart = new Date(periodStart.getTime() - (now.getTime() - periodStart.getTime()));
-
+  /* ── 1. Parallel data fetches ───────────────────────────── */
   const [
     totalPatients,
-    newPatientsThisPeriod,
-    prevPeriodPatients,
-    totalAppointments,
-    pendingAppointments,
-    completedAppointments,
-    cancelledAppointments,
-    rescheduledAppointments,
-    testsPendingRows,
     activePractitioners,
-    historialRows,
-    socialIsolationRows,
-    patientRows,
-    appointmentPeriod,
-    appointmentPrev,
-    growthRows,
-    workloadRows,
+    practitionerRows,
+    ghq12Rows,
+    dassHistorialRows,
+    ghqHistorialRows,
+    userRows,
+    socioRows,
+    ghq12PdfCount,
+    dass21PdfCount,
+    ghq12PdfNoDate,
+    dass21PdfNoDate,
+    patientsWithPractitioner,
+    patientsWithoutPractitioner,
+    // Email tracking data from envios_correo
+    emailTotalRows,
+    emailByPractitionerRows,
+    emailByDayRows,
+    ghq12WithoutPractitionerRows,
   ] = await Promise.all([
-    prisma.informacionUsuario.count().catch(() => 0),
-    prisma.informacionUsuario.count({ where: { fechaCreacion: { gte: periodStart, lte: now } } }).catch(() => 0),
-    prisma.informacionUsuario.count({ where: { fechaCreacion: { gte: previousStart, lt: periodStart } } }).catch(() => 0),
-    prisma.registroCitas.count().catch(() => 0),
-    prisma.registroCitas.count({ where: { estado: { in: ['pendiente', 'programada'] } } }).catch(() => 0),
-    prisma.registroCitas.count({ where: { estado: { in: ['completada', 'atendida', 'finalizada'] } } }).catch(() => 0),
-    prisma.registroCitas.count({ where: { estado: { startsWith: 'cancel' } } }).catch(() => 0),
-    prisma.registroCitas.count({ where: { estado: { startsWith: 'reagend' } } }).catch(() => 0),
-    prisma.informacionUsuario.groupBy({ by: ['testActual'], _count: { _all: true } }).catch(() => []),
+    // Total patients
+    filterPhones
+      ? prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM informacionUsuario WHERE telefonoPersonal IN (${filterPhones.map((p) => `'${String(p).replace(/'/g, "''")}'`).join(',')})`)
+          .then((r) => Number(r?.[0]?.c || 0)).catch(() => 0)
+      : prisma.informacionUsuario.count().catch(() => 0),
+    // Total practitioners
     prisma.practicante.count().catch(() => 0),
-    prisma.historialTest.findMany({
-      select: { usuarioId: true, tipoTest: true, fechaCompletado: true },
-      orderBy: { fechaCompletado: 'desc' },
-    }).catch(() => []),
+    // Practitioner details for workload & gender
     prisma.$queryRawUnsafe(`
-      SELECT COUNT(*) AS c
-      FROM informacion_sociodemografica
-      WHERE LOWER(COALESCE(conQuienVive, '')) LIKE '%solo%'
-    `).catch(() => [{ c: 0 }]),
-    prisma.informacionUsuario.findMany({ select: { flujo: true, estado: true, fechaCreacion: true } }).catch(() => []),
-    prisma.registroCitas.count({ where: { fechaHora: { gte: periodStart, lte: now } } }).catch(() => 0),
-    prisma.registroCitas.count({ where: { fechaHora: { gte: previousStart, lt: periodStart } } }).catch(() => 0),
-    prisma.informacionUsuario.findMany({ where: { fechaCreacion: { gte: new Date(now.getFullYear() - 1, now.getMonth(), 1), lte: now } }, select: { fechaCreacion: true } }).catch(() => []),
-    prisma.$queryRawUnsafe(`
-      SELECT p.idPracticante AS id, p.nombre AS name,
-             COUNT(DISTINCT u.idUsuario) AS patients,
-             COUNT(DISTINCT rc.idCita) AS appointments
+      SELECT p.idPracticante, p.nombre, p.genero,
+             COUNT(DISTINCT u.idUsuario) AS patients
       FROM practicante p
       LEFT JOIN informacionUsuario u ON u.practicanteAsignado = p.idPracticante
-      LEFT JOIN registroCitas rc ON rc.idPracticante = p.idPracticante
-      GROUP BY p.idPracticante, p.nombre
+      GROUP BY p.idPracticante, p.nombre, p.genero
       ORDER BY patients DESC
-      LIMIT 10
     `).catch(() => []),
+    // GHQ-12 from ghq12 table
+    prisma.$queryRawUnsafe(`
+      SELECT idGhq12, telefono, Puntaje, informePdfFecha
+      FROM ghq12 WHERE 1=1${phoneInClause('telefono')}
+    `).catch(() => []),
+    // DASS-21 from HistorialTest
+    filterPhones
+      ? prisma.$queryRawUnsafe(`
+          SELECT ht.id, ht.usuarioId, ht.resultados, ht.fechaCompletado
+          FROM HistorialTest ht
+          JOIN informacionUsuario u ON u.idUsuario = ht.usuarioId
+          WHERE ht.tipoTest = 'interpretacion_dass21'${phoneInClause('u.telefonoPersonal')}
+        `).catch(() => [])
+      : prisma.$queryRawUnsafe(`
+          SELECT id, usuarioId, resultados, fechaCompletado
+          FROM HistorialTest
+          WHERE tipoTest = 'interpretacion_dass21'
+        `).catch(() => []),
+    // GHQ-12 item-level from HistorialTest
+    filterPhones
+      ? prisma.$queryRawUnsafe(`
+          SELECT ht.id, ht.usuarioId, ht.resultados, ht.fechaCompletado
+          FROM HistorialTest ht
+          JOIN informacionUsuario u ON u.idUsuario = ht.usuarioId
+          WHERE ht.tipoTest = 'interpretacion_ghq12'${phoneInClause('u.telefonoPersonal')}
+        `).catch(() => [])
+      : prisma.$queryRawUnsafe(`
+          SELECT id, usuarioId, resultados, fechaCompletado
+          FROM HistorialTest
+          WHERE tipoTest = 'interpretacion_ghq12'
+        `).catch(() => []),
+    // All users for sociodemographic & cross-tabs
+    prisma.$queryRawUnsafe(`
+      SELECT idUsuario, telefonoPersonal, sexo, fechaNacimiento,
+             orientacionSexual, identidadGenero, etnia, discapacidad,
+             perteneceUniversidad, carrera, jornada, semestre
+      FROM informacionUsuario WHERE 1=1${phoneInClause('telefonoPersonal')}
+    `).catch(() => []),
+    // Sociodemographic data
+    filterPhones
+      ? prisma.$queryRawUnsafe(`
+          SELECT s.usuarioId, s.estadoCivil, s.escolaridad, s.nivelIngresos,
+                 s.ocupacion, s.conQuienVive, s.tienePersonasACargo, s.numeroHijos
+          FROM informacion_sociodemografica s
+          JOIN informacionUsuario u ON u.idUsuario = s.usuarioId
+          WHERE 1=1${phoneInClause('u.telefonoPersonal')}
+        `).catch(() => [])
+      : prisma.$queryRawUnsafe(`
+          SELECT s.usuarioId, s.estadoCivil, s.escolaridad, s.nivelIngresos,
+                 s.ocupacion, s.conQuienVive, s.tienePersonasACargo, s.numeroHijos
+          FROM informacion_sociodemografica s
+        `).catch(() => []),
+    // PDF counts
+    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM ghq12 WHERE informePdf IS NOT NULL`).catch(() => [{ c: 0 }]),
+    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM dass21 WHERE informePdf IS NOT NULL`).catch(() => [{ c: 0 }]),
+    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM ghq12 WHERE informePdf IS NOT NULL AND informePdfFecha IS NULL`).catch(() => [{ c: 0 }]),
+    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM dass21 WHERE informePdf IS NOT NULL AND informePdfFecha IS NULL`).catch(() => [{ c: 0 }]),
+    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM informacionUsuario WHERE practicanteAsignado IS NOT NULL`).catch(() => [{ c: 0 }]),
+    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM informacionUsuario WHERE practicanteAsignado IS NULL`).catch(() => [{ c: 0 }]),
+    // Email tracking: total
+    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS total, COUNT(DISTINCT telefono_paciente) AS pacientes FROM envios_correo`).catch(() => [{ total: 0, pacientes: 0 }]),
+    // Email tracking: by practitioner
+    prisma.$queryRawUnsafe(`
+      SELECT correo_practicante, nombre_practicante, COUNT(*) AS emails, COUNT(DISTINCT telefono_paciente) AS pacientes
+      FROM envios_correo GROUP BY correo_practicante, nombre_practicante ORDER BY emails DESC
+    `).catch(() => []),
+    // Email tracking: by day
+    prisma.$queryRawUnsafe(`
+      SELECT DATE(fecha_envio) AS fecha, COUNT(*) AS emails FROM envios_correo GROUP BY DATE(fecha_envio) ORDER BY fecha
+    `).catch(() => []),
+    // Count of GHQ-12 patients NOT in envios_correo (sueltos)
+    prisma.$queryRawUnsafe(`
+      SELECT COUNT(DISTINCT g.telefono) AS c
+      FROM ghq12 g
+      WHERE NOT EXISTS (
+        SELECT 1 FROM envios_correo e
+        WHERE e.telefono_paciente COLLATE utf8mb4_unicode_ci = g.telefono COLLATE utf8mb4_unicode_ci
+      )
+    `).catch(() => [{ c: 0 }]),
   ]);
 
-  const allTestLogs = historialRows
-    .map((row) => ({
-      usuarioId: String(row.usuarioId || ''),
-      tipo: normalizeHistorialTestType(row.tipoTest),
-      fechaCompletado: row.fechaCompletado ? new Date(row.fechaCompletado) : null,
-    }))
-    .filter((row) => row.usuarioId && row.tipo && row.fechaCompletado && !Number.isNaN(row.fechaCompletado.getTime()));
-
-  const testsCompleted = allTestLogs.length;
-  const testsCompletedThisPeriod = allTestLogs.filter((row) => row.fechaCompletado >= periodStart && row.fechaCompletado <= now).length;
-  const testsCompletedPrevPeriod = allTestLogs.filter((row) => row.fechaCompletado >= previousStart && row.fechaCompletado < periodStart).length;
-
-  const latestByUserAndType = new Map();
-  for (const row of allTestLogs) {
-    const key = `${row.usuarioId}|${row.tipo}`;
-    if (!latestByUserAndType.has(key)) {
-      latestByUserAndType.set(key, row);
-    }
-  }
-  const latestTestLogs = [...latestByUserAndType.values()];
-  const latestGhqLogs = latestTestLogs.filter((row) => row.tipo === 'ghq12');
-  const latestDassLogs = latestTestLogs.filter((row) => row.tipo === 'dass21');
-
-  const latestUserIds = [...new Set(latestTestLogs.map((row) => row.usuarioId))];
-  const latestUsers = latestUserIds.length
-    ? await prisma.informacionUsuario.findMany({
-      where: { idUsuario: { in: latestUserIds } },
-      select: { idUsuario: true, telefonoPersonal: true },
-    }).catch(() => [])
-    : [];
-  const phoneByUserId = new Map(
-    latestUsers
-      .filter((u) => u.idUsuario && u.telefonoPersonal)
-      .map((u) => [u.idUsuario, u.telefonoPersonal]),
-  );
-
-  const phonesForLatestLogs = [...new Set(latestUsers.map((u) => u.telefonoPersonal).filter(Boolean))];
-  const [ghqRowsByPhone, dassRowsByPhone] = phonesForLatestLogs.length
-    ? await Promise.all([
-      prisma.ghq12.findMany({
-        where: { telefono: { in: phonesForLatestLogs } },
-        select: { telefono: true, Puntaje: true, resPreg: true, informePdfFecha: true },
-      }).catch(() => []),
-      prisma.dass21.findMany({
-        where: { telefono: { in: phonesForLatestLogs } },
-        select: { telefono: true, puntajeDep: true, puntajeAns: true, puntajeEstr: true, respuestas: true, resPreg: true, informePdfFecha: true },
-      }).catch(() => []),
-    ])
-    : [[], []];
-
-  const ghqByPhone = new Map(ghqRowsByPhone.map((row) => [row.telefono, row]));
-  const dassByPhone = new Map(dassRowsByPhone.map((row) => [row.telefono, row]));
-
-  const ghqSourceRows = latestGhqLogs
-    .map((log) => {
-      const phone = phoneByUserId.get(log.usuarioId);
-      const row = phone ? ghqByPhone.get(phone) : null;
-      if (!row) return null;
-      return { ...row, completedAt: log.fechaCompletado };
-    })
-    .filter(Boolean);
-
-  const dassSourceRowsRaw = latestDassLogs
-    .map((log) => {
-      const phone = phoneByUserId.get(log.usuarioId);
-      const row = phone ? dassByPhone.get(phone) : null;
-      if (!row) return null;
-      return { ...row, completedAt: log.fechaCompletado };
-    })
-    .filter(Boolean);
-
-  // ── DASS-21: calculate real scores from respuestas if puntaje fields are 0 ──
-  // DASS-21 subscale item indices (1-based): Dep=3,5,10,13,16,17,21  Anx=2,4,7,9,15,19,20  Str=1,6,8,11,12,14,18
-  const DASS_DEP_ITEMS = [3, 5, 10, 13, 16, 17, 21];
-  const DASS_ANX_ITEMS = [2, 4, 7, 9, 15, 19, 20];
-  const DASS_STR_ITEMS = [1, 6, 8, 11, 12, 14, 18];
-
-  const calcDassFromResponses = (respuestas) => {
-    if (!respuestas) return null;
-    let arr = respuestas;
-    if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch { return null; } }
-    if (!Array.isArray(arr) || arr.length < 21) return null;
-    const sumItems = (items) => items.reduce((sum, idx) => sum + Number(arr[idx - 1] || 0), 0);
-    return { dep: sumItems(DASS_DEP_ITEMS), anx: sumItems(DASS_ANX_ITEMS), str: sumItems(DASS_STR_ITEMS) };
-  };
-
-  const dassSourceRows = dassSourceRowsRaw.map((row) => {
-    const hasScores = Number(row.puntajeDep || 0) > 0 || Number(row.puntajeAns || 0) > 0 || Number(row.puntajeEstr || 0) > 0;
-    if (hasScores) return row;
-    const calculated = calcDassFromResponses(row.respuestas);
-    if (calculated) {
-      return { ...row, puntajeDep: calculated.dep, puntajeAns: calculated.anx, puntajeEstr: calculated.str };
-    }
-    return row;
-  });
-
-  const ghqCount = ghqSourceRows.length;
-  const dassCount = dassSourceRows.length;
-
-  const riskTotals = { bajo: 0, medio: 0, alto: 0, critico: 0 };
-  const ghqRiskTotals = { bajo: 0, medio: 0, alto: 0, critico: 0 };
-  for (const row of ghqSourceRows) {
-    const level = ghqRiskLevel(Number(row.Puntaje || 0));
-    riskTotals[level] += 1;
-    ghqRiskTotals[level] += 1;
+  /* ── 2. Build lookup maps ───────────────────────────────── */
+  const userByPhone = new Map();   // phone -> user row
+  const userById = new Map();      // idUsuario -> user row
+  for (const u of userRows) {
+    userByPhone.set(u.telefonoPersonal, u);
+    userById.set(u.idUsuario, u);
   }
 
-  const dassLevels = {
-    dep: { bajo: 0, medio: 0, alto: 0, critico: 0 },
-    anx: { bajo: 0, medio: 0, alto: 0, critico: 0 },
-    str: { bajo: 0, medio: 0, alto: 0, critico: 0 },
-    total: { bajo: 0, medio: 0, alto: 0, critico: 0 },
-  };
-  let depSum = 0; let anxSum = 0; let strSum = 0;
-  for (const row of dassSourceRows) {
-    const dep = riskFromDassBand(dassBand('dep', Number(row.puntajeDep || 0)));
-    const anx = riskFromDassBand(dassBand('anx', Number(row.puntajeAns || 0)));
-    const str = riskFromDassBand(dassBand('str', Number(row.puntajeEstr || 0)));
-    const totalLevel = worstRisk([dep, anx, str]);
-    depSum += Number(row.puntajeDep || 0);
-    anxSum += Number(row.puntajeAns || 0);
-    strSum += Number(row.puntajeEstr || 0);
-    dassLevels.dep[dep] += 1; dassLevels.anx[anx] += 1; dassLevels.str[str] += 1; dassLevels.total[totalLevel] += 1;
-    riskTotals[totalLevel] += 1;
+  const socioByUserId = new Map();
+  for (const s of socioRows) {
+    socioByUserId.set(s.usuarioId, s);
   }
 
-  const ghqSubscaleDef = {
-    'Funcionamiento cognitivo': [1, 4],
-    'Ansiedad / tension': [2, 5],
-    'Funcionamiento psicosocial': [3, 7],
-    Afrontamiento: [6, 8],
-    'Estado de animo depresivo': [9, 12],
-    Autoestima: [10, 11],
-  };
-  const subTotals = {}; const subCounts = {};
-  for (const key of Object.keys(ghqSubscaleDef)) { subTotals[key] = 0; subCounts[key] = 0; }
-  for (const row of ghqSourceRows) {
-    const responses = parseResponses(row.resPreg);
-    if (!responses) continue;
-    const itemScores = new Map();
-    for (const [scoreStr, items] of Object.entries(responses)) {
-      const score = Number(scoreStr);
-      if (!Array.isArray(items)) continue;
-      for (const item of items) itemScores.set(Number(item), score);
-    }
-    for (const [name, items] of Object.entries(ghqSubscaleDef)) {
-      let sum = 0; let valid = 0;
-      for (const item of items) {
-        if (itemScores.has(item)) { sum += Number(itemScores.get(item)); valid += 1; }
+  /* ── 2b. Deduplicate: keep only LATEST test per patient ── */
+  // GHQ-12: keep latest record per telefono (by informePdfFecha, tiebreak by idGhq12)
+  const firstGhq12Map = new Map();
+  for (const row of ghq12Rows) {
+    const key = row.telefono;
+    const existing = firstGhq12Map.get(key);
+    if (!existing) {
+      firstGhq12Map.set(key, row);
+    } else {
+      const existDate = existing.informePdfFecha ? new Date(existing.informePdfFecha).getTime() : -Infinity;
+      const newDate = row.informePdfFecha ? new Date(row.informePdfFecha).getTime() : -Infinity;
+      if (newDate > existDate || (newDate === existDate && String(row.idGhq12) > String(existing.idGhq12))) {
+        firstGhq12Map.set(key, row);
       }
-      if (valid > 0) { subTotals[name] += sum; subCounts[name] += 1; }
+    }
+  }
+  const ghq12Deduplicated = Array.from(firstGhq12Map.values());
+
+  // DASS-21 (HistorialTest): keep latest record per usuarioId (by fechaCompletado, tiebreak by id)
+  const firstDassMap = new Map();
+  for (const row of dassHistorialRows) {
+    const key = row.usuarioId;
+    const existing = firstDassMap.get(key);
+    if (!existing) {
+      firstDassMap.set(key, row);
+    } else {
+      const existDate = existing.fechaCompletado ? new Date(existing.fechaCompletado).getTime() : -Infinity;
+      const newDate = row.fechaCompletado ? new Date(row.fechaCompletado).getTime() : -Infinity;
+      if (newDate > existDate || (newDate === existDate && Number(row.id) > Number(existing.id))) {
+        firstDassMap.set(key, row);
+      }
+    }
+  }
+  const dassDeduplicated = Array.from(firstDassMap.values());
+
+  // GHQ-12 HistorialTest: keep latest record per usuarioId (for subscales)
+  const firstGhqHistMap = new Map();
+  for (const row of ghqHistorialRows) {
+    const key = row.usuarioId;
+    const existing = firstGhqHistMap.get(key);
+    if (!existing) {
+      firstGhqHistMap.set(key, row);
+    } else {
+      const existDate = existing.fechaCompletado ? new Date(existing.fechaCompletado).getTime() : -Infinity;
+      const newDate = row.fechaCompletado ? new Date(row.fechaCompletado).getTime() : -Infinity;
+      if (newDate > existDate || (newDate === existDate && Number(row.id) > Number(existing.id))) {
+        firstGhqHistMap.set(key, row);
+      }
+    }
+  }
+  const ghqHistDeduplicated = Array.from(firstGhqHistMap.values());
+
+  /* ── 3. GHQ-12 processing ──────────────────────────────── */
+  const totalGHQ12 = ghq12Deduplicated.length;
+  let ghqScoreSum = 0;
+  const ghqScoreHistogram = new Map(); // score -> count
+  for (let i = 0; i <= 36; i++) ghqScoreHistogram.set(i, 0);
+
+  const ghqRiskBuckets = {
+    'Sin riesgo (0-11)': 0,
+    'Riesgo moderado (12-18)': 0,
+    'Riesgo alto (19-27)': 0,
+    'Riesgo muy alto (28-36)': 0,
+  };
+
+  const ghqByDayMap = new Map(); // 'YYYY-MM-DD' -> { count, scoreSum }
+  let patientsAtRisk = 0;
+
+  for (const row of ghq12Deduplicated) {
+    const score = Number(row.Puntaje || 0);
+    ghqScoreSum += score;
+
+    // Histogram
+    if (score >= 0 && score <= 36) {
+      ghqScoreHistogram.set(score, (ghqScoreHistogram.get(score) || 0) + 1);
+    }
+
+    // Risk distribution
+    if (score >= 28) ghqRiskBuckets['Riesgo muy alto (28-36)']++;
+    else if (score >= 19) ghqRiskBuckets['Riesgo alto (19-27)']++;
+    else if (score >= 12) ghqRiskBuckets['Riesgo moderado (12-18)']++;
+    else ghqRiskBuckets['Sin riesgo (0-11)']++;
+
+    if (score >= 12) patientsAtRisk++;
+
+    // By day
+    if (row.informePdfFecha) {
+      const d = new Date(row.informePdfFecha);
+      if (!isNaN(d.getTime())) {
+        const dayKey = d.toISOString().slice(0, 10);
+        const existing = ghqByDayMap.get(dayKey) || { count: 0, scoreSum: 0 };
+        existing.count++;
+        existing.scoreSum += score;
+        ghqByDayMap.set(dayKey, existing);
+      }
     }
   }
 
-  const ghq12Subscales = Object.entries(ghqSubscaleDef).map(([name, items]) => ({
-    name,
-    items: items.join(', '),
-    average: subCounts[name] > 0 ? Number((subTotals[name] / subCounts[name]).toFixed(1)) : 0,
-    maxPossible: items.length * 3,
-  }));
+  const ghqAverageScore = totalGHQ12 > 0 ? Number((ghqScoreSum / totalGHQ12).toFixed(2)) : 0;
+  const riskPercentage = totalGHQ12 > 0 ? Number(((patientsAtRisk / totalGHQ12) * 100).toFixed(1)) : 0;
 
-  const ghqAvg = ghqSourceRows.length > 0 ? Number((ghqSourceRows.reduce((sum, row) => sum + Number(row.Puntaje || 0), 0) / ghqSourceRows.length).toFixed(1)) : 0;
-  const depAvg = dassSourceRows.length > 0 ? Number((depSum / dassSourceRows.length).toFixed(1)) : 0;
-  const anxAvg = dassSourceRows.length > 0 ? Number((anxSum / dassSourceRows.length).toFixed(1)) : 0;
-  const strAvg = dassSourceRows.length > 0 ? Number((strSum / dassSourceRows.length).toFixed(1)) : 0;
-
-  const activityBuckets = getBuckets(period, now);
-  const activityDates = latestTestLogs
-    .map((row) => row.fechaCompletado)
-    .filter(Boolean)
-    .map((d) => new Date(d))
-    .filter((d) => !Number.isNaN(d.getTime()));
-  const activityData = aggregateByBucket(activityDates, activityBuckets, period === 'year' ? toMonthKey : toDayKey);
-
-  const growthBuckets = (() => {
-    const out = [];
-    const base = new Date(now.getFullYear(), now.getMonth(), 1);
-    for (let i = 11; i >= 0; i -= 1) {
-      const start = new Date(base.getFullYear(), base.getMonth() - i, 1);
-      out.push({ key: toMonthKey(start), name: start.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '') });
-    }
-    return out;
-  })();
-  const growthData = aggregateByBucket(growthRows.map((row) => new Date(row.fechaCreacion)), growthBuckets, toMonthKey);
-
-  const flowMap = new Map();
-  const stateCounts = { aspirante: 0, registrado: totalPatients, con_cita: 0, activo: 0, inactivo: 0 };
-  for (const row of patientRows) {
-    const flow = String(row.flujo || 'register');
-    flowMap.set(flow, (flowMap.get(flow) || 0) + 1);
-    if (row.estado) stateCounts.activo += 1; else stateCounts.inactivo += 1;
+  const ghqRiskDistribution = [
+    { level: 'Sin riesgo (0-11)', count: ghqRiskBuckets['Sin riesgo (0-11)'], percentage: 0, color: '#22c55e' },
+    { level: 'Riesgo moderado (12-18)', count: ghqRiskBuckets['Riesgo moderado (12-18)'], percentage: 0, color: '#f59e0b' },
+    { level: 'Riesgo alto (19-27)', count: ghqRiskBuckets['Riesgo alto (19-27)'], percentage: 0, color: '#f97316' },
+    { level: 'Riesgo muy alto (28-36)', count: ghqRiskBuckets['Riesgo muy alto (28-36)'], percentage: 0, color: '#ef4444' },
+  ];
+  for (const item of ghqRiskDistribution) {
+    item.percentage = totalGHQ12 > 0 ? Number(((item.count / totalGHQ12) * 100).toFixed(1)) : 0;
   }
-  stateCounts.aspirante = await prisma.aspirante.count().catch(() => 0);
-  stateCounts.con_cita = await prisma.registroCitas.groupBy({ by: ['idUsuario'] }).then((rows) => rows.length).catch(() => 0);
 
-  const patientFlowDistribution = ['register', 'assistantFlow', 'testFlow', 'agendFlow', 'finalFlow'].map((flow) => ({
-    name: flow.replace('Flow', '').replace(/^./, (l) => l.toUpperCase()),
-    value: flowMap.get(flow) || 0,
-    color: '#4a8af4',
+  const scoreHistogram = [];
+  for (let i = 0; i <= 36; i++) {
+    scoreHistogram.push({ score: i, count: ghqScoreHistogram.get(i) || 0 });
+  }
+
+  const ghqByDay = [...ghqByDayMap.entries()]
+    .map(([date, data]) => ({
+      date,
+      count: data.count,
+      avgScore: Number((data.scoreSum / data.count).toFixed(2)),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  /* ── 3b. GHQ-12 subscales from HistorialTest ───────────── */
+  // GHQ-12 subscales (2 items each):
+  //   Funcionamiento Cognitivo: items 1,2
+  //   Ansiedad/Tensión: items 3,4
+  //   Funcionamiento Psicosocial: items 5,6
+  //   Afrontamiento: items 7,8
+  //   Estado Ánimo Depresivo: items 9,10
+  //   Autoestima: items 11,12
+  const ghqSubscaleDefs = {
+    funcionamientoCognitivo: { items: [1, 2], label: 'Funcionamiento Cognitivo' },
+    ansiedadTension: { items: [3, 4], label: 'Ansiedad / Tensión' },
+    funcionamientoPsicosocial: { items: [5, 6], label: 'Funcionamiento Psicosocial' },
+    afrontamiento: { items: [7, 8], label: 'Afrontamiento' },
+    estadoAnimoDepresivo: { items: [9, 10], label: 'Estado de Ánimo Depresivo' },
+    autoestima: { items: [11, 12], label: 'Autoestima' },
+  };
+
+  const subscaleSums = {};
+  const subscaleCounts = {};
+  for (const key of Object.keys(ghqSubscaleDefs)) {
+    subscaleSums[key] = 0;
+    subscaleCounts[key] = 0;
+  }
+
+  for (const row of ghqHistDeduplicated) {
+    const itemMap = parseItemScores(String(row.resultados || ''));
+    if (!itemMap) continue;
+
+    for (const [key, def] of Object.entries(ghqSubscaleDefs)) {
+      const val = sumItems(itemMap, def.items);
+      subscaleSums[key] += val;
+      subscaleCounts[key]++;
+    }
+  }
+
+  const ghqSubscales = {};
+  for (const [key, def] of Object.entries(ghqSubscaleDefs)) {
+    ghqSubscales[key] = {
+      avg: subscaleCounts[key] > 0
+        ? Number((subscaleSums[key] / subscaleCounts[key]).toFixed(2))
+        : 0,
+      label: def.label,
+    };
+  }
+
+  /* ── 4. DASS-21 processing from HistorialTest ──────────── */
+  const totalDASS21 = dassDeduplicated.length;
+  let depSumTotal = 0;
+  let anxSumTotal = 0;
+  let strSumTotal = 0;
+  let dassValidCount = 0;
+
+  const dassLevelColors = {
+    Normal: '#22c55e',
+    Leve: '#84cc16',
+    Moderado: '#f59e0b',
+    Severo: '#f97316',
+    'Extremadamente severo': '#ef4444',
+  };
+  const dassLevelNames = ['Normal', 'Leve', 'Moderado', 'Severo', 'Extremadamente severo'];
+
+  const depDist = new Map(dassLevelNames.map((l) => [l, 0]));
+  const anxDist = new Map(dassLevelNames.map((l) => [l, 0]));
+  const strDist = new Map(dassLevelNames.map((l) => [l, 0]));
+
+  const dassByDayMap = new Map(); // 'YYYY-MM-DD' -> { count, depSum, anxSum, strSum }
+
+  for (const row of dassDeduplicated) {
+    const itemMap = parseItemScores(String(row.resultados || ''));
+    if (!itemMap || itemMap.size < 21) continue;
+
+    const depRaw = sumItems(itemMap, DASS_DEP_ITEMS);
+    const anxRaw = sumItems(itemMap, DASS_ANX_ITEMS);
+    const strRaw = sumItems(itemMap, DASS_STR_ITEMS);
+
+    depSumTotal += depRaw;
+    anxSumTotal += anxRaw;
+    strSumTotal += strRaw;
+    dassValidCount++;
+
+    // Severity classification
+    const depLevel = dassDepressionLevel(depRaw);
+    const anxLevel = dassAnxietyLevel(anxRaw);
+    const strLevel = dassStressLevel(strRaw);
+
+    depDist.set(depLevel, (depDist.get(depLevel) || 0) + 1);
+    anxDist.set(anxLevel, (anxDist.get(anxLevel) || 0) + 1);
+    strDist.set(strLevel, (strDist.get(strLevel) || 0) + 1);
+
+    // By day — prefer fecha from resultados text, fall back to fechaCompletado
+    let dateObj = parseDateFromResultados(String(row.resultados || ''));
+    if (!dateObj && row.fechaCompletado) {
+      dateObj = new Date(row.fechaCompletado);
+    }
+    if (dateObj && !isNaN(dateObj.getTime())) {
+      const dayKey = dateObj.toISOString().slice(0, 10);
+      const existing = dassByDayMap.get(dayKey) || { count: 0, depSum: 0, anxSum: 0, strSum: 0 };
+      existing.count++;
+      existing.depSum += depRaw;
+      existing.anxSum += anxRaw;
+      existing.strSum += strRaw;
+      dassByDayMap.set(dayKey, existing);
+    }
+  }
+
+  const buildDistArray = (distMap) =>
+    dassLevelNames.map((level) => ({
+      level,
+      count: distMap.get(level) || 0,
+      percentage: dassValidCount > 0
+        ? Number((((distMap.get(level) || 0) / dassValidCount) * 100).toFixed(1))
+        : 0,
+      color: dassLevelColors[level],
+    }));
+
+  const dassByDay = [...dassByDayMap.entries()]
+    .map(([date, d]) => ({
+      date,
+      count: d.count,
+      avgDep: Number((d.depSum / d.count).toFixed(2)),
+      avgAnx: Number((d.anxSum / d.count).toFixed(2)),
+      avgStr: Number((d.strSum / d.count).toFixed(2)),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  /* ── 5. Sociodemographic processing ────────────────────── */
+  const totalSocio = socioRows.length;
+  const sexArr = [];
+  const ageRangesArr = [];
+  const civilStatusArr = [];
+  const educationArr = [];
+  const incomeArr = [];
+  const occupationArr = [];
+  const sexualOrientationArr = [];
+  const ethnicityArr = [];
+  let disabilityYes = 0;
+  let disabilityNo = 0;
+  let belongsUniversity = 0;
+  let notBelongsUniversity = 0;
+  const careerArr = [];
+  const scheduleArr = [];
+
+  for (const u of userRows) {
+    const socio = socioByUserId.get(u.idUsuario);
+
+    // Sex (from informacionUsuario)
+    sexArr.push(u.sexo || 'No informa');
+
+    // Age range
+    if (u.fechaNacimiento) {
+      const range = ageRange(new Date(u.fechaNacimiento));
+      if (range) ageRangesArr.push(range);
+    }
+
+    // Sexual orientation, ethnicity, disability, university (from informacionUsuario)
+    sexualOrientationArr.push(u.orientacionSexual || 'Prefiero no decir');
+    ethnicityArr.push(u.etnia || 'Prefiero no decir');
+
+    const dis = String(u.discapacidad || 'No').toLowerCase();
+    if (dis === 'no' || dis === 'no informa') disabilityNo++;
+    else disabilityYes++;
+
+    const belongs = String(u.perteneceUniversidad || 'No').toLowerCase();
+    if (belongs === 'si' || belongs === 'sí') {
+      belongsUniversity++;
+      if (u.carrera) careerArr.push(normalizeCareer(u.carrera));
+      if (u.jornada) scheduleArr.push(u.jornada);
+    } else {
+      notBelongsUniversity++;
+    }
+
+    // Sociodemographic fields
+    if (socio) {
+      civilStatusArr.push(estadoCivilMap[socio.estadoCivil] || socio.estadoCivil || 'Sin dato');
+      educationArr.push(escolaridadMap[socio.escolaridad] || socio.escolaridad || 'Sin dato');
+      incomeArr.push(ingresosMap[socio.nivelIngresos] || socio.nivelIngresos || 'Sin dato');
+      occupationArr.push(socio.ocupacion || 'Sin dato');
+    }
+  }
+
+  const buildGroupedArray = (arr, keyName) => {
+    const map = new Map();
+    for (const v of arr) {
+      map.set(v, (map.get(v) || 0) + 1);
+    }
+    return [...map.entries()]
+      .map(([label, count]) => ({ [keyName]: label, count }))
+      .sort((a, b) => b.count - a.count);
+  };
+
+  const sexGrouped = buildGroupedArray(sexArr, 'label');
+  const total = sexArr.length || 1;
+  const sexWithPct = sexGrouped.map((item) => ({
+    label: item.label,
+    count: item.count,
+    pct: Number(((item.count / total) * 100).toFixed(1)),
   }));
 
-  const patientStateDistribution = [
-    { name: 'Aspirante', value: stateCounts.aspirante, color: '#94a3b8' },
-    { name: 'Registrado', value: stateCounts.registrado, color: '#4a8af4' },
-    { name: 'Con cita', value: stateCounts.con_cita, color: '#2f6ee5' },
-    { name: 'Activo', value: stateCounts.activo, color: '#15803d' },
-    { name: 'Inactivo', value: stateCounts.inactivo, color: '#64748b' },
-  ];
+  const ageRangeOrder = ['<15', '15-19', '20-24', '25-29', '30-34', '35-39', '40-44', '45-49', '50-54', '55-59', '60+'];
+  const ageMap = new Map();
+  for (const r of ageRangesArr) ageMap.set(r, (ageMap.get(r) || 0) + 1);
+  const ageRangesGrouped = ageRangeOrder
+    .filter((r) => ageMap.has(r))
+    .map((r) => ({ range: r, count: ageMap.get(r) || 0 }));
 
-  const appointmentsByStatus = [
-    { name: 'Programada', value: pendingAppointments, color: APPOINTMENT_COLORS.programada },
-    { name: 'Completada', value: completedAppointments, color: APPOINTMENT_COLORS.completada },
-    { name: 'Cancelada', value: cancelledAppointments, color: APPOINTMENT_COLORS.cancelada },
-    { name: 'Reagendada', value: rescheduledAppointments, color: APPOINTMENT_COLORS.reagendada },
-  ];
+  const topCareers = buildGroupedArray(careerArr, 'career').slice(0, 15);
+  const scheduleGrouped = buildGroupedArray(scheduleArr, 'type');
 
-  const testsByType = [
-    { name: 'GHQ12', completed: latestGhqLogs.length, pending: testsPendingRows.find((row) => String(row.testActual || '').toUpperCase().includes('GHQ'))?._count?._all || 0 },
-    { name: 'DASS21', completed: latestDassLogs.length, pending: testsPendingRows.find((row) => String(row.testActual || '').toUpperCase().includes('DASS'))?._count?._all || 0 },
-  ];
+  /* ── 5b. Academic profile (careers, jornada, semestre) ──── */
+  const semestreArr = [];
+  for (const u of userRows) {
+    if (u.semestre) semestreArr.push(String(u.semestre));
+  }
 
-  const highRiskAlerts = riskTotals.alto + riskTotals.critico;
+  const topCareersNormalized = buildGroupedArray(careerArr, 'career');
+  const jornadaGrouped = buildGroupedArray(scheduleArr, 'type');
+  const semestreGrouped = buildGroupedArray(semestreArr, 'semestre')
+    .sort((a, b) => {
+      const na = parseInt(a.semestre, 10);
+      const nb = parseInt(b.semestre, 10);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return a.semestre.localeCompare(b.semestre);
+    });
 
+  /* ── 6. Cross-tabulations (GHQ-12 by demographics) ─────── */
+  // Build phone->ghq score map from deduplicated ghq12 (first test per patient)
+  const ghqByPhone = new Map(); // phone -> { score, atRisk }
+  for (const row of ghq12Deduplicated) {
+    const phone = row.telefono;
+    const score = Number(row.Puntaje || 0);
+    ghqByPhone.set(phone, { score, atRisk: score >= 12 });
+  }
+
+  // GHQ-12 by Sex
+  const ghqBySexMap = new Map(); // sex -> { atRisk, noRisk, total, scoreSum }
+  for (const [phone, ghqData] of ghqByPhone) {
+    const user = userByPhone.get(phone);
+    if (!user) continue;
+    const sex = user.sexo || 'No informa';
+    const existing = ghqBySexMap.get(sex) || { atRisk: 0, noRisk: 0, total: 0, scoreSum: 0 };
+    existing.total++;
+    existing.scoreSum += ghqData.score;
+    if (ghqData.atRisk) existing.atRisk++;
+    else existing.noRisk++;
+    ghqBySexMap.set(sex, existing);
+  }
+  const ghq12BySex = [...ghqBySexMap.entries()].map(([sex, d]) => ({
+    sex,
+    atRisk: d.atRisk,
+    noRisk: d.noRisk,
+    total: d.total,
+    riskPct: d.total > 0 ? Number(((d.atRisk / d.total) * 100).toFixed(1)) : 0,
+    avgScore: d.total > 0 ? Number((d.scoreSum / d.total).toFixed(2)) : 0,
+  })).sort((a, b) => b.total - a.total);
+
+  // GHQ-12 by Age
+  const ghqByAgeMap = new Map();
+  for (const [phone, ghqData] of ghqByPhone) {
+    const user = userByPhone.get(phone);
+    if (!user || !user.fechaNacimiento) continue;
+    const range = ageRange(new Date(user.fechaNacimiento));
+    if (!range) continue;
+    const existing = ghqByAgeMap.get(range) || { atRisk: 0, total: 0, scoreSum: 0 };
+    existing.total++;
+    existing.scoreSum += ghqData.score;
+    if (ghqData.atRisk) existing.atRisk++;
+    ghqByAgeMap.set(range, existing);
+  }
+  const ghq12ByAge = ageRangeOrder
+    .filter((r) => ghqByAgeMap.has(r))
+    .map((range) => {
+      const d = ghqByAgeMap.get(range);
+      return {
+        range,
+        atRisk: d.atRisk,
+        total: d.total,
+        riskPct: d.total > 0 ? Number(((d.atRisk / d.total) * 100).toFixed(1)) : 0,
+        avgScore: d.total > 0 ? Number((d.scoreSum / d.total).toFixed(2)) : 0,
+      };
+    });
+
+  // GHQ-12 by Civil Status
+  const ghqByCivilMap = new Map();
+  for (const [phone, ghqData] of ghqByPhone) {
+    const user = userByPhone.get(phone);
+    if (!user) continue;
+    const socio = socioByUserId.get(user.idUsuario);
+    if (!socio) continue;
+    const status = estadoCivilMap[socio.estadoCivil] || socio.estadoCivil || 'Sin dato';
+    const existing = ghqByCivilMap.get(status) || { atRisk: 0, total: 0, scoreSum: 0 };
+    existing.total++;
+    existing.scoreSum += ghqData.score;
+    if (ghqData.atRisk) existing.atRisk++;
+    ghqByCivilMap.set(status, existing);
+  }
+  const ghq12ByCivilStatus = [...ghqByCivilMap.entries()]
+    .map(([status, d]) => ({
+      status,
+      atRisk: d.atRisk,
+      total: d.total,
+      riskPct: d.total > 0 ? Number(((d.atRisk / d.total) * 100).toFixed(1)) : 0,
+      avgScore: d.total > 0 ? Number((d.scoreSum / d.total).toFixed(2)) : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  // GHQ-12 by Income
+  const ghqByIncomeMap = new Map();
+  for (const [phone, ghqData] of ghqByPhone) {
+    const user = userByPhone.get(phone);
+    if (!user) continue;
+    const socio = socioByUserId.get(user.idUsuario);
+    if (!socio) continue;
+    const level = ingresosMap[socio.nivelIngresos] || socio.nivelIngresos || 'Sin dato';
+    const existing = ghqByIncomeMap.get(level) || { atRisk: 0, total: 0, scoreSum: 0 };
+    existing.total++;
+    existing.scoreSum += ghqData.score;
+    if (ghqData.atRisk) existing.atRisk++;
+    ghqByIncomeMap.set(level, existing);
+  }
+  const ghq12ByIncome = [...ghqByIncomeMap.entries()]
+    .map(([level, d]) => ({
+      level,
+      atRisk: d.atRisk,
+      total: d.total,
+      riskPct: d.total > 0 ? Number(((d.atRisk / d.total) * 100).toFixed(1)) : 0,
+      avgScore: d.total > 0 ? Number((d.scoreSum / d.total).toFixed(2)) : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  // GHQ-12 by Career (normalized)
+  const ghqByCareerMap = new Map();
+  for (const [phone, ghqData] of ghqByPhone) {
+    const user = userByPhone.get(phone);
+    if (!user || !user.carrera) continue;
+    const career = normalizeCareer(user.carrera);
+    if (!career) continue;
+    const existing = ghqByCareerMap.get(career) || { atRisk: 0, total: 0, scoreSum: 0 };
+    existing.total++;
+    existing.scoreSum += ghqData.score;
+    if (ghqData.atRisk) existing.atRisk++;
+    ghqByCareerMap.set(career, existing);
+  }
+  const ghq12ByCareer = [...ghqByCareerMap.entries()]
+    .map(([career, d]) => ({
+      career,
+      atRisk: d.atRisk,
+      total: d.total,
+      riskPct: d.total > 0 ? Number(((d.atRisk / d.total) * 100).toFixed(1)) : 0,
+      avgScore: d.total > 0 ? Number((d.scoreSum / d.total).toFixed(2)) : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  // GHQ-12 by Semestre
+  const ghqBySemestreMap = new Map();
+  for (const [phone, ghqData] of ghqByPhone) {
+    const user = userByPhone.get(phone);
+    if (!user || !user.semestre) continue;
+    const sem = String(user.semestre);
+    const existing = ghqBySemestreMap.get(sem) || { atRisk: 0, total: 0, scoreSum: 0 };
+    existing.total++;
+    existing.scoreSum += ghqData.score;
+    if (ghqData.atRisk) existing.atRisk++;
+    ghqBySemestreMap.set(sem, existing);
+  }
+  const ghq12BySemestre = [...ghqBySemestreMap.entries()]
+    .map(([semestre, d]) => ({
+      semestre,
+      atRisk: d.atRisk,
+      total: d.total,
+      riskPct: d.total > 0 ? Number(((d.atRisk / d.total) * 100).toFixed(1)) : 0,
+      avgScore: d.total > 0 ? Number((d.scoreSum / d.total).toFixed(2)) : 0,
+    }))
+    .sort((a, b) => {
+      const na = parseInt(a.semestre, 10);
+      const nb = parseInt(b.semestre, 10);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return a.semestre.localeCompare(b.semestre);
+    });
+
+  // GHQ-12 by Jornada
+  const ghqByJornadaMap = new Map();
+  for (const [phone, ghqData] of ghqByPhone) {
+    const user = userByPhone.get(phone);
+    if (!user || !user.jornada) continue;
+    const jornada = String(user.jornada);
+    const existing = ghqByJornadaMap.get(jornada) || { atRisk: 0, total: 0, scoreSum: 0 };
+    existing.total++;
+    existing.scoreSum += ghqData.score;
+    if (ghqData.atRisk) existing.atRisk++;
+    ghqByJornadaMap.set(jornada, existing);
+  }
+  const ghq12ByJornada = [...ghqByJornadaMap.entries()]
+    .map(([jornada, d]) => ({
+      jornada,
+      atRisk: d.atRisk,
+      total: d.total,
+      riskPct: d.total > 0 ? Number(((d.atRisk / d.total) * 100).toFixed(1)) : 0,
+      avgScore: d.total > 0 ? Number((d.scoreSum / d.total).toFixed(2)) : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  /* ── 6b. Notification / PDF tracking ────────────────────── */
+  const ghq12PdfTotal = Number(ghq12PdfCount?.[0]?.c || 0);
+  const dass21PdfTotal = Number(dass21PdfCount?.[0]?.c || 0);
+
+  // Email tracking from envios_correo (real data)
+  const emailTotal = Number(emailTotalRows?.[0]?.total || 0);
+  const emailUniquePatients = Number(emailTotalRows?.[0]?.pacientes || 0);
+  const emailPatientsWithoutPractitioner = Number(ghq12WithoutPractitionerRows?.[0]?.c || 0);
+  const emailByPractitioner = (emailByPractitionerRows || []).map((r) => ({
+    name: String(r.nombre_practicante || 'Sin nombre'),
+    email: String(r.correo_practicante || ''),
+    emailsSent: Number(r.emails || 0),
+    uniquePatients: Number(r.pacientes || 0),
+  }));
+  const emailByDay = (emailByDayRows || []).map((r) => ({
+    date: r.fecha ? (r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : String(r.fecha)) : null,
+    count: Number(r.emails || 0),
+  })).filter((r) => r.date);
+
+  /* ── 7. Practitioners processing ───────────────────────── */
+  /* ── 7. Build response ─────────────────────────────────── */
   return {
-    period,
-    totalPatients,
-    newPatientsThisPeriod,
-    totalAppointments,
-    pendingAppointments,
-    completedAppointments,
-    cancelledAppointments,
-    rescheduledAppointments,
-    highRiskAlerts,
-    testsCompleted,
-    activePractitioners,
-    trends: {
-      patients: safeTrend(newPatientsThisPeriod, prevPeriodPatients),
-      appointments: safeTrend(appointmentPeriod, appointmentPrev),
-      alerts: safeTrend(highRiskAlerts, 0),
-      tests: safeTrend(testsCompletedThisPeriod, testsCompletedPrevPeriod),
+    overview: {
+      totalPatients,
+      totalGHQ12,
+      totalDASS21,
+      activePractitioners,
+      patientsAtRisk,
+      riskPercentage,
     },
-    averages: { anxiety: anxAvg, depression: depAvg, stress: strAvg },
-    activityData,
-    growthData,
-    riskDistribution: RISK_LEVELS.map((risk) => ({ name: risk.charAt(0).toUpperCase() + risk.slice(1), value: riskTotals[risk], color: RISK_COLORS[risk] })),
-    psychEventsDistribution: [
-      { type: 'ansiedad_severa', name: 'Ansiedad severa', value: dassLevels.anx.alto + dassLevels.anx.critico, color: '#2f6ee5' },
-      { type: 'depresion_critica', name: 'Depresion critica', value: dassLevels.dep.critico, color: '#2f6ee5' },
-      { type: 'estres_agudo', name: 'Estres agudo', value: dassLevels.str.alto + dassLevels.str.critico, color: '#2f6ee5' },
-      { type: 'aislamiento_social', name: 'Aislamiento social', value: Number(socialIsolationRows?.[0]?.c || 0), color: '#2f6ee5' },
-    ],
-    patientStateDistribution,
-    patientFlowDistribution,
-    appointmentsByStatus,
-    ghq12Distribution: RISK_LEVELS.map((risk) => ({ name: risk.charAt(0).toUpperCase() + risk.slice(1), value: ghqRiskTotals[risk], color: RISK_COLORS[risk] })),
-    ghq12Subscales,
-    ghq12Averages: { averageScore: ghqAvg, averageMentalHealth: ghqAvg, totalEvaluations: ghqCount },
-    dass21Distribution: RISK_LEVELS.map((risk) => ({ name: risk.charAt(0).toUpperCase() + risk.slice(1), value: dassLevels.total[risk], color: RISK_COLORS[risk] })),
-    dass21Subscales: [
-      { name: 'Depresion', items: '3, 5, 10, 13, 16, 17, 21', average: depAvg, maxPossible: 42, levels: dassLevels.dep },
-      { name: 'Ansiedad', items: '2, 4, 7, 9, 15, 19, 20', average: anxAvg, maxPossible: 42, levels: dassLevels.anx },
-      { name: 'Estres', items: '1, 6, 8, 11, 12, 14, 18', average: strAvg, maxPossible: 42, levels: dassLevels.str },
-    ],
-    dass21Averages: { depression: depAvg, anxiety: anxAvg, stress: strAvg, totalEvaluations: dassCount },
-    testsByType,
-    practitionerWorkload: workloadRows.map((row) => ({ id: String(row.id), name: String(row.name || 'Sin nombre'), patients: Number(row.patients || 0), appointments: Number(row.appointments || 0) })),
+
+    ghq12: {
+      totalTests: totalGHQ12,
+      averageScore: ghqAverageScore,
+      riskDistribution: ghqRiskDistribution,
+      scoreHistogram,
+      subscales: ghqSubscales,
+      byDay: ghqByDay,
+    },
+
+    dass21: {
+      totalTests: totalDASS21,
+      averages: {
+        depression: dassValidCount > 0 ? Number((depSumTotal / dassValidCount).toFixed(2)) : 0,
+        anxiety: dassValidCount > 0 ? Number((anxSumTotal / dassValidCount).toFixed(2)) : 0,
+        stress: dassValidCount > 0 ? Number((strSumTotal / dassValidCount).toFixed(2)) : 0,
+      },
+      depression: { distribution: buildDistArray(depDist) },
+      anxiety: { distribution: buildDistArray(anxDist) },
+      stress: { distribution: buildDistArray(strDist) },
+      byDay: dassByDay,
+    },
+
+    sociodemographic: {
+      totalRecords: totalSocio,
+      sex: sexWithPct,
+      ageRanges: ageRangesGrouped,
+      civilStatus: buildGroupedArray(civilStatusArr, 'status'),
+      education: buildGroupedArray(educationArr, 'level'),
+      income: buildGroupedArray(incomeArr, 'level'),
+      occupation: buildGroupedArray(occupationArr, 'type'),
+      sexualOrientation: buildGroupedArray(sexualOrientationArr, 'orientation'),
+      ethnicity: buildGroupedArray(ethnicityArr, 'group'),
+      disability: { yes: disabilityYes, no: disabilityNo },
+      university: {
+        belongs: belongsUniversity,
+        doesNotBelong: notBelongsUniversity,
+        topCareers,
+        schedule: scheduleGrouped,
+      },
+      // Academic data merged into sociodemographic
+      topCareers: topCareersNormalized,
+      jornada: jornadaGrouped,
+      semestre: semestreGrouped,
+    },
+
+    crossTabs: {
+      ghq12BySex,
+      ghq12ByAge,
+      ghq12ByCivilStatus,
+      ghq12ByIncome,
+      ghq12ByCareer,
+      ghq12BySemestre,
+      ghq12ByJornada,
+    },
+
+    emailTracking: {
+      totalEmailsSent: emailTotal,
+      uniquePatients: emailUniquePatients,
+      patientsWithoutPractitioner: emailPatientsWithoutPractitioner,
+      totalPdfsGenerated: { ghq12: ghq12PdfTotal, dass21: dass21PdfTotal },
+      ccRecipient: 'chatbotpsicologia@gmail.com',
+      byPractitioner: emailByPractitioner,
+      byDay: emailByDay,
+      currentFilter: practitionerEmail || 'all',
+    },
   };
 };
 
+/* ═══════════════════════════════════════════════════════════════
+ *  Practitioner DTO (unchanged)
+ * ═══════════════════════════════════════════════════════════════ */
 const toPractitionerDto = (row) => ({
   id: row.idPracticante,
   name: row.nombre || '',
@@ -555,10 +1087,95 @@ export function registerDashboardRoutes(server) {
       const auth = await requireAuth(req, res);
       if (!auth) return;
       if (auth.role !== 'admin') return json(res, 403, { error: 'No autorizado' });
-      return json(res, 200, await getDashboardSummary(normalizePeriod(req.query?.periodo || req.query?.period)));
+      const practitionerEmail = req.query?.practicante || null;
+      return json(res, 200, await getDashboardSummary(practitionerEmail));
     } catch (error) {
       console.error('Error /v1/dashboard/summary:', error);
       return json(res, 500, { error: 'Error interno del servidor' });
+    }
+  });
+
+  server.get('/v1/dashboard/my-results', async (req, res) => {
+    try {
+      const auth = await requireAuth(req, res);
+      if (!auth) return;
+
+      const tests = await prisma.historialTest.findMany({
+        where: { usuarioId: auth.user.idUsuario },
+        orderBy: { fechaCompletado: 'desc' },
+        take: 20,
+        select: {
+          id: true,
+          tipoTest: true,
+          fechaCompletado: true,
+          resultados: true,
+        },
+      }).catch(() => []);
+
+      const mapType = (tipo) => {
+        const t = String(tipo || '').toLowerCase();
+        if (t.includes('ghq12')) return 'GHQ-12';
+        if (t.includes('dass21')) return 'DASS-21';
+        return 'Test';
+      };
+
+      const out = tests.map((row) => ({
+        id: String(row.id),
+        testType: mapType(row.tipoTest),
+        completedAt: row.fechaCompletado,
+        score: 0,
+        maxScore: String(row.tipoTest || '').toLowerCase().includes('ghq12') ? 36 : 63,
+        riskLevel: 'No disponible',
+        summary: String(row.resultados || '').slice(0, 240),
+      }));
+
+      return json(res, 200, out);
+    } catch (error) {
+      console.error('Error /v1/dashboard/my-results:', error);
+      return json(res, 500, { error: 'Error al consultar resultados del usuario' });
+    }
+  });
+
+  server.get('/v1/dashboard/my-appointments', async (req, res) => {
+    try {
+      const auth = await requireAuth(req, res);
+      if (!auth) return;
+
+      const rows = await prisma.registroCitas.findMany({
+        where: { idUsuario: auth.user.idUsuario },
+        orderBy: { fechaHora: 'desc' },
+        take: 20,
+        select: {
+          idCita: true,
+          fechaHora: true,
+          estado: true,
+          practicante: { select: { nombre: true } },
+        },
+      }).catch(() => []);
+
+      const statusMap = (estado) => {
+        const v = String(estado || '').toLowerCase();
+        if (v.includes('cancel')) return 'cancelada';
+        if (v.includes('complet') || v.includes('finaliz') || v.includes('atendid')) return 'completada';
+        if (v.includes('confirm')) return 'confirmada';
+        return 'pendiente';
+      };
+
+      const out = rows.map((row) => {
+        const date = row.fechaHora ? new Date(row.fechaHora) : new Date();
+        return {
+          id: String(row.idCita || ''),
+          date: date.toISOString(),
+          time: date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+          practitionerName: row.practicante?.nombre || 'Sin asignar',
+          status: statusMap(row.estado),
+        };
+      });
+
+      return json(res, 200, out);
+    } catch (error) {
+      console.error('Error /v1/dashboard/my-appointments:', error);
+      return json(res, 500, { error: 'Error al consultar citas del usuario' });
     }
   });
 
@@ -727,76 +1344,7 @@ export function registerDashboardRoutes(server) {
           }
         }
 
-        const userByPhone = new Map();
-        for (const user of users) {
-          const candidates = buildPhoneCandidates(user.telefonoPersonal);
-          for (const candidate of candidates) {
-            if (!userByPhone.has(candidate)) userByPhone.set(candidate, user);
-          }
-        }
-
-        const unresolvedUsers = users.filter((u) => {
-          const assigned = u.practicanteAsignado || (u.idUsuario ? latestPractitionerByUser.get(u.idUsuario) : null);
-          return !assigned;
-        });
-
-        const userKey = (u) => buildNameKey(u.primerNombre, u.primerApellido);
-        const unresolvedByKey = new Map(unresolvedUsers.map((u) => [userKey(u), u]));
-
-        const citasByUserKey = unresolvedUsers.length
-          ? await prisma.cita.findMany({
-            where: {
-              OR: unresolvedUsers.map((u) => ({
-                primerNombre: String(u.primerNombre || ''),
-                primerApellido: String(u.primerApellido || ''),
-              })),
-            },
-            select: {
-              primerNombre: true,
-              primerApellido: true,
-              nombrePracticante: true,
-              fechaHora: true,
-            },
-            orderBy: { fechaHora: 'desc' },
-          })
-          : [];
-
-        const latestPractitionerNameByUserKey = new Map();
-        for (const cita of citasByUserKey) {
-          const key = buildNameKey(cita.primerNombre, cita.primerApellido);
-          if (!unresolvedByKey.has(key) || latestPractitionerNameByUserKey.has(key)) continue;
-          latestPractitionerNameByUserKey.set(key, String(cita.nombrePracticante || '').trim());
-        }
-
-        const emailPractitionerByPatientName = new Map();
-        const emailRowsForFallback = await prisma.$queryRawUnsafe(`
-          SELECT patient_name, practitioner_name, uploaded_at
-          FROM email_pdf_cache
-          WHERE practitioner_name IS NOT NULL
-            AND practitioner_name <> ''
-            AND patient_name IS NOT NULL
-            AND patient_name <> ''
-          ORDER BY uploaded_at DESC
-          LIMIT 5000
-        `).catch(() => []);
-        for (const row of emailRowsForFallback) {
-          const patientKey = normalizeText(row.patient_name);
-          const practitionerName = String(row.practitioner_name || '').trim();
-          if (!patientKey || !practitionerName || emailPractitionerByPatientName.has(patientKey)) continue;
-          emailPractitionerByPatientName.set(patientKey, practitionerName);
-        }
-
-        const practNamesFromCitas = [...new Set([...latestPractitionerNameByUserKey.values()].filter(Boolean))];
-        const practNamesFromEmail = [...new Set([...emailPractitionerByPatientName.values()].filter(Boolean))];
-        const practNamesForFallback = [...new Set([...practNamesFromCitas, ...practNamesFromEmail])];
-        const practitionersByName = practNamesForFallback.length
-          ? await prisma.practicante.findMany({
-            where: { nombre: { in: practNamesForFallback } },
-            select: { idPracticante: true, nombre: true },
-          })
-          : [];
-        const practByName = new Map(practitionersByName.map((p) => [normalizeText(p.nombre), p]));
-
+        const userByPhone = new Map(users.map((u) => [u.telefonoPersonal, u]));
         const practIds = [...new Set([
           ...users.map((u) => u.practicanteAsignado).filter(Boolean),
           ...latestAssignments.map((r) => r.idPracticante).filter(Boolean),
@@ -805,29 +1353,17 @@ export function registerDashboardRoutes(server) {
         const practById = new Map(practitioners.map((p) => [p.idPracticante, p.nombre]));
 
         for (const row of ghqDb) {
-          const phoneKey = normalizePhone(row.telefono);
-          const user = userByPhone.get(phoneKey);
+          const user = userByPhone.get(row.telefono);
           const patientName = user ? [user.primerNombre, user.segundoNombre, user.primerApellido, user.segundoApellido].filter(Boolean).join(' ') : 'Sin paciente';
-          const directPractId = user?.practicanteAsignado || (user?.idUsuario ? latestPractitionerByUser.get(user.idUsuario) : null);
-          const fallbackPractName = user ? latestPractitionerNameByUserKey.get(userKey(user)) : null;
-          const fallbackPract = fallbackPractName ? practByName.get(normalizeText(fallbackPractName)) : null;
-          const emailPractName = emailPractitionerByPatientName.get(normalizeText(patientName));
-          const emailPract = emailPractName ? practByName.get(normalizeText(emailPractName)) : null;
-          const practId = directPractId || fallbackPract?.idPracticante || emailPract?.idPracticante || null;
-          const practName = (directPractId ? practById.get(directPractId) : null) || fallbackPract?.nombre || emailPract?.nombre || emailPractName || null;
+          const practId = user?.practicanteAsignado || (user?.idUsuario ? latestPractitionerByUser.get(user.idUsuario) : null);
+          const practName = practId ? practById.get(practId) : null;
           records.push({ id: `ghq12:${row.idGhq12}`, filename: row.informePdfNombre || `reporte_ghq12_${row.idGhq12}.pdf`, path: `/v1/pdfs/file?source=database&id=ghq12:${row.idGhq12}`, uploadedAt: row.informePdfFecha || new Date(), source: 'database', patient: { id: row.telefono, name: patientName }, practitioner: practName ? { id: String(practId || ''), name: practName } : null });
         }
         for (const row of dassDb) {
-          const phoneKey = normalizePhone(row.telefono);
-          const user = userByPhone.get(phoneKey);
+          const user = userByPhone.get(row.telefono);
           const patientName = user ? [user.primerNombre, user.segundoNombre, user.primerApellido, user.segundoApellido].filter(Boolean).join(' ') : 'Sin paciente';
-          const directPractId = user?.practicanteAsignado || (user?.idUsuario ? latestPractitionerByUser.get(user.idUsuario) : null);
-          const fallbackPractName = user ? latestPractitionerNameByUserKey.get(userKey(user)) : null;
-          const fallbackPract = fallbackPractName ? practByName.get(normalizeText(fallbackPractName)) : null;
-          const emailPractName = emailPractitionerByPatientName.get(normalizeText(patientName));
-          const emailPract = emailPractName ? practByName.get(normalizeText(emailPractName)) : null;
-          const practId = directPractId || fallbackPract?.idPracticante || emailPract?.idPracticante || null;
-          const practName = (directPractId ? practById.get(directPractId) : null) || fallbackPract?.nombre || emailPract?.nombre || emailPractName || null;
+          const practId = user?.practicanteAsignado || (user?.idUsuario ? latestPractitionerByUser.get(user.idUsuario) : null);
+          const practName = practId ? practById.get(practId) : null;
           records.push({ id: `dass21:${row.idDass21}`, filename: row.informePdfNombre || `reporte_dass21_${row.idDass21}.pdf`, path: `/v1/pdfs/file?source=database&id=dass21:${row.idDass21}`, uploadedAt: row.informePdfFecha || new Date(), source: 'database', patient: { id: row.telefono, name: patientName }, practitioner: practName ? { id: String(practId || ''), name: practName } : null });
         }
       }

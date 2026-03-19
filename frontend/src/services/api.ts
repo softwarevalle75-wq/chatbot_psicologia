@@ -129,6 +129,97 @@ export interface DashboardSummary {
   practitionerWorkload: Array<{ id: string; name: string; patients: number; appointments: number }>;
 }
 
+// ── New Dashboard Data (v2 endpoint) ────────────────────────
+
+export interface DashboardData {
+  overview: {
+    totalPatients: number;
+    totalGHQ12: number;
+    totalDASS21: number;
+    activePractitioners: number;
+    patientsAtRisk: number;
+    riskPercentage: number;
+  };
+  ghq12: {
+    totalTests: number;
+    averageScore: number;
+    riskDistribution: Array<{ level: string; count: number; percentage: number; color: string }>;
+    scoreHistogram: Array<{ score: number; count: number }>;
+    subscales: Record<string, { avg: number; label: string }>;
+    byDay: Array<{ date: string; count: number; avgScore: number }>;
+  };
+  dass21: {
+    totalTests: number;
+    averages: { depression: number; anxiety: number; stress: number };
+    depression: { distribution: Array<{ level: string; count: number; percentage: number; color: string }> };
+    anxiety: { distribution: Array<{ level: string; count: number; percentage: number; color: string }> };
+    stress: { distribution: Array<{ level: string; count: number; percentage: number; color: string }> };
+    byDay: Array<{ date: string; count: number; avgDep: number; avgAnx: number; avgStr: number }>;
+  };
+  sociodemographic: {
+    totalRecords: number;
+    sex: Array<{ label: string; count: number; pct: number }>;
+    ageRanges: Array<{ range: string; count: number }>;
+    civilStatus: Array<{ status: string; count: number }>;
+    education: Array<{ level: string; count: number }>;
+    income: Array<{ level: string; count: number }>;
+    occupation: Array<{ type: string; count: number }>;
+    sexualOrientation: Array<{ orientation: string; count: number }>;
+    ethnicity: Array<{ group: string; count: number }>;
+    disability: { yes: number; no: number };
+    university: {
+      belongs: number;
+      doesNotBelong: number;
+      topCareers: Array<{ career: string; count: number }>;
+      schedule: Array<{ type: string; count: number }>;
+    };
+    // Academic data merged into sociodemographic
+    topCareers: Array<{ career: string; count: number }>;
+    jornada: Array<{ type: string; count: number }>;
+    semestre: Array<{ semestre: string; count: number }>;
+  };
+  crossTabs: {
+    ghq12BySex: Array<{ sex: string; atRisk: number; noRisk: number; total: number; riskPct: number; avgScore: number }>;
+    ghq12ByAge: Array<{ range: string; atRisk: number; total: number; riskPct: number; avgScore: number }>;
+    ghq12ByCivilStatus: Array<{ status: string; atRisk: number; total: number; riskPct: number; avgScore: number }>;
+    ghq12ByIncome: Array<{ level: string; atRisk: number; total: number; riskPct: number; avgScore: number }>;
+    ghq12ByCareer: Array<{ career: string; atRisk: number; total: number; riskPct: number; avgScore: number }>;
+    ghq12BySemestre: Array<{ semestre: string; atRisk: number; total: number; riskPct: number; avgScore: number }>;
+    ghq12ByJornada: Array<{ jornada: string; atRisk: number; total: number; riskPct: number; avgScore: number }>;
+  };
+  emailTracking: {
+    totalEmailsSent: number;
+    uniquePatients: number;
+    patientsWithoutPractitioner?: number;
+    totalPdfsGenerated: { ghq12: number; dass21: number };
+    ccRecipient: string;
+    byPractitioner: Array<{ name: string; email: string; emailsSent: number; uniquePatients: number }>;
+    byDay: Array<{ date: string; count: number }>;
+    currentFilter: string;
+  };
+}
+
+// ── User dashboard types ────────────────────────────────────
+
+export interface UserTestResult {
+  id: string;
+  testType: string;
+  completedAt: string;
+  score: number;
+  maxScore: number;
+  riskLevel: string;
+  summary?: string;
+}
+
+export interface UserAppointment {
+  id: string;
+  date: string;
+  time: string;
+  practitionerName: string;
+  status: 'pendiente' | 'confirmada' | 'completada' | 'cancelada';
+  notes?: string;
+}
+
 // ── Auth endpoints ──────────────────────────────────────────
 
 export interface RegisterPayload {
@@ -392,11 +483,20 @@ export const api = {
     return `${CORE_API_BASE}/pdfs/file?${params.toString()}`;
   },
 
-  getDashboardSummary(periodo: DashboardPeriod = 'month') {
-    return coreRequest<DashboardSummary>(
-      `/dashboard/summary?periodo=${periodo}`,
+  getDashboardSummary(practitionerEmail?: string) {
+    const params = practitionerEmail ? `?practicante=${encodeURIComponent(practitionerEmail)}` : '';
+    return coreRequest<DashboardData>(
+      `/dashboard/summary${params}`,
       { method: 'GET' },
     );
+  },
+
+  getUserTestResults() {
+    return coreRequest<UserTestResult[]>('/dashboard/my-results', { method: 'GET' }).catch(() => []);
+  },
+
+  getUserAppointments() {
+    return coreRequest<UserAppointment[]>('/dashboard/my-appointments', { method: 'GET' }).catch(() => []);
   },
 
   createStudent(data: {
