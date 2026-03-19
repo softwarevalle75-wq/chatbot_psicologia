@@ -204,7 +204,7 @@ const getDashboardSummary = async (period) => {
     prisma.informacionUsuario.groupBy({ by: ['testActual'], _count: { _all: true } }).catch(() => []),
     prisma.practicante.count().catch(() => 0),
     prisma.ghq12.findMany({ select: { Puntaje: true, resPreg: true, informePdfFecha: true } }).catch(() => []),
-    prisma.dass21.findMany({ select: { puntajeDep: true, puntajeAns: true, puntajeEstr: true, informePdfFecha: true } }).catch(() => []),
+    prisma.dass21.findMany({ select: { puntajeDep: true, puntajeAns: true, puntajeEstr: true, respuestas: true, resPreg: true, informePdfFecha: true } }).catch(() => []),
     prisma.$queryRawUnsafe(`
       SELECT COUNT(*) AS c
       FROM informacion_sociodemografica
@@ -227,8 +227,32 @@ const getDashboardSummary = async (period) => {
     `).catch(() => []),
   ]);
 
+  // ── DASS-21: calculate real scores from respuestas if puntaje fields are 0 ──
+  // DASS-21 subscale item indices (1-based): Dep=3,5,10,13,16,17,21  Anx=2,4,7,9,15,19,20  Str=1,6,8,11,12,14,18
+  const DASS_DEP_ITEMS = [3, 5, 10, 13, 16, 17, 21];
+  const DASS_ANX_ITEMS = [2, 4, 7, 9, 15, 19, 20];
+  const DASS_STR_ITEMS = [1, 6, 8, 11, 12, 14, 18];
+
+  const calcDassFromResponses = (respuestas) => {
+    if (!respuestas) return null;
+    let arr = respuestas;
+    if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch { return null; } }
+    if (!Array.isArray(arr) || arr.length < 21) return null;
+    const sumItems = (items) => items.reduce((sum, idx) => sum + Number(arr[idx - 1] || 0), 0);
+    return { dep: sumItems(DASS_DEP_ITEMS), anx: sumItems(DASS_ANX_ITEMS), str: sumItems(DASS_STR_ITEMS) };
+  };
+
+  const dassSourceRows = dassRows.map((row) => {
+    const hasScores = Number(row.puntajeDep || 0) > 0 || Number(row.puntajeAns || 0) > 0 || Number(row.puntajeEstr || 0) > 0;
+    if (hasScores) return row;
+    const calculated = calcDassFromResponses(row.respuestas);
+    if (calculated) {
+      return { ...row, puntajeDep: calculated.dep, puntajeAns: calculated.anx, puntajeEstr: calculated.str };
+    }
+    return row;
+  });
+
   const ghqSourceRows = ghqRows;
-  const dassSourceRows = dassRows;
   const ghqCount = ghqSourceRows.length;
   const dassCount = dassSourceRows.length;
   const testsCompleted = ghqCount + dassCount;
