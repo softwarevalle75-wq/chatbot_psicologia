@@ -1363,7 +1363,6 @@ function TabCrossTabs({ data }: { data: DashboardData }) {
 type TabKey = 'resumen' | 'ghq12' | 'dass21' | 'socio' | 'cruzado';
 
 const TABS: Array<{ key: TabKey; label: string }> = [
-  { key: 'resumen', label: 'Resumen General' },
   { key: 'ghq12', label: 'GHQ-12' },
   { key: 'dass21', label: 'DASS-21' },
   { key: 'socio', label: 'Perfil Sociodemografico' },
@@ -1371,7 +1370,7 @@ const TABS: Array<{ key: TabKey; label: string }> = [
 ];
 
 export default function AdminHomePage() {
-  const [activeTab, setActiveTab] = useState<TabKey>('resumen');
+  const [activeTab, setActiveTab] = useState<TabKey>('ghq12');
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
