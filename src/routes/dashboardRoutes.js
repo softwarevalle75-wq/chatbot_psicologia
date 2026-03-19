@@ -486,6 +486,19 @@ const getDashboardSummary = async (practitionerEmail = null) => {
   }
   const ghqHistDeduplicated = Array.from(firstGhqHistMap.values());
 
+  // Coverage by unique user in HistorialTest (source of truth for combinations)
+  const ghqUsers = new Set(ghqHistorialRows.map((row) => String(row.usuarioId || '')).filter(Boolean));
+  const dassUsers = new Set(dassHistorialRows.map((row) => String(row.usuarioId || '')).filter(Boolean));
+
+  let bothTestsCount = 0;
+  for (const userId of ghqUsers) {
+    if (dassUsers.has(userId)) bothTestsCount++;
+  }
+  const onlyGHQ12Count = ghqUsers.size - bothTestsCount;
+  const onlyDASS21Count = dassUsers.size - bothTestsCount;
+  const totalEvaluated = onlyGHQ12Count + onlyDASS21Count + bothTestsCount;
+  const notEvaluated = Math.max(0, totalPatients - totalEvaluated);
+
   /* ── 3. GHQ-12 processing ──────────────────────────────── */
   const totalGHQ12 = ghq12Deduplicated.length;
   let ghqScoreSum = 0;
@@ -985,6 +998,11 @@ const getDashboardSummary = async (practitionerEmail = null) => {
       totalPatients,
       totalGHQ12,
       totalDASS21,
+      totalEvaluated,
+      notEvaluated,
+      onlyGHQ12Count,
+      onlyDASS21Count,
+      bothTestsCount,
       activePractitioners,
       patientsAtRisk,
       riskPercentage,

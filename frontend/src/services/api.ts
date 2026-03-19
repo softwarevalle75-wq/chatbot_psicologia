@@ -136,6 +136,11 @@ export interface DashboardData {
     totalPatients: number;
     totalGHQ12: number;
     totalDASS21: number;
+    totalEvaluated?: number;
+    notEvaluated?: number;
+    onlyGHQ12Count?: number;
+    onlyDASS21Count?: number;
+    bothTestsCount?: number;
     activePractitioners: number;
     patientsAtRisk: number;
     riskPercentage: number;
