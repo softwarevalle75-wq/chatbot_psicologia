@@ -245,11 +245,18 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ correo, password }) },
       );
 
+      const legacyUser = (legacy.user || {}) as Record<string, unknown>;
+      const legacyRoleRaw = String(legacyUser.role || '').toLowerCase();
+      const legacyRole: SessionUser['role'] =
+        legacyRoleRaw === 'admin' || legacyRoleRaw === 'practicante' || legacyRoleRaw === 'usuario'
+          ? legacyRoleRaw
+          : 'usuario';
+
       return {
         token: legacy.token,
         user: {
-          ...(legacy.user as Record<string, unknown>),
-          role: 'usuario' as const,
+          ...legacyUser,
+          role: legacyRole,
         },
       };
     }
