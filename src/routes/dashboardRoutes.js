@@ -560,11 +560,37 @@ export function registerDashboardRoutes(server) {
       const auth = await requireAuth(req, res);
       if (!auth) return;
       if (auth.role !== 'admin') return json(res, 403, { error: 'No autorizado' });
-      await prisma.practicante.delete({ where: { idPracticante: req.params.id } });
-      return json(res, 200, { message: 'Practicante eliminado' });
+
+      const deleted = await prisma.$transaction(async (tx) => {
+        const existing = await tx.practicante.findUnique({
+          where: { idPracticante: req.params.id },
+          select: { idPracticante: true, nombre: true },
+        });
+
+        if (!existing) return null;
+
+        await tx.informacionUsuario.updateMany({
+          where: { practicanteAsignado: existing.idPracticante },
+          data: { practicanteAsignado: null },
+        });
+
+        await tx.horario.deleteMany({ where: { practicanteId: existing.idPracticante } });
+        await tx.registroCitas.deleteMany({ where: { idPracticante: existing.idPracticante } });
+
+        if (existing.nombre) {
+          await tx.cita.deleteMany({ where: { nombrePracticante: existing.nombre } });
+        }
+
+        await tx.practicante.delete({ where: { idPracticante: existing.idPracticante } });
+        return existing;
+      });
+
+      if (!deleted) return json(res, 404, { error: 'Practicante no encontrado' });
+
+      return json(res, 200, { message: 'Practicante eliminado correctamente' });
     } catch (error) {
       console.error('Error /v1/practitioners DELETE:', error);
-      return json(res, 500, { error: 'Error al eliminar practicante' });
+      return json(res, 500, { error: 'No se pudo eliminar el practicante. Verifica si tiene datos relacionados.' });
     }
   });
 
@@ -586,24 +612,47 @@ export function registerDashboardRoutes(server) {
         ]);
         const phones = [...new Set([...ghqDb.map((r) => r.telefono), ...dassDb.map((r) => r.telefono)])];
         const users = phones.length
-          ? await prisma.informacionUsuario.findMany({ where: { telefonoPersonal: { in: phones } }, select: { telefonoPersonal: true, primerNombre: true, segundoNombre: true, primerApellido: true, segundoApellido: true, practicanteAsignado: true } })
+          ? await prisma.informacionUsuario.findMany({ where: { telefonoPersonal: { in: phones } }, select: { idUsuario: true, telefonoPersonal: true, primerNombre: true, segundoNombre: true, primerApellido: true, segundoApellido: true, practicanteAsignado: true } })
           : [];
+
+        const userIds = users.map((u) => u.idUsuario).filter(Boolean);
+        const latestAssignments = userIds.length
+          ? await prisma.registroCitas.findMany({
+            where: { idUsuario: { in: userIds } },
+            select: { idUsuario: true, idPracticante: true, fechaHora: true },
+            orderBy: { fechaHora: 'desc' },
+          })
+          : [];
+
+        const latestPractitionerByUser = new Map();
+        for (const row of latestAssignments) {
+          if (!row?.idUsuario || !row?.idPracticante) continue;
+          if (!latestPractitionerByUser.has(row.idUsuario)) {
+            latestPractitionerByUser.set(row.idUsuario, row.idPracticante);
+          }
+        }
+
         const userByPhone = new Map(users.map((u) => [u.telefonoPersonal, u]));
-        const practIds = [...new Set(users.map((u) => u.practicanteAsignado).filter(Boolean))];
+        const practIds = [...new Set([
+          ...users.map((u) => u.practicanteAsignado).filter(Boolean),
+          ...latestAssignments.map((r) => r.idPracticante).filter(Boolean),
+        ])];
         const practitioners = practIds.length ? await prisma.practicante.findMany({ where: { idPracticante: { in: practIds } }, select: { idPracticante: true, nombre: true } }) : [];
         const practById = new Map(practitioners.map((p) => [p.idPracticante, p.nombre]));
 
         for (const row of ghqDb) {
           const user = userByPhone.get(row.telefono);
           const patientName = user ? [user.primerNombre, user.segundoNombre, user.primerApellido, user.segundoApellido].filter(Boolean).join(' ') : 'Sin paciente';
-          const practName = user?.practicanteAsignado ? practById.get(user.practicanteAsignado) : null;
-          records.push({ id: `ghq12:${row.idGhq12}`, filename: row.informePdfNombre || `reporte_ghq12_${row.idGhq12}.pdf`, path: `/v1/pdfs/file?source=database&id=ghq12:${row.idGhq12}`, uploadedAt: row.informePdfFecha || new Date(), source: 'database', patient: { id: row.telefono, name: patientName }, practitioner: practName ? { id: String(user?.practicanteAsignado || ''), name: practName } : null });
+          const practId = user?.practicanteAsignado || (user?.idUsuario ? latestPractitionerByUser.get(user.idUsuario) : null);
+          const practName = practId ? practById.get(practId) : null;
+          records.push({ id: `ghq12:${row.idGhq12}`, filename: row.informePdfNombre || `reporte_ghq12_${row.idGhq12}.pdf`, path: `/v1/pdfs/file?source=database&id=ghq12:${row.idGhq12}`, uploadedAt: row.informePdfFecha || new Date(), source: 'database', patient: { id: row.telefono, name: patientName }, practitioner: practName ? { id: String(practId || ''), name: practName } : null });
         }
         for (const row of dassDb) {
           const user = userByPhone.get(row.telefono);
           const patientName = user ? [user.primerNombre, user.segundoNombre, user.primerApellido, user.segundoApellido].filter(Boolean).join(' ') : 'Sin paciente';
-          const practName = user?.practicanteAsignado ? practById.get(user.practicanteAsignado) : null;
-          records.push({ id: `dass21:${row.idDass21}`, filename: row.informePdfNombre || `reporte_dass21_${row.idDass21}.pdf`, path: `/v1/pdfs/file?source=database&id=dass21:${row.idDass21}`, uploadedAt: row.informePdfFecha || new Date(), source: 'database', patient: { id: row.telefono, name: patientName }, practitioner: practName ? { id: String(user?.practicanteAsignado || ''), name: practName } : null });
+          const practId = user?.practicanteAsignado || (user?.idUsuario ? latestPractitionerByUser.get(user.idUsuario) : null);
+          const practName = practId ? practById.get(practId) : null;
+          records.push({ id: `dass21:${row.idDass21}`, filename: row.informePdfNombre || `reporte_dass21_${row.idDass21}.pdf`, path: `/v1/pdfs/file?source=database&id=dass21:${row.idDass21}`, uploadedAt: row.informePdfFecha || new Date(), source: 'database', patient: { id: row.telefono, name: patientName }, practitioner: practName ? { id: String(practId || ''), name: practName } : null });
         }
       }
 

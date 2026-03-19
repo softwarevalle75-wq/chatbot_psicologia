@@ -125,13 +125,18 @@ export default function AdminStudentsPage() {
     setMessage('');
     setError('');
     try {
-      await fetch(`${import.meta.env.VITE_CORE_API_BASE_URL || '/v1'}/practitioners/${selectedPractitioner.id}`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
+      await api.updateStudent(selectedPractitioner.id, {
+        name: data.name,
+        lastName: data.lastName || undefined,
+        email: data.email,
+        documentNumber: data.documentNumber,
+        gender: data.gender,
+        eps: data.eps || undefined,
+        phone: data.phone || undefined,
+        clinic: data.clinic || undefined,
+        startDate: data.startDate || undefined,
+        endDate: data.endDate || undefined,
+        active: data.active,
       });
       setMessage('Practicante actualizado correctamente');
       setIsEditModalOpen(false);
@@ -148,13 +153,11 @@ export default function AdminStudentsPage() {
     setMessage('');
     setError('');
     try {
-      await fetch(`${import.meta.env.VITE_CORE_API_BASE_URL || '/v1'}/practitioners/${practitionerToDelete.id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
+      const result = await api.deleteStudent(practitionerToDelete.id);
       setMessage('Practicante eliminado correctamente');
+      if (result?.message) {
+        setMessage(result.message);
+      }
       setIsDeleteModalOpen(false);
       setPractitionerToDelete(null);
       loadPractitioners();

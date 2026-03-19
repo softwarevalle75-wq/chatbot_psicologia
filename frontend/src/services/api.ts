@@ -418,4 +418,29 @@ export const api = {
       body: JSON.stringify(data),
     });
   },
+
+  updateStudent(id: string, data: {
+    name: string;
+    lastName?: string;
+    email: string;
+    documentNumber: string;
+    gender?: string;
+    eps?: string;
+    phone?: string;
+    clinic?: string;
+    startDate?: string;
+    endDate?: string;
+    active?: boolean;
+  }) {
+    return coreRequest(`/practitioners/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  deleteStudent(id: string) {
+    return coreRequest<{ message: string }>(`/practitioners/${id}`, {
+      method: 'DELETE',
+    });
+  },
 };
