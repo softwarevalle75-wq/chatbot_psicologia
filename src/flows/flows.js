@@ -22,7 +22,7 @@ import { menuCuestionarios, parsearSeleccionTest } from './tests/controlTest.js'
 import { procesarDass21 } from './tests/dass21.js'
 import { procesarGHQ12 } from './tests/ghq12.js'
 // Importar el helper al inicio del archivo
-import { verificarAutenticacionWeb } from '../helpers/auntenticarUsuario.js';
+import { verificarAutenticacionWeb } from '../helpers/autenticarUsuario.js';
 import { adminMenuFlow } from './roles/adminMenuFlow.js'
 
 import { practMenuFlow, practEsperarResultados } from './roles/practMenuFlow.js'
@@ -34,8 +34,8 @@ import {
   formatearHorariosDisponibles
 } from '../helpers/agendHelper.js';
 import { obtenerRutaPdf, limpiarRutaPdf } from '../helpers/pdfStore.js'
-import Prisma from '@prisma/client'
-export const prisma = new Prisma.PrismaClient()
+import prisma from '../lib/prisma.js'
+export { prisma }
 //---------------------------------------------------------------------------------------------------------
 
 const ensureTempDir = () => {

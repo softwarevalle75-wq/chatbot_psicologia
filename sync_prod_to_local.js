@@ -1,19 +1,28 @@
 import mysql from 'mysql2/promise';
 
+// ── Production credentials from environment variables ──
+const requiredEnv = ['PROD_DB_HOST', 'PROD_DB_PORT', 'PROD_DB_USER', 'PROD_DB_PASSWORD', 'PROD_DB_NAME'];
+const missing = requiredEnv.filter((key) => !process.env[key]);
+if (missing.length > 0) {
+  console.error(`❌ Missing required environment variables: ${missing.join(', ')}`);
+  console.error('   Set them in your .env file or export them before running this script.');
+  process.exit(1);
+}
+
 const PROD = {
-  host: 'caboose.proxy.rlwy.net',
-  port: 47600,
-  user: 'root',
-  password: 'EbazKEjKVfdmhYwWjRJujPIARvRIDcxG',
-  database: 'railway',
+  host: process.env.PROD_DB_HOST,
+  port: Number(process.env.PROD_DB_PORT),
+  user: process.env.PROD_DB_USER,
+  password: process.env.PROD_DB_PASSWORD,
+  database: process.env.PROD_DB_NAME,
 };
 
 const LOCAL = {
-  host: 'localhost',
-  port: 3306,
-  user: 'root',
-  password: 'root',
-  database: 'chatbot_psico',
+  host: process.env.MYSQL_DB_HOST || 'localhost',
+  port: Number(process.env.MYSQL_DB_PORT || 3306),
+  user: process.env.MYSQL_DB_USER || 'root',
+  password: process.env.MYSQL_DB_PASSWORD || 'root',
+  database: process.env.MYSQL_DB_NAME || 'chatbot_psico',
 };
 
 async function main() {

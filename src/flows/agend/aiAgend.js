@@ -3,7 +3,6 @@ import {
 	prisma,
 	obtenerHist,
 	saveHist,
-	actualizarDisp,
 	switchAyudaPsicologica,
 	switchFlujo,
 } from '../../queries/queries.js'

@@ -20,6 +20,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Vite inlines env vars at build time — these are baked into the JS bundle
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/v1/auth}
+        VITE_CORE_API_BASE_URL: ${VITE_CORE_API_BASE_URL:-/v1}
+        VITE_WS_BASE_URL: ${VITE_WS_BASE_URL:-}
     container_name: chatbot_app
     restart: unless-stopped
     depends_on:
@@ -27,6 +32,8 @@ services:
         condition: service_healthy
     environment:
       PORT: 3000
+      NODE_ENV: production
+      SERVE_FRONTEND: 'true'
       DATABASE_URL: mysql://root:${MYSQL_DB_PASSWORD:-123456}@mysql:3306/${MYSQL_DB_NAME:-chatbot_psico}
       MYSQL_DB_HOST: mysql
       MYSQL_DB_PORT: 3306
@@ -34,7 +41,7 @@ services:
       MYSQL_DB_PASSWORD: ${MYSQL_DB_PASSWORD:-123456}
       MYSQL_DB_NAME: ${MYSQL_DB_NAME:-chatbot_psico}
 
-      JWT_SECRET: ${JWT_SECRET:-cambia-esto-en-produccion}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
 
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       QDRANT_URL: ${QDRANT_URL}
@@ -50,6 +57,7 @@ services:
       PDF_TARGET: ${PDF_TARGET:-practitioner}
 
       IP_DOMAIN: ${IP_DOMAIN:-http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       BOT_NUM: ${BOT_NUM:-}
       PRIMER_ADMIN: ${PRIMER_ADMIN:-}
     ports:

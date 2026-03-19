@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 interface MessageBubbleProps {
   message: Message;
+  onButtonClick?: (text: string) => void;
 }
 
 const formatLine = (line: string) => line.replace(/\s+$/g, '');
@@ -179,8 +180,9 @@ const renderBotMessage = (content: string) => {
   );
 };
 
-export default function MessageBubble({ message }: MessageBubbleProps) {
+export default function MessageBubble({ message, onButtonClick }: MessageBubbleProps) {
   const isBot = message.sender === 'bot';
+  const buttons = (message as Message & { buttons?: Array<{ body: string }> }).buttons;
 
   return (
     <div className={`flex flex-col ${isBot ? 'items-start' : 'items-end'} gap-1`}>
@@ -203,6 +205,21 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
       >
         {isBot ? renderBotMessage(message.content) : <span className="whitespace-pre-wrap break-words">{message.content}</span>}
       </div>
+
+      {/* Button responses from bot */}
+      {isBot && buttons && buttons.length > 0 && onButtonClick && (
+        <div className="flex flex-wrap gap-2 mt-1 max-w-[75%]">
+          {buttons.map((btn, idx) => (
+            <button
+              key={`btn-${idx}`}
+              onClick={() => onButtonClick(btn.body)}
+              className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 hover:border-blue-300 active:bg-blue-200 transition-all duration-150 cursor-pointer"
+            >
+              {btn.body}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Timestamp */}
       <span className="text-[10px] text-slate-400 font-medium px-1">

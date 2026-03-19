@@ -16,7 +16,7 @@ import { ProviderClass } from '@builderbot/bot';
 import { WebSocketServer } from 'ws';
 import EventEmitter from 'node:events';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { config as loadEnv } from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,8 +25,6 @@ loadEnv();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 loadEnv({ path: path.resolve(__dirname, '../../.env'), override: false });
-
-const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
 
 if (!JWT_SECRET || JWT_SECRET.length < 16) {

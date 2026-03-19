@@ -1,5 +1,5 @@
-import Prisma from '@prisma/client'
-export const prisma = new Prisma.PrismaClient()
+import prisma from '../lib/prisma.js'
+export { prisma }
 import { adapterProvider } from '../app.js'
 // import { ensureJid } from '../helpers/jidHelper.js' // Desactivado: ya no se usan JIDs de WhatsApp
 import fs from 'fs'
@@ -917,24 +917,6 @@ function seleccionarModelo(tipoTest) {
 
 //---------------------------------------------------------------------------------------------------------
 
-// FUNCIÓN DESHABILITADA - Campo disponibilidad no existe en el modelo actual
-export const actualizarDisp = async (numero, disp) => {
-	try {
-		const change = await prisma.informacionUsuario.update({
-			where: {
-				telefonoPersonal: numero,
-			},
-			data: {
-				disponibilidad: disp,
-			},
-		})
-		return change
-	} catch (error) {
-		console.error('Error cambiando el test:', error)
-		throw new Error('Hubo un problema cambiando el test.')
-	}
-}
-
 //---------------------------------------------------------------------------------------------------------
 
 //* ABAJO IRAN LAS QUERIES PARA LOS ENDPONTS
@@ -987,142 +969,7 @@ export const getPracticante = async (documento) => {
 
 //---------------------------------------------------------------------------------------------------------
 
-//Necesito una query de prisma para obtener la cita en estado "pendiente" en base al id del usuario
-export const getCita = async (id) => {
-	try {
-		let cita = await prisma.cita.findMany({
-			where: {
-				idUsuario: id,
-				estado: 'pendiente',
-			},
-		})
-		console.log(cita)
-		return cita
-	} catch (error) {
-		console.error('Error al obtener la Cita:', error)
-		throw new Error('Hubo un problema al obtener la Cita.')
-	}
-}
 
-export const addWebUser = async (
-	nombre,
-	apellido,
-	correo,
-	tipoDocumento,
-	documento,
-	telefonoPersonal
-) => {
-	try {
-		const user = await prisma.informacionUsuario.create({
-			data: {
-				nombre: nombre,
-				apellido: apellido,
-				correo: correo,
-				tipoDocumento: tipoDocumento,
-				documento: documento,
-				telefonoPersonal: telefonoPersonal,
-			},
-		})
-		return user
-	} catch (error) {
-		console.error('Error al crear el usuario:', error)
-		throw new Error('Hubo un problema al crear el usuario.')
-	}
-}
-
-//---------------------------------------------------------------------------------------------------------
-
-// FUNCIÓN DESHABILITADA - Usar sistema web de autenticación
-export const editWebUser = async (
-	nombre,
-	apellido,
-	correo,
-	tipoDocumento,
-	documento,
-	telefonoPersonal
-) => {
-	try {
-		// Buscar al usuario por correo
-		let user = await prisma.informacionUsuario.findFirst({
-			where: {
-				correo: correo,
-			},
-		})
-
-		// Si no se encuentra por correo, buscar por documento
-		if (!user) {
-			console.log('No se encontró usuario por correo, buscando por documento:', documento)
-			user = await prisma.informacionUsuario.findFirst({
-				where: {
-					documento: documento,
-				},
-			})
-		}
-
-		// Si no se encuentra por documento, buscar por teléfono
-		if (!user) {
-			user = await prisma.informacionUsuario.findFirst({
-				where: {
-					telefonoPersonal: telefonoPersonal,
-				},
-			})
-		}
-
-		// Si no se encuentra el usuario, lanzar un error
-		if (!user) {
-			throw new Error('No se encontró ningún usuario con los datos proporcionados.')
-		} else {
-			console.log('Usuario encontrado:', user)
-		}
-
-		// Comparar y agregar a updatedData solo los campos que han cambiado
-		if (user.nombre !== nombre) {
-			const updatedUser = await prisma.informacionUsuario.update({
-				where: { idUsuario: user.idUsuario },
-				data: { nombre: nombre },
-			})
-			return updatedUser
-		}
-		if (user.apellido !== apellido) {
-			const updatedUser = await prisma.informacionUsuario.update({
-				where: { idUsuario: user.idUsuario },
-				data: { apellido: apellido },
-			})
-			return updatedUser
-		}
-		if (user.correo !== correo) {
-			const updatedUser = await prisma.informacionUsuario.update({
-				where: { idUsuario: user.idUsuario },
-				data: { correo: correo },
-			})
-			return updatedUser
-		}
-		if (user.tipoDocumento !== tipoDocumento) {
-			const updatedUser = await prisma.informacionUsuario.update({
-				where: { idUsuario: user.idUsuario },
-				data: { tipoDocumento: tipoDocumento },
-			})
-			return updatedUser
-		}
-		if (user.documento !== documento) {
-			const updatedUser = await prisma.informacionUsuario.update({
-				where: { idUsuario: user.idUsuario },
-				data: { documento: documento },
-			})
-			return updatedUser
-		}
-		if (user.telefonoPersonal !== telefonoPersonal) {
-			const updatedUser = await prisma.informacionUsuario.update({
-				where: { idUsuario: user.idUsuario },
-				data: { telefonoPersonal: telefonoPersonal },
-			})
-			return updatedUser
-		}
-	} catch (error) {
-		console.error('Error al editar el usuario:', error)
-		throw new Error('Hubo un problema al editar el usuario.')
-	}
-}
 
 //---------------------------------------------------------------------------------------------------------
 
@@ -1192,33 +1039,22 @@ export const getWebCitas = async (diaActual) => {
 
 //---------------------------------------------------------------------------------------------------------
 
-export const citasPorPaciente = async (idPaciente) => {
+export const getCita = async (idUsuario) => {
 	try {
 		const citas = await prisma.cita.findMany({
 			where: {
-				idPaciente: idPaciente,
+				usuario: {
+					idUsuario: idUsuario,
+				},
+			},
+			orderBy: {
+				fechaHora: 'asc',
 			},
 		})
 		return citas
 	} catch (error) {
-		console.error('Error al obtener las citas:', error)
-		throw new Error('Hubo un problema al obtener las citas.')
-	}
-}
-
-//---------------------------------------------------------------------------------------------------------
-
-export const eliminarCita = async (id) => {
-	try {
-		const cita = await prisma.cita.deleteMany({
-			where: {
-				idUsuario: id,
-			},
-		})
-		return cita
-	} catch (error) {
-		console.error('Error al eliminar la Cita:', error)
-		throw new Error('Hubo un problema al eliminar la Cita.')
+		console.error('Error al obtener la cita:', error)
+		throw new Error('Hubo un problema al obtener la cita.')
 	}
 }
 
@@ -1509,105 +1345,6 @@ export const obtenerPacientesAsignados = async (idPracticante) => {
 };
 
 //---------------------------------------------------------------------------------------------------------
-
-export const guardarResultadoPrueba = async (telefono, tipoTest, datosResultados) => {
-	try {
-		console.log(`🫡 Guardando prueba ${tipoTest} para usuario ${telefono}`)
-
-		// Obtener usuario en BD
-		const usuario = await prisma.informacionUsuario.findUnique({
-			where: { telefonoPersonal: telefono },
-			select: { idUsuario: true },
-		});
-		if (!usuario) {
-			console.log(`❌ El usuario con telefono ${telefono} no se encuentra en la base de datos`)
-			return;
-		}
-
-		// Se crea el registro en la BD
-		await prisma.historialTest.create({
-			data: {
-				usuarioId: usuario.idUsuario,
-				tipoTest: tipoTest,
-				resultados: datosResultados,
-			}
-		})
-		console.log(`✅ Los resultados para ${telefono} en ${tipoTest} fueron guardados con éxito`)
-	} catch (error) {
-		console.error(`❌ Error al guardar resultado para ${telefono} en ${tipoTest}:`, error);
-	}
-};
-
-//---------------------------------------------------------------------------------------------------------
-// Configuración RAG Unificada para Tests Psicológicos
-
-/**
- * Obtiene la configuración general del RAG para tests psicológicos
- */
-export const getRagPsychologicalConfig = async () => {
-	try {
-		const config = await prisma.ragPsychologicalConfig.findUnique({
-			where: { id: 'general' }
-		});
-
-		if (!config) {
-			throw new Error('Configuración RAG general no encontrada. Necesita inicializar el sistema.');
-		}
-
-		return config;
-	} catch (error) {
-		console.error('❌ Error al obtener configuración RAG:', error);
-		throw new Error('Error al obtener configuración del sistema RAG.');
-	}
-};
-
-/**
- * Inicializa o actualiza la configuración general del RAG con los prompts proporcionados
- */
-export const initializeRagPsychologicalConfig = async (systemInstructions, promptTemplate, metadata = {}) => {
-	try {
-		const config = await prisma.ragPsychologicalConfig.upsert({
-			where: { id: 'general' },
-			update: {
-				systemInstructions,
-				promptTemplate,
-				metadata,
-				version: metadata.version || '1.0'
-			},
-			create: {
-				id: 'general',
-				systemInstructions,
-				promptTemplate,
-				metadata,
-				version: metadata.version || '1.0'
-			}
-		});
-
-		console.log('✅ Configuración RAG inicializada exitosamente');
-		return config;
-	} catch (error) {
-		console.error('❌ Error al inicializar configuración RAG:', error);
-		throw new Error('Error al inicializar configuración del sistema RAG.');
-	}
-};
-
-/**
- * Actualiza la versión de la configuración RAG
- */
-export const updateRagPsychologicalConfigVersion = async (newVersion) => {
-	try {
-		const config = await prisma.ragPsychologicalConfig.update({
-			where: { id: 'general' },
-			data: { version: newVersion }
-		});
-
-		console.log(`✅ Versión RAG actualizada a ${newVersion}`);
-		return config;
-	} catch (error) {
-		console.error('❌ Error al actualizar versión RAG:', error);
-		throw new Error('Error al actualizar versión de configuración RAG.');
-	}
-};
 
 //---------------------------------------------------------------------------------------------------------
 

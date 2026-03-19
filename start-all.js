@@ -1,11 +1,11 @@
-import { spawn, execSync } from 'child_process';
-import { PrismaClient } from '@prisma/client';
+import { execSync } from 'child_process';
+import { spawn } from 'child_process';
+import prisma from './src/lib/prisma.js';
 
-console.log('🚀 Iniciando ChatBot Psicológico con Sistema Web...\n');
+console.log('🚀 Iniciando ChatBot Psicológico...\n');
 
 // ── Seed automático: solo si no hay practicantes en la BD ──
 async function seedIfNeeded() {
-    const prisma = new PrismaClient();
     try {
         const count = await prisma.practicante.count();
         if (count === 0) {
@@ -18,44 +18,26 @@ async function seedIfNeeded() {
     } catch (error) {
         console.error('⚠️ Error verificando/ejecutando seed:', error.message);
         console.log('Continuando sin seed...\n');
-    } finally {
-        await prisma.$disconnect();
     }
 }
 
 async function start() {
     await seedIfNeeded();
 
-    // Iniciar servidor web
-    console.log('🌐 Iniciando servidor web...');
-    const webServer = spawn('node', ['web/server.js'], {
+    console.log('🤖 Iniciando bot (modo WebSocket)...');
+    const botServer = spawn('node', ['src/app.js'], {
         stdio: 'inherit',
         cwd: process.cwd()
     });
 
-    // Esperar un momento antes de iniciar el bot
-    setTimeout(() => {
-        console.log('🤖 Iniciando bot (modo WebSocket)...');
-        const botServer = spawn('node', ['src/app.js'], {
-            stdio: 'inherit',
-            cwd: process.cwd()
-        });
-
-        botServer.on('close', (code) => {
-            console.log(`Bot terminado con código ${code}`);
-            webServer.kill();
-            process.exit(code);
-        });
-    }, 3000);
-
-    webServer.on('close', (code) => {
-        console.log(`Servidor web terminado con código ${code}`);
+    botServer.on('close', (code) => {
+        console.log(`Bot terminado con código ${code}`);
         process.exit(code);
     });
 
     process.on('SIGINT', () => {
         console.log('\n🛑 Cerrando servicios...');
-        webServer.kill();
+        botServer.kill();
         process.exit(0);
     });
 }

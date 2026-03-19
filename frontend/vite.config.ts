@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-const apiTarget = process.env.VITE_PROXY_TARGET || 'http://localhost:3010'
+const apiTarget = process.env.VITE_PROXY_TARGET || 'http://localhost:3015'
 const wsTarget = apiTarget.replace(/^http/, 'ws')
 
 // https://vite.dev/config/

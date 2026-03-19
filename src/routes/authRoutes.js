@@ -11,14 +11,13 @@
  *   GET  /v1/auth/check-status      - Check which registration step needs completion
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { Resolver } from 'dns/promises';
 import crypto from 'node:crypto';
 import { validateRegisterPayload, validateSociodemograficoPayload } from '../utils/validations.js';
-
-const prisma = new PrismaClient();
+import { isAllowedRate } from '../middleware/rateLimiter.js';
 const JWT_SECRET = process.env.JWT_SECRET;
 
 if (!JWT_SECRET || JWT_SECRET.length < 16) {
@@ -27,8 +26,6 @@ if (!JWT_SECRET || JWT_SECRET.length < 16) {
 
 // Los sets de valores válidos y la función validateRegisterPayload
 // se centralizaron en src/utils/validations.js (importado arriba).
-
-const rateLimitStore = new Map();
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -87,25 +84,6 @@ const getClientIp = (req) => {
         return forwarded.split(',')[0].trim();
     }
     return req.socket?.remoteAddress || 'unknown';
-};
-
-const isAllowedRate = (bucket, key, max, windowMs) => {
-    const now = Date.now();
-    const storeKey = `${bucket}:${key}`;
-    const current = rateLimitStore.get(storeKey);
-
-    if (!current || now > current.expiresAt) {
-        rateLimitStore.set(storeKey, { count: 1, expiresAt: now + windowMs });
-        return { allowed: true, retryAfterMs: 0 };
-    }
-
-    if (current.count >= max) {
-        return { allowed: false, retryAfterMs: Math.max(0, current.expiresAt - now) };
-    }
-
-    current.count += 1;
-    rateLimitStore.set(storeKey, current);
-    return { allowed: true, retryAfterMs: 0 };
 };
 
 /**
@@ -630,6 +608,58 @@ export function registerAuthRoutes(server) {
             });
         } catch (error) {
             console.error('Error en /v1/auth/check-status:', error);
+            return json(res, 500, { error: 'Error interno del servidor' });
+        }
+    });
+
+    // ── GET /v1/auth/check-sociodemografico ────────────────
+    server.get('/v1/auth/check-sociodemografico', async (req, res) => {
+        try {
+            const decoded = verifyToken(req);
+            if (!decoded?.userId) return json(res, 401, { error: 'No autenticado' });
+
+            const informacionSociodemografica = await prisma.informacionSociodemografica.findUnique({
+                where: { usuarioId: decoded.userId },
+            });
+
+            if (informacionSociodemografica) {
+                return json(res, 200, {
+                    hasSociodemografico: true,
+                    data: informacionSociodemografica,
+                });
+            }
+
+            return json(res, 200, { hasSociodemografico: false });
+        } catch (error) {
+            console.error('Error en /v1/auth/check-sociodemografico:', error);
+            return json(res, 500, { error: 'Error interno del servidor' });
+        }
+    });
+
+    // ── GET /v1/auth/check-tratamiento-datos ─────────────
+    server.get('/v1/auth/check-tratamiento-datos', async (req, res) => {
+        try {
+            const decoded = verifyToken(req);
+            if (!decoded?.userId) return json(res, 401, { error: 'No autenticado' });
+
+            const usuario = await prisma.informacionUsuario.findUnique({
+                where: { idUsuario: decoded.userId },
+                select: {
+                    idUsuario: true,
+                    autorizacionDatos: true,
+                },
+            });
+
+            if (usuario && isYes(usuario.autorizacionDatos)) {
+                return json(res, 200, {
+                    hasTratamientoDatos: true,
+                    autorizacionDatos: canonicalYesNo(usuario.autorizacionDatos),
+                });
+            }
+
+            return json(res, 200, { hasTratamientoDatos: false });
+        } catch (error) {
+            console.error('Error en /v1/auth/check-tratamiento-datos:', error);
             return json(res, 500, { error: 'Error interno del servidor' });
         }
     });

@@ -56,7 +56,7 @@ npx prisma db push
 Agregar al archivo `.env`:
 ```
 WEB_PORT=3008
-JWT_SECRET=tu_clave_secreta_muy_segura_aqui
+JWT_SECRET=<genera-una-clave-segura-de-al-menos-32-caracteres>
 WEB_HOST=localhost
 ```
 

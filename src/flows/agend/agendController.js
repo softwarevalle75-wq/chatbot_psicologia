@@ -1,7 +1,5 @@
-import { PrismaClient } from "@prisma/client";
+import prisma from "../../lib/prisma.js";
 import { format, parse, addDay, isAfter } from "@formkit/tempo";
-
-const prisma = new PrismaClient();
 
 export async function asignarCita(usuario) {
 	try {

@@ -9,3 +9,6 @@ temp/
 
 *.log
 *qr.png
+
+# Sync script (may contain credentials in older copies)
+sync_prod_to_local.jsnul

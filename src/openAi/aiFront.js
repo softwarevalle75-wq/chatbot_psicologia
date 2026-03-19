@@ -16,7 +16,7 @@ const aiFront = new OpenAI({
 
 export async function apiFront(conversationHistory) {
 	const completion = await aiFront.chat.completions.create({
-		model: 'text-davinci-003',
+		model: 'gpt-4o-mini',
 		messages: [...conversationHistory],
 		temperature: 0.7,
 	})

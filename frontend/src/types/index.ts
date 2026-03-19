@@ -6,6 +6,8 @@ export interface Message {
   sender: MessageSender;
   content: string;
   timestamp: string;
+  buttons?: Array<{ body: string }>;
+  media?: string;
 }
 
 // ── Registration types ──────────────────────────────────────

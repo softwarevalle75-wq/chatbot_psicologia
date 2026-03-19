@@ -11,7 +11,7 @@ export async function apiJson(conversationHistory, action) {
 		hist.push({ role: 'system', content: action }) // Agregar acción al final
 
 		const completion = await aiJson.chat.completions.create({
-			model: 'text-davinci-003',
+			model: 'gpt-4o-mini',
 			messages: hist,
 			response_format: { type: 'json_object' },
 		})
