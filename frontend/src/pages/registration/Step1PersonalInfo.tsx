@@ -254,7 +254,6 @@ export default function Step1PersonalInfo() {
               <option value="(ti) Tarjeta de identidad">(ti) Tarjeta de identidad</option>
               <option value="(rc) Registro civil">(rc) Registro civil</option>
               <option value="(ce) Cedula de extranjeria">(ce) Cedula de extranjeria</option>
-              <option value="(si) Sin identificacion">(si) Sin identificacion</option>
             </select>
             {errors.tipoDocumento
               ? <p className={fieldErrorClass}>{errors.tipoDocumento}</p>
