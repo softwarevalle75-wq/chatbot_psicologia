@@ -192,6 +192,13 @@ export interface DashboardData {
     uniquePatients: number;
     patientsWithoutPractitioner?: number;
     totalPdfsGenerated: { ghq12: number; dass21: number };
+    byTestType?: {
+      totalConGhq12?: number;
+      totalConDass21?: number;
+      soloGhq12?: number;
+      soloDass21?: number;
+      ambas?: number;
+    };
     ccRecipient: string;
     byPractitioner: Array<{ name: string; email: string; emailsSent: number; uniquePatients: number }>;
     byDay: Array<{ date: string; count: number }>;
