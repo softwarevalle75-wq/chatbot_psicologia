@@ -268,9 +268,9 @@ const getDashboardSummary = async (practitionerEmail = null) => {
   let filterPhones = null; // null = no filter (show all)
 
   if (practitionerEmail === 'sin_asignar') {
-    // Patients with NO practitioner linked in envios_correo
+    // Patients with NO practitioner linked in envios_correo — only valid completed tests
     const [allGhq12Phones, linkedPhones] = await Promise.all([
-      prisma.$queryRawUnsafe(`SELECT DISTINCT telefono COLLATE utf8mb4_unicode_ci AS telefono FROM ghq12`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT DISTINCT telefono COLLATE utf8mb4_unicode_ci AS telefono FROM ghq12 WHERE preguntaActual = 11 AND Puntaje > 0`).catch(() => []),
       prisma.$queryRawUnsafe(`SELECT DISTINCT telefono_paciente COLLATE utf8mb4_unicode_ci AS telefono_paciente FROM envios_correo`).catch(() => []),
     ]);
     const linkedSet = new Set(linkedPhones.map((r) => String(r.telefono_paciente)));
@@ -285,7 +285,7 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     if (filterPhones.length === 0) filterPhones = ['__NO_MATCH__']; // ensure empty result set
   }
 
-  // SQL IN-clause helper for phone filtering
+  // SQL IN-clause helper for phone filtering — always returns " AND col IN (...)" or ""
   const phoneInClause = (col) => {
     if (!filterPhones) return '';
     const escaped = filterPhones.map((p) => `'${String(p).replace(/'/g, "''")}'`).join(',');
@@ -313,6 +313,7 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     emailByPractitionerRows,
     emailByDayRows,
     ghq12WithoutPractitionerRows,
+    emailByTestTypeRows,
   ] = await Promise.all([
     // Total patients
     filterPhones
@@ -330,37 +331,33 @@ const getDashboardSummary = async (practitionerEmail = null) => {
       GROUP BY p.idPracticante, p.nombre, p.genero
       ORDER BY patients DESC
     `).catch(() => []),
-    // GHQ-12 from ghq12 table
+    // GHQ-12 from ghq12 table — only completed tests with real scores
+    // preguntaActual=11 means all 11 questions answered; Puntaje > 0 excludes test/seed data
     prisma.$queryRawUnsafe(`
       SELECT idGhq12, telefono, Puntaje, informePdfFecha
-      FROM ghq12 WHERE 1=1${phoneInClause('telefono')}
+      FROM ghq12
+      WHERE preguntaActual = 11
+      AND Puntaje > 0${phoneInClause('telefono')}
     `).catch(() => []),
-    // DASS-21 from HistorialTest
-    filterPhones
-      ? prisma.$queryRawUnsafe(`
-          SELECT ht.id, ht.usuarioId, ht.resultados, ht.fechaCompletado
-          FROM HistorialTest ht
-          JOIN informacionUsuario u ON u.idUsuario = ht.usuarioId
-          WHERE ht.tipoTest = 'interpretacion_dass21'${phoneInClause('u.telefonoPersonal')}
-        `).catch(() => [])
-      : prisma.$queryRawUnsafe(`
-          SELECT id, usuarioId, resultados, fechaCompletado
-          FROM HistorialTest
-          WHERE tipoTest = 'interpretacion_dass21'
-        `).catch(() => []),
-    // GHQ-12 item-level from HistorialTest
-    filterPhones
-      ? prisma.$queryRawUnsafe(`
-          SELECT ht.id, ht.usuarioId, ht.resultados, ht.fechaCompletado
-          FROM HistorialTest ht
-          JOIN informacionUsuario u ON u.idUsuario = ht.usuarioId
-          WHERE ht.tipoTest = 'interpretacion_ghq12'${phoneInClause('u.telefonoPersonal')}
-        `).catch(() => [])
-      : prisma.$queryRawUnsafe(`
-          SELECT id, usuarioId, resultados, fechaCompletado
-          FROM HistorialTest
-          WHERE tipoTest = 'interpretacion_ghq12'
-        `).catch(() => []),
+    // DASS-21 from HistorialTest — only patients with a completed dass21 (preguntaActual=21)
+    prisma.$queryRawUnsafe(`
+      SELECT ht.id, ht.usuarioId, ht.resultados, ht.fechaCompletado
+      FROM HistorialTest ht
+      JOIN informacionUsuario u ON u.idUsuario = ht.usuarioId
+      JOIN dass21 d ON d.telefono = u.telefonoPersonal
+      WHERE ht.tipoTest = 'interpretacion_dass21'
+      AND d.preguntaActual = 21${phoneInClause('u.telefonoPersonal')}
+    `).catch(() => []),
+    // GHQ-12 item-level from HistorialTest — only patients with a valid completed ghq12
+    prisma.$queryRawUnsafe(`
+      SELECT ht.id, ht.usuarioId, ht.resultados, ht.fechaCompletado
+      FROM HistorialTest ht
+      JOIN informacionUsuario u ON u.idUsuario = ht.usuarioId
+      JOIN ghq12 g ON g.telefono = u.telefonoPersonal
+      WHERE ht.tipoTest = 'interpretacion_ghq12'
+      AND g.preguntaActual = 11
+      AND g.Puntaje > 0${phoneInClause('u.telefonoPersonal')}
+    `).catch(() => []),
     // All users for sociodemographic & cross-tabs
     prisma.$queryRawUnsafe(`
       SELECT idUsuario, telefonoPersonal, sexo, fechaNacimiento,
@@ -382,11 +379,11 @@ const getDashboardSummary = async (practitionerEmail = null) => {
                  s.ocupacion, s.conQuienVive, s.tienePersonasACargo, s.numeroHijos
           FROM informacion_sociodemografica s
         `).catch(() => []),
-    // PDF counts
-    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM ghq12 WHERE informePdf IS NOT NULL`).catch(() => [{ c: 0 }]),
-    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM dass21 WHERE informePdf IS NOT NULL`).catch(() => [{ c: 0 }]),
-    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM ghq12 WHERE informePdf IS NOT NULL AND informePdfFecha IS NULL`).catch(() => [{ c: 0 }]),
-    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM dass21 WHERE informePdf IS NOT NULL AND informePdfFecha IS NULL`).catch(() => [{ c: 0 }]),
+    // PDF counts — only valid completed tests
+    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM ghq12 WHERE informePdf IS NOT NULL AND preguntaActual = 11 AND Puntaje > 0`).catch(() => [{ c: 0 }]),
+    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM dass21 WHERE informePdf IS NOT NULL AND preguntaActual = 21`).catch(() => [{ c: 0 }]),
+    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM ghq12 WHERE informePdf IS NOT NULL AND informePdfFecha IS NULL AND preguntaActual = 11 AND Puntaje > 0`).catch(() => [{ c: 0 }]),
+    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM dass21 WHERE informePdf IS NOT NULL AND informePdfFecha IS NULL AND preguntaActual = 21`).catch(() => [{ c: 0 }]),
     prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM informacionUsuario WHERE practicanteAsignado IS NOT NULL`).catch(() => [{ c: 0 }]),
     prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM informacionUsuario WHERE practicanteAsignado IS NULL`).catch(() => [{ c: 0 }]),
     // Email tracking: total
@@ -400,16 +397,43 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     prisma.$queryRawUnsafe(`
       SELECT DATE(fecha_envio) AS fecha, COUNT(*) AS emails FROM envios_correo GROUP BY DATE(fecha_envio) ORDER BY fecha
     `).catch(() => []),
-    // Count of GHQ-12 patients NOT in envios_correo (sueltos)
+    // Count of valid GHQ-12 patients NOT in envios_correo (sueltos)
     prisma.$queryRawUnsafe(`
       SELECT COUNT(DISTINCT g.telefono) AS c
       FROM ghq12 g
-      WHERE NOT EXISTS (
+      WHERE g.preguntaActual = 11
+      AND g.Puntaje > 0
+      AND NOT EXISTS (
         SELECT 1 FROM envios_correo e
         WHERE e.telefono_paciente COLLATE utf8mb4_unicode_ci = g.telefono COLLATE utf8mb4_unicode_ci
       )
     `).catch(() => [{ c: 0 }]),
+    // Email breakdown by test type (using timestamp cross-reference)
+    prisma.$queryRawUnsafe(`
+      SELECT
+        (SELECT COUNT(DISTINCT h.phone) FROM history h
+         JOIN dass21 d ON d.telefono=h.phone AND d.preguntaActual=21
+         LEFT JOIN ghq12 g ON g.telefono=h.phone AND g.preguntaActual=11 AND g.Puntaje>0 AND g.informePdfFecha < h.created_at
+         WHERE h.answer LIKE '%Informe enviado exitosamente%' AND h.created_at > d.informePdfFecha AND g.telefono IS NULL
+        ) AS solo_dass21,
+        (SELECT COUNT(DISTINCT h.phone) FROM history h
+         JOIN ghq12 g ON g.telefono=h.phone AND g.preguntaActual=11 AND g.Puntaje>0
+         LEFT JOIN dass21 d ON d.telefono=h.phone AND d.preguntaActual=21 AND d.informePdfFecha < h.created_at
+         WHERE h.answer LIKE '%Informe enviado exitosamente%' AND h.created_at > g.informePdfFecha AND d.telefono IS NULL
+        ) AS solo_ghq12,
+        (SELECT COUNT(DISTINCT h.phone) FROM history h
+         JOIN ghq12 g ON g.telefono=h.phone AND g.preguntaActual=11 AND g.Puntaje>0
+         JOIN dass21 d ON d.telefono=h.phone AND d.preguntaActual=21
+         WHERE h.answer LIKE '%Informe enviado exitosamente%' AND h.created_at > g.informePdfFecha AND h.created_at > d.informePdfFecha
+        ) AS ambas
+    `).catch(() => [{ solo_dass21: 0, solo_ghq12: 0, ambas: 0 }]),
   ]);
+
+  /* ── 1b. Email by test type breakdown ─────────────────────── */
+  const emailByTestType = emailByTestTypeRows?.[0] || { solo_dass21: 0, solo_ghq12: 0, ambas: 0 };
+  const emailsSoloDass21 = Number(emailByTestType.solo_dass21 || 0);
+  const emailsSoloGhq12 = Number(emailByTestType.solo_ghq12 || 0);
+  const emailsAmbas = Number(emailByTestType.ambas || 0);
 
   /* ── 2. Build lookup maps ───────────────────────────────── */
   const userByPhone = new Map();   // phone -> user row
@@ -475,6 +499,19 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     }
   }
   const ghqHistDeduplicated = Array.from(firstGhqHistMap.values());
+
+  /* ── 2c. Patient evaluation breakdown ──────────────────── */
+  const ghq12Phones = new Set(ghq12Deduplicated.map(r => r.telefono));
+  const dass21Phones = new Set(dassDeduplicated.map(r => {
+    // map usuarioId back to phone via userById
+    const u = userById.get(r.usuarioId);
+    return u ? u.telefonoPersonal : null;
+  }).filter(Boolean));
+  const bothTestsCount = [...ghq12Phones].filter(p => dass21Phones.has(p)).length;
+  const onlyGHQ12Count = ghq12Phones.size - bothTestsCount;
+  const onlyDASS21Count = dass21Phones.size - bothTestsCount;
+  const totalEvaluated = ghq12Phones.size + onlyDASS21Count; // unique patients with at least one valid test
+  const notEvaluated = totalPatients - totalEvaluated;
 
   /* ── 3. GHQ-12 processing ──────────────────────────────── */
   const totalGHQ12 = ghq12Deduplicated.length;
@@ -973,8 +1010,13 @@ const getDashboardSummary = async (practitionerEmail = null) => {
   return {
     overview: {
       totalPatients,
+      totalEvaluated,
       totalGHQ12,
       totalDASS21,
+      bothTestsCount,
+      onlyGHQ12Count,
+      onlyDASS21Count,
+      notEvaluated,
       activePractitioners,
       patientsAtRisk,
       riskPercentage,
@@ -1044,6 +1086,13 @@ const getDashboardSummary = async (practitionerEmail = null) => {
       byPractitioner: emailByPractitioner,
       byDay: emailByDay,
       currentFilter: practitionerEmail || 'all',
+      byTestType: {
+        soloGhq12: emailsSoloGhq12,
+        soloDass21: emailsSoloDass21,
+        ambas: emailsAmbas,
+        totalConDass21: emailsSoloDass21 + emailsAmbas,
+        totalConGhq12: emailsSoloGhq12 + emailsAmbas,
+      },
     },
   };
 };

@@ -5,7 +5,6 @@ import {
   ClipboardList,
   AlertTriangle,
   UserCheck,
-  TrendingUp,
   Loader2,
   RefreshCw,
   Brain,
@@ -14,7 +13,6 @@ import {
   ShieldAlert,
   Activity,
   GraduationCap,
-  Mail,
   Filter,
 } from 'lucide-react';
 import {
@@ -263,6 +261,14 @@ function TabResumen({ data }: { data: DashboardData }) {
   const anxPct = (anxAffected / dassTotal) * 100;
   const strPct = (strAffected / dassTotal) * 100;
 
+  // New breakdown fields (with fallbacks for backward compat)
+  const totalEvaluated: number = (overview as any).totalEvaluated ?? (overview.totalGHQ12 + ((overview as any).onlyDASS21Count ?? 0));
+  const notEvaluated: number = (overview as any).notEvaluated ?? (overview.totalPatients - totalEvaluated);
+  const bothTests: number = (overview as any).bothTestsCount ?? 0;
+  const onlyGHQ12: number = (overview as any).onlyGHQ12Count ?? overview.totalGHQ12;
+  const onlyDASS21: number = (overview as any).onlyDASS21Count ?? 0;
+  const evalPct = overview.totalPatients > 0 ? (totalEvaluated / overview.totalPatients) * 100 : 0;
+
   return (
     <div className="space-y-6">
       {/* Alert banner */}
@@ -271,65 +277,92 @@ function TabResumen({ data }: { data: DashboardData }) {
           <AlertTriangle className="w-6 h-6 text-red-500 flex-shrink-0" />
           <div>
             <p className="text-sm font-semibold text-red-800">
-              Alerta: El {pct(overview.riskPercentage)} de la poblacion evaluada presenta riesgo en salud mental segun GHQ-12
+              Alerta: El {pct(overview.riskPercentage)} de los pacientes evaluados con GHQ-12 presenta riesgo en salud mental
             </p>
             <p className="text-xs text-red-600 mt-0.5">
-              {fmt(overview.patientsAtRisk)} de {fmt(overview.totalPatients)} pacientes evaluados requieren atencion prioritaria.
+              {fmt(overview.patientsAtRisk)} de {fmt(overview.totalGHQ12)} pacientes evaluados superan el umbral de riesgo (puntaje ≥ 12).
             </p>
           </div>
         </div>
       )}
 
-      {/* 6 Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        <StatCard
-          title="Total Pacientes"
-          value={overview.totalPatients}
-          icon={Users}
-          color={C.blue}
-          subtitle="Pacientes registrados en el sistema"
-        />
-        <StatCard
-          title="Pacientes evaluados GHQ-12"
-          value={overview.totalGHQ12}
-          icon={ClipboardCheck}
-          color={C.purple}
-          subtitle={`Puntaje promedio: ${ghq12.averageScore.toFixed(1)}`}
-        />
-        <StatCard
-          title="Pacientes evaluados DASS-21"
-          value={overview.totalDASS21}
-          icon={ClipboardList}
-          color={C.indigo}
-          subtitle={`${fmt(dass21.totalTests)} evaluaciones procesadas`}
-        />
-        <StatCard
-          title="Pacientes en Riesgo"
-          value={fmt(overview.patientsAtRisk)}
-          icon={AlertTriangle}
-          color={overview.riskPercentage > 40 ? C.red : C.orange}
-          alert={overview.riskPercentage > 40}
-          subtitle={`${pct(overview.riskPercentage)} de la poblacion evaluada`}
-        />
-        <StatCard
-          title="Practicantes Activos"
-          value={overview.activePractitioners}
-          icon={UserCheck}
-          color={C.teal}
-          subtitle="Con asignaciones activas"
-        />
-        <StatCard
-          title="Poblacion en Riesgo"
-          value={pct(overview.riskPercentage)}
-          icon={TrendingUp}
-          color={riskColor(overview.riskPercentage)}
-          subtitle="Segun criterio GHQ-12 >= 5"
-        />
+      {/* Fila 1: Cobertura */}
+      <div>
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Cobertura de Evaluacion</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <StatCard
+            title="Registrados en el sistema"
+            value={fmt(overview.totalPatients)}
+            icon={Users}
+            color={C.blue}
+            subtitle="Total de pacientes registrados"
+          />
+          <StatCard
+            title="Evaluados (al menos 1 prueba)"
+            value={fmt(totalEvaluated)}
+            icon={ClipboardCheck}
+            color={C.teal}
+            subtitle={`${pct(evalPct)} de los registrados`}
+          />
+          <StatCard
+            title="Sin evaluacion"
+            value={fmt(notEvaluated)}
+            icon={UserCheck}
+            color={C.slate}
+            subtitle="Registrados sin prueba completada"
+          />
+          <div className="bg-white border border-slate-200 rounded-xl p-4">
+            <p className="text-xs font-medium text-slate-500 mb-3">Distribucion de pruebas</p>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-600">Solo GHQ-12</span>
+                <span className="text-sm font-bold text-slate-900">{fmt(onlyGHQ12)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-600">Solo DASS-21</span>
+                <span className="text-sm font-bold text-slate-900">{fmt(onlyDASS21)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-600">Ambas pruebas</span>
+                <span className="text-sm font-bold text-indigo-600">{fmt(bothTests)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* DASS-21 quick summary */}
+      {/* Fila 2: Resultados clinicos */}
       <div>
-        <h3 className="text-sm font-semibold text-slate-700 mb-3">Resumen Rapido DASS-21 — Poblacion con Sintomatologia</h3>
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Resultados Clinicos</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          <StatCard
+            title="GHQ-12 — Evaluados"
+            value={fmt(overview.totalGHQ12)}
+            icon={ClipboardCheck}
+            color={C.purple}
+            subtitle={`Puntaje promedio: ${ghq12.averageScore.toFixed(1)} / 36`}
+          />
+          <StatCard
+            title="GHQ-12 — En Riesgo"
+            value={fmt(overview.patientsAtRisk)}
+            icon={AlertTriangle}
+            color={overview.riskPercentage > 40 ? C.red : C.orange}
+            alert={overview.riskPercentage > 40}
+            subtitle={`${pct(overview.riskPercentage)} de evaluados (puntaje >= 12)`}
+          />
+          <StatCard
+            title="DASS-21 — Evaluados"
+            value={fmt(overview.totalDASS21)}
+            icon={ClipboardList}
+            color={C.indigo}
+            subtitle={`${fmt(bothTests)} tambien hicieron GHQ-12`}
+          />
+        </div>
+      </div>
+
+      {/* Fila 3: DASS-21 sintomatologia */}
+      <div>
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">DASS-21 — Poblacion con Sintomatologia</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-4">
             <div className="p-2.5 rounded-lg" style={{ backgroundColor: `${C.blue}15` }}>
@@ -364,87 +397,50 @@ function TabResumen({ data }: { data: DashboardData }) {
         </div>
       </div>
 
-      {/* Email tracking info card */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 space-y-3">
-        <div className="flex items-center gap-3">
-          <Mail className="w-5 h-5 text-blue-600 flex-shrink-0" />
-          <div className="text-sm text-blue-800 space-y-1">
-            <div>
-              <strong>{fmt(data.emailTracking.totalEmailsSent)}</strong> informes enviados por email a{' '}
-              <strong>{data.emailTracking.byPractitioner.length}</strong> practicantes.
-              CC a <span className="font-mono text-xs bg-blue-100 px-1 py-0.5 rounded">{data.emailTracking.ccRecipient}</span>
+      {/* Fila 4: Informes enviados por email */}
+      {data.emailTracking && (
+        <div>
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Informes Enviados por Email</h3>
+          <div className="bg-white border border-slate-200 rounded-xl p-5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-slate-900">{fmt(data.emailTracking.totalEmailsSent)}</p>
+                <p className="text-xs text-slate-500 mt-1">Total emails enviados</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-purple-600">{fmt(data.emailTracking.byTestType?.totalConGhq12 ?? 0)}</p>
+                <p className="text-xs text-slate-500 mt-1">Tras GHQ-12</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-indigo-600">{fmt(data.emailTracking.byTestType?.totalConDass21 ?? 0)}</p>
+                <p className="text-xs text-slate-500 mt-1">Tras DASS-21</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-teal-600">{fmt(data.emailTracking.byTestType?.ambas ?? 0)}</p>
+                <p className="text-xs text-slate-500 mt-1">Tras ambas pruebas</p>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-3 mt-1">
-              <span className="text-green-700 font-medium">
-                ✅ {fmt(data.emailTracking.uniquePatients)} pacientes vinculados a un practicante ({data.emailTracking.byPractitioner.length} practicantes)
-              </span>
-              {(data.emailTracking.patientsWithoutPractitioner ?? 0) > 0 && (
-                <span className="text-amber-700 font-medium">
-                  ⚠️ {fmt(data.emailTracking.patientsWithoutPractitioner ?? 0)} pacientes sin practicante asignado
-                </span>
-              )}
-            </div>
-            <div className="text-xs text-blue-600">
-              Total PDFs generados: {fmt((data.emailTracking.totalPdfsGenerated?.ghq12 ?? 0) + (data.emailTracking.totalPdfsGenerated?.dass21 ?? 0))} (GHQ-12: {fmt(data.emailTracking.totalPdfsGenerated?.ghq12 ?? 0)}, DASS-21: {fmt(data.emailTracking.totalPdfsGenerated?.dass21 ?? 0)})
+            <div className="border-t border-slate-100 pt-3 space-y-1">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="w-2 h-2 rounded-full bg-purple-400 flex-shrink-0" />
+                <span><strong>{fmt(data.emailTracking.byTestType?.soloGhq12 ?? 0)} pacientes</strong> enviaron informe solo tras GHQ-12</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="w-2 h-2 rounded-full bg-indigo-400 flex-shrink-0" />
+                <span><strong>{fmt(data.emailTracking.byTestType?.soloDass21 ?? 0)} pacientes</strong> enviaron informe solo tras DASS-21</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="w-2 h-2 rounded-full bg-teal-400 flex-shrink-0" />
+                <span><strong>{fmt(data.emailTracking.byTestType?.ambas ?? 0)} pacientes</strong> hicieron ambas pruebas y enviaron informe</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-400 pt-1">
+                <span className="w-2 h-2 rounded-full bg-slate-300 flex-shrink-0" />
+                <span>CC automatico a <strong>chatbotpsicologia@gmail.com</strong> en cada envio</span>
+              </div>
             </div>
           </div>
         </div>
-
-        {data.emailTracking.currentFilter !== 'all' && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-            {data.emailTracking.currentFilter === 'sin_asignar' ? (
-              <>
-                <strong>Filtro activo:</strong> Mostrando <strong>{fmt(overview.totalPatients)}</strong> pacientes sin practicante asignado (no registrados en envios_correo)
-              </>
-            ) : (
-              <>
-                <strong>Filtro activo:</strong> Mostrando datos de{' '}
-                <strong>{fmt(overview.totalPatients)}</strong> pacientes atendidos por{' '}
-                <strong>{data.emailTracking.byPractitioner.find((p) => p.email === data.emailTracking.currentFilter)?.name || data.emailTracking.currentFilter}</strong>{' '}
-                (<span className="font-mono text-xs">{data.emailTracking.currentFilter}</span>)
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Top 5 practitioners mini-table */}
-        {data.emailTracking.byPractitioner.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-blue-200">
-                  <th className="text-left py-1.5 px-2 text-blue-700 font-semibold">Practicante</th>
-                  <th className="text-left py-1.5 px-2 text-blue-700 font-semibold">Correo</th>
-                  <th className="text-center py-1.5 px-2 text-blue-700 font-semibold">Emails</th>
-                  <th className="text-center py-1.5 px-2 text-blue-700 font-semibold">Pacientes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.emailTracking.byPractitioner.slice(0, 5).map((p) => (
-                  <tr key={p.email} className="border-b border-blue-100">
-                    <td className="py-1.5 px-2 text-blue-800 font-medium">{p.name}</td>
-                    <td className="py-1.5 px-2 text-blue-600 font-mono">{p.email}</td>
-                    <td className="py-1.5 px-2 text-center font-semibold text-blue-800">{fmt(p.emailsSent)}</td>
-                    <td className="py-1.5 px-2 text-center text-blue-700">{fmt(p.uniquePatients)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {data.emailTracking.byPractitioner.length > 5 && (
-              <p className="text-xs text-blue-500 mt-1 px-2">
-                ... y {data.emailTracking.byPractitioner.length - 5} practicantes mas
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      <ClinicalNote>
-        <strong>Nota clinica:</strong> Los indicadores anteriores ofrecen una vista panoramica del estado de salud mental
-        de la poblacion evaluada. El GHQ-12 detecta malestar psicologico general (punto de corte &ge; 5), mientras que
-        el DASS-21 diferencia entre depresion, ansiedad y estres. Los valores aqui mostrados no constituyen diagnostico
-        individual, sino un tamizaje poblacional para orientar la intervencion del programa de bienestar.
-      </ClinicalNote>
+      )}
     </div>
   );
 }
@@ -1363,6 +1359,7 @@ function TabCrossTabs({ data }: { data: DashboardData }) {
 type TabKey = 'resumen' | 'ghq12' | 'dass21' | 'socio' | 'cruzado';
 
 const TABS: Array<{ key: TabKey; label: string }> = [
+  { key: 'resumen', label: 'Resumen General' },
   { key: 'ghq12', label: 'GHQ-12' },
   { key: 'dass21', label: 'DASS-21' },
   { key: 'socio', label: 'Perfil Sociodemografico' },
@@ -1370,7 +1367,7 @@ const TABS: Array<{ key: TabKey; label: string }> = [
 ];
 
 export default function AdminHomePage() {
-  const [activeTab, setActiveTab] = useState<TabKey>('ghq12');
+  const [activeTab, setActiveTab] = useState<TabKey>('resumen');
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
