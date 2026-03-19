@@ -11,6 +11,22 @@ const PERIODS = new Set(['week', 'month', 'year']);
 const normalizePeriod = (value) => (PERIODS.has(value) ? value : 'month');
 const toDayKey = (date) => date.toISOString().slice(0, 10);
 const toMonthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+const normalizeText = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/\s+/g, ' ')
+  .trim();
+const buildNameKey = (firstName, lastName) => `${normalizeText(firstName)}|${normalizeText(lastName)}`;
+const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
+const buildPhoneCandidates = (value) => {
+  const base = normalizePhone(value);
+  if (!base) return [];
+  const out = new Set([base]);
+  if (base.startsWith('57') && base.length > 2) out.add(base.slice(2));
+  else out.add(`57${base}`);
+  return [...out];
+};
 
 const json = (res, statusCode, data) => {
   res.writeHead(statusCode, { 'Content-Type': 'application/json' });
@@ -634,14 +650,20 @@ export function registerDashboardRoutes(server) {
           }
         }
 
-        const userByPhone = new Map(users.map((u) => [u.telefonoPersonal, u]));
+        const userByPhone = new Map();
+        for (const user of users) {
+          const candidates = buildPhoneCandidates(user.telefonoPersonal);
+          for (const candidate of candidates) {
+            if (!userByPhone.has(candidate)) userByPhone.set(candidate, user);
+          }
+        }
 
         const unresolvedUsers = users.filter((u) => {
           const assigned = u.practicanteAsignado || (u.idUsuario ? latestPractitionerByUser.get(u.idUsuario) : null);
           return !assigned;
         });
 
-        const userKey = (u) => `${String(u.primerNombre || '').trim().toLowerCase()}|${String(u.segundoNombre || '').trim().toLowerCase()}|${String(u.primerApellido || '').trim().toLowerCase()}`;
+        const userKey = (u) => buildNameKey(u.primerNombre, u.primerApellido);
         const unresolvedByKey = new Map(unresolvedUsers.map((u) => [userKey(u), u]));
 
         const citasByUserKey = unresolvedUsers.length
@@ -649,13 +671,11 @@ export function registerDashboardRoutes(server) {
             where: {
               OR: unresolvedUsers.map((u) => ({
                 primerNombre: String(u.primerNombre || ''),
-                segundoNombre: String(u.segundoNombre || ''),
                 primerApellido: String(u.primerApellido || ''),
               })),
             },
             select: {
               primerNombre: true,
-              segundoNombre: true,
               primerApellido: true,
               nombrePracticante: true,
               fechaHora: true,
@@ -666,19 +686,39 @@ export function registerDashboardRoutes(server) {
 
         const latestPractitionerNameByUserKey = new Map();
         for (const cita of citasByUserKey) {
-          const key = `${String(cita.primerNombre || '').trim().toLowerCase()}|${String(cita.segundoNombre || '').trim().toLowerCase()}|${String(cita.primerApellido || '').trim().toLowerCase()}`;
+          const key = buildNameKey(cita.primerNombre, cita.primerApellido);
           if (!unresolvedByKey.has(key) || latestPractitionerNameByUserKey.has(key)) continue;
           latestPractitionerNameByUserKey.set(key, String(cita.nombrePracticante || '').trim());
         }
 
+        const emailPractitionerByPatientName = new Map();
+        const emailRowsForFallback = await prisma.$queryRawUnsafe(`
+          SELECT patient_name, practitioner_name, uploaded_at
+          FROM email_pdf_cache
+          WHERE practitioner_name IS NOT NULL
+            AND practitioner_name <> ''
+            AND patient_name IS NOT NULL
+            AND patient_name <> ''
+          ORDER BY uploaded_at DESC
+          LIMIT 5000
+        `).catch(() => []);
+        for (const row of emailRowsForFallback) {
+          const patientKey = normalizeText(row.patient_name);
+          const practitionerName = String(row.practitioner_name || '').trim();
+          if (!patientKey || !practitionerName || emailPractitionerByPatientName.has(patientKey)) continue;
+          emailPractitionerByPatientName.set(patientKey, practitionerName);
+        }
+
         const practNamesFromCitas = [...new Set([...latestPractitionerNameByUserKey.values()].filter(Boolean))];
-        const practitionersByName = practNamesFromCitas.length
+        const practNamesFromEmail = [...new Set([...emailPractitionerByPatientName.values()].filter(Boolean))];
+        const practNamesForFallback = [...new Set([...practNamesFromCitas, ...practNamesFromEmail])];
+        const practitionersByName = practNamesForFallback.length
           ? await prisma.practicante.findMany({
-            where: { nombre: { in: practNamesFromCitas } },
+            where: { nombre: { in: practNamesForFallback } },
             select: { idPracticante: true, nombre: true },
           })
           : [];
-        const practByName = new Map(practitionersByName.map((p) => [p.nombre, p]));
+        const practByName = new Map(practitionersByName.map((p) => [normalizeText(p.nombre), p]));
 
         const practIds = [...new Set([
           ...users.map((u) => u.practicanteAsignado).filter(Boolean),
@@ -688,23 +728,29 @@ export function registerDashboardRoutes(server) {
         const practById = new Map(practitioners.map((p) => [p.idPracticante, p.nombre]));
 
         for (const row of ghqDb) {
-          const user = userByPhone.get(row.telefono);
+          const phoneKey = normalizePhone(row.telefono);
+          const user = userByPhone.get(phoneKey);
           const patientName = user ? [user.primerNombre, user.segundoNombre, user.primerApellido, user.segundoApellido].filter(Boolean).join(' ') : 'Sin paciente';
           const directPractId = user?.practicanteAsignado || (user?.idUsuario ? latestPractitionerByUser.get(user.idUsuario) : null);
           const fallbackPractName = user ? latestPractitionerNameByUserKey.get(userKey(user)) : null;
-          const fallbackPract = fallbackPractName ? practByName.get(fallbackPractName) : null;
-          const practId = directPractId || fallbackPract?.idPracticante || null;
-          const practName = (directPractId ? practById.get(directPractId) : null) || fallbackPract?.nombre || null;
+          const fallbackPract = fallbackPractName ? practByName.get(normalizeText(fallbackPractName)) : null;
+          const emailPractName = emailPractitionerByPatientName.get(normalizeText(patientName));
+          const emailPract = emailPractName ? practByName.get(normalizeText(emailPractName)) : null;
+          const practId = directPractId || fallbackPract?.idPracticante || emailPract?.idPracticante || null;
+          const practName = (directPractId ? practById.get(directPractId) : null) || fallbackPract?.nombre || emailPract?.nombre || emailPractName || null;
           records.push({ id: `ghq12:${row.idGhq12}`, filename: row.informePdfNombre || `reporte_ghq12_${row.idGhq12}.pdf`, path: `/v1/pdfs/file?source=database&id=ghq12:${row.idGhq12}`, uploadedAt: row.informePdfFecha || new Date(), source: 'database', patient: { id: row.telefono, name: patientName }, practitioner: practName ? { id: String(practId || ''), name: practName } : null });
         }
         for (const row of dassDb) {
-          const user = userByPhone.get(row.telefono);
+          const phoneKey = normalizePhone(row.telefono);
+          const user = userByPhone.get(phoneKey);
           const patientName = user ? [user.primerNombre, user.segundoNombre, user.primerApellido, user.segundoApellido].filter(Boolean).join(' ') : 'Sin paciente';
           const directPractId = user?.practicanteAsignado || (user?.idUsuario ? latestPractitionerByUser.get(user.idUsuario) : null);
           const fallbackPractName = user ? latestPractitionerNameByUserKey.get(userKey(user)) : null;
-          const fallbackPract = fallbackPractName ? practByName.get(fallbackPractName) : null;
-          const practId = directPractId || fallbackPract?.idPracticante || null;
-          const practName = (directPractId ? practById.get(directPractId) : null) || fallbackPract?.nombre || null;
+          const fallbackPract = fallbackPractName ? practByName.get(normalizeText(fallbackPractName)) : null;
+          const emailPractName = emailPractitionerByPatientName.get(normalizeText(patientName));
+          const emailPract = emailPractName ? practByName.get(normalizeText(emailPractName)) : null;
+          const practId = directPractId || fallbackPract?.idPracticante || emailPract?.idPracticante || null;
+          const practName = (directPractId ? practById.get(directPractId) : null) || fallbackPract?.nombre || emailPract?.nombre || emailPractName || null;
           records.push({ id: `dass21:${row.idDass21}`, filename: row.informePdfNombre || `reporte_dass21_${row.idDass21}.pdf`, path: `/v1/pdfs/file?source=database&id=dass21:${row.idDass21}`, uploadedAt: row.informePdfFecha || new Date(), source: 'database', patient: { id: row.telefono, name: patientName }, practitioner: practName ? { id: String(practId || ''), name: practName } : null });
         }
       }
