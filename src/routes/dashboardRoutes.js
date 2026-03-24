@@ -557,10 +557,8 @@ const getDashboardSummary = async (practitionerEmail = null) => {
   ]);
 
   /* ── 2. Build lookup maps ───────────────────────────────── */
-  const userByPhone = new Map();   // phone -> user row
   const userById = new Map();      // idUsuario -> user row
   for (const u of userRows) {
-    userByPhone.set(u.telefonoPersonal, u);
     userById.set(u.idUsuario, u);
   }
 
@@ -634,8 +632,49 @@ const getDashboardSummary = async (practitionerEmail = null) => {
   const totalEvaluated = onlyGHQ12Count + onlyDASS21Count + bothTestsCount;
   const notEvaluated = Math.max(0, totalPatients - totalEvaluated);
 
-  /* ── 3. GHQ-12 processing ──────────────────────────────── */
-  const totalGHQ12 = ghq12Deduplicated.length;
+  // GHQ score source normalized by userId (HistorialTest first, table fallback)
+  const ghqTableByPhone = new Map();
+  for (const row of ghq12Deduplicated) {
+    ghqTableByPhone.set(String(row.telefono || ''), row);
+  }
+
+  const ghqByUserId = new Map();
+  for (const row of ghqHistDeduplicated) {
+    const userId = String(row.usuarioId || '').trim();
+    if (!userId) continue;
+
+    const itemMap = parseItemScores(String(row.resultados || ''));
+    if (!itemMap) continue;
+
+    const score = Array.from({ length: 12 }, (_v, idx) => idx + 1)
+      .reduce((sum, idx) => sum + (itemMap.get(idx) || 0), 0);
+    const completedAt = parseResultDate(row.resultados, row.fechaCompletado);
+
+    ghqByUserId.set(userId, {
+      score: Number(score || 0),
+      completedAt: completedAt || null,
+      source: 'historial',
+    });
+  }
+
+  for (const userId of ghqUsers) {
+    if (ghqByUserId.has(userId)) continue;
+    const user = userById.get(userId);
+    const phone = String(user?.telefonoPersonal || '');
+    const tableRow = ghqTableByPhone.get(phone);
+    if (!tableRow) continue;
+
+    const score = Number(tableRow.Puntaje || 0);
+    const completedAt = tableRow.informePdfFecha ? new Date(tableRow.informePdfFecha) : null;
+    ghqByUserId.set(userId, {
+      score,
+      completedAt: completedAt && !isNaN(completedAt.getTime()) ? completedAt : null,
+      source: 'ghq12',
+    });
+  }
+
+  /* ── 3. GHQ-12 processing (source of truth: HistorialTest) ── */
+  const totalGHQ12 = ghqUsers.size;
   let ghqScoreSum = 0;
   const ghqScoreHistogram = new Map(); // score -> count
   for (let i = 0; i <= 36; i++) ghqScoreHistogram.set(i, 0);
@@ -650,8 +689,10 @@ const getDashboardSummary = async (practitionerEmail = null) => {
   const ghqByDayMap = new Map(); // 'YYYY-MM-DD' -> { count, scoreSum }
   let patientsAtRisk = 0;
 
-  for (const row of ghq12Deduplicated) {
-    const score = Number(row.Puntaje || 0);
+  for (const userId of ghqUsers) {
+    const data = ghqByUserId.get(userId);
+    const rawScore = Number(data?.score ?? 0);
+    const score = Math.max(0, Math.min(36, rawScore));
     ghqScoreSum += score;
 
     // Histogram
@@ -668,15 +709,13 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     if (score >= 12) patientsAtRisk++;
 
     // By day
-    if (row.informePdfFecha) {
-      const d = new Date(row.informePdfFecha);
-      if (!isNaN(d.getTime())) {
-        const dayKey = d.toISOString().slice(0, 10);
-        const existing = ghqByDayMap.get(dayKey) || { count: 0, scoreSum: 0 };
-        existing.count++;
-        existing.scoreSum += score;
-        ghqByDayMap.set(dayKey, existing);
-      }
+    const d = data?.completedAt;
+    if (d && !isNaN(d.getTime())) {
+      const dayKey = d.toISOString().slice(0, 10);
+      const existing = ghqByDayMap.get(dayKey) || { count: 0, scoreSum: 0 };
+      existing.count++;
+      existing.scoreSum += score;
+      ghqByDayMap.set(dayKey, existing);
     }
   }
 
@@ -915,18 +954,18 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     });
 
   /* ── 6. Cross-tabulations (GHQ-12 by demographics) ─────── */
-  // Build phone->ghq score map from deduplicated ghq12 (first test per patient)
-  const ghqByPhone = new Map(); // phone -> { score, atRisk }
-  for (const row of ghq12Deduplicated) {
-    const phone = row.telefono;
-    const score = Number(row.Puntaje || 0);
-    ghqByPhone.set(phone, { score, atRisk: score >= 12 });
+  // Build userId -> ghq score map from normalized source
+  const ghqByUserForCrossTabs = new Map(); // userId -> { score, atRisk }
+  for (const userId of ghqUsers) {
+    const d = ghqByUserId.get(userId);
+    const score = Math.max(0, Math.min(36, Number(d?.score ?? 0)));
+    ghqByUserForCrossTabs.set(userId, { score, atRisk: score >= 12 });
   }
 
   // GHQ-12 by Sex
   const ghqBySexMap = new Map(); // sex -> { atRisk, noRisk, total, scoreSum }
-  for (const [phone, ghqData] of ghqByPhone) {
-    const user = userByPhone.get(phone);
+  for (const [userId, ghqData] of ghqByUserForCrossTabs) {
+    const user = userById.get(userId);
     if (!user) continue;
     const sex = user.sexo || 'No informa';
     const existing = ghqBySexMap.get(sex) || { atRisk: 0, noRisk: 0, total: 0, scoreSum: 0 };
@@ -947,8 +986,8 @@ const getDashboardSummary = async (practitionerEmail = null) => {
 
   // GHQ-12 by Age
   const ghqByAgeMap = new Map();
-  for (const [phone, ghqData] of ghqByPhone) {
-    const user = userByPhone.get(phone);
+  for (const [userId, ghqData] of ghqByUserForCrossTabs) {
+    const user = userById.get(userId);
     if (!user || !user.fechaNacimiento) continue;
     const range = ageRange(new Date(user.fechaNacimiento));
     if (!range) continue;
@@ -973,8 +1012,8 @@ const getDashboardSummary = async (practitionerEmail = null) => {
 
   // GHQ-12 by Civil Status
   const ghqByCivilMap = new Map();
-  for (const [phone, ghqData] of ghqByPhone) {
-    const user = userByPhone.get(phone);
+  for (const [userId, ghqData] of ghqByUserForCrossTabs) {
+    const user = userById.get(userId);
     if (!user) continue;
     const socio = socioByUserId.get(user.idUsuario);
     if (!socio) continue;
@@ -997,8 +1036,8 @@ const getDashboardSummary = async (practitionerEmail = null) => {
 
   // GHQ-12 by Income
   const ghqByIncomeMap = new Map();
-  for (const [phone, ghqData] of ghqByPhone) {
-    const user = userByPhone.get(phone);
+  for (const [userId, ghqData] of ghqByUserForCrossTabs) {
+    const user = userById.get(userId);
     if (!user) continue;
     const socio = socioByUserId.get(user.idUsuario);
     if (!socio) continue;
@@ -1021,8 +1060,8 @@ const getDashboardSummary = async (practitionerEmail = null) => {
 
   // GHQ-12 by Career (normalized)
   const ghqByCareerMap = new Map();
-  for (const [phone, ghqData] of ghqByPhone) {
-    const user = userByPhone.get(phone);
+  for (const [userId, ghqData] of ghqByUserForCrossTabs) {
+    const user = userById.get(userId);
     if (!user || !user.carrera) continue;
     const career = normalizeCareer(user.carrera);
     if (!career) continue;
@@ -1044,8 +1083,8 @@ const getDashboardSummary = async (practitionerEmail = null) => {
 
   // GHQ-12 by Semestre
   const ghqBySemestreMap = new Map();
-  for (const [phone, ghqData] of ghqByPhone) {
-    const user = userByPhone.get(phone);
+  for (const [userId, ghqData] of ghqByUserForCrossTabs) {
+    const user = userById.get(userId);
     if (!user || !user.semestre) continue;
     const sem = String(user.semestre);
     const existing = ghqBySemestreMap.get(sem) || { atRisk: 0, total: 0, scoreSum: 0 };
@@ -1071,8 +1110,8 @@ const getDashboardSummary = async (practitionerEmail = null) => {
 
   // GHQ-12 by Jornada
   const ghqByJornadaMap = new Map();
-  for (const [phone, ghqData] of ghqByPhone) {
-    const user = userByPhone.get(phone);
+  for (const [userId, ghqData] of ghqByUserForCrossTabs) {
+    const user = userById.get(userId);
     if (!user || !user.jornada) continue;
     const jornada = String(user.jornada);
     const existing = ghqByJornadaMap.get(jornada) || { atRisk: 0, total: 0, scoreSum: 0 };
