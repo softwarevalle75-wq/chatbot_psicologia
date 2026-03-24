@@ -388,6 +388,13 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     if (filterPhones.length === 0) filterPhones = ['__NO_MATCH__']; // ensure empty result set
   }
 
+  const emailWhereClause = (() => {
+    if (practitionerEmail === 'sin_asignar') return ' AND 1=0';
+    if (!practitionerEmail || practitionerEmail === 'all') return '';
+    const escaped = String(practitionerEmail).replace(/'/g, "''");
+    return ` AND correo_practicante = '${escaped}'`;
+  })();
+
   // SQL IN-clause helper for phone filtering
   const phoneInClause = (col) => {
     if (!filterPhones) return '';
@@ -416,6 +423,8 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     emailTotalRows,
     emailByPractitionerRows,
     emailByDayRows,
+    emailByTestRows,
+    emailByPatientRows,
     ghq12WithoutPractitionerRows,
   ] = await Promise.all([
     // Total patients
@@ -502,15 +511,39 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM informacionUsuario WHERE practicanteAsignado IS NOT NULL`).catch(() => [{ c: 0 }]),
     prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM informacionUsuario WHERE practicanteAsignado IS NULL`).catch(() => [{ c: 0 }]),
     // Email tracking: total
-    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS total, COUNT(DISTINCT telefono_paciente) AS pacientes FROM envios_correo`).catch(() => [{ total: 0, pacientes: 0 }]),
+    prisma.$queryRawUnsafe(`SELECT COUNT(*) AS total, COUNT(DISTINCT telefono_paciente) AS pacientes FROM envios_correo WHERE 1=1${emailWhereClause}`).catch(() => [{ total: 0, pacientes: 0 }]),
     // Email tracking: by practitioner
     prisma.$queryRawUnsafe(`
       SELECT correo_practicante, nombre_practicante, COUNT(*) AS emails, COUNT(DISTINCT telefono_paciente) AS pacientes
-      FROM envios_correo GROUP BY correo_practicante, nombre_practicante ORDER BY emails DESC
+      FROM envios_correo
+      WHERE 1=1${emailWhereClause}
+      GROUP BY correo_practicante, nombre_practicante
+      ORDER BY emails DESC
     `).catch(() => []),
     // Email tracking: by day
     prisma.$queryRawUnsafe(`
-      SELECT DATE(fecha_envio) AS fecha, COUNT(*) AS emails FROM envios_correo GROUP BY DATE(fecha_envio) ORDER BY fecha
+      SELECT DATE(fecha_envio) AS fecha, COUNT(*) AS emails
+      FROM envios_correo
+      WHERE 1=1${emailWhereClause}
+      GROUP BY DATE(fecha_envio)
+      ORDER BY fecha
+    `).catch(() => []),
+    // Email tracking: counts by test type
+    prisma.$queryRawUnsafe(`
+      SELECT LOWER(COALESCE(test_tipo, '')) AS test_tipo, COUNT(*) AS total, COUNT(DISTINCT telefono_paciente) AS pacientes
+      FROM envios_correo
+      WHERE 1=1${emailWhereClause}
+      GROUP BY LOWER(COALESCE(test_tipo, ''))
+    `).catch(() => []),
+    // Email tracking: per-patient flags by test type (for solo/ambas)
+    prisma.$queryRawUnsafe(`
+      SELECT
+        telefono_paciente,
+        MAX(CASE WHEN LOWER(COALESCE(test_tipo, '')) = 'ghq12' THEN 1 ELSE 0 END) AS has_ghq12,
+        MAX(CASE WHEN LOWER(COALESCE(test_tipo, '')) = 'dass21' THEN 1 ELSE 0 END) AS has_dass21
+      FROM envios_correo
+      WHERE 1=1${emailWhereClause}
+      GROUP BY telefono_paciente
     `).catch(() => []),
     // Count of GHQ-12 patients NOT in envios_correo (sueltos)
     prisma.$queryRawUnsafe(`
@@ -518,7 +551,7 @@ const getDashboardSummary = async (practitionerEmail = null) => {
       FROM ghq12 g
       WHERE NOT EXISTS (
         SELECT 1 FROM envios_correo e
-        WHERE e.telefono_paciente COLLATE utf8mb4_unicode_ci = g.telefono COLLATE utf8mb4_unicode_ci
+        WHERE e.telefono_paciente COLLATE utf8mb4_unicode_ci = g.telefono COLLATE utf8mb4_unicode_ci${emailWhereClause}
       )
     `).catch(() => [{ c: 0 }]),
   ]);
@@ -1077,6 +1110,30 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     count: Number(r.emails || 0),
   })).filter((r) => r.date);
 
+  const emailByTestMap = new Map(
+    (emailByTestRows || []).map((r) => [
+      String(r.test_tipo || '').toLowerCase(),
+      {
+        total: Number(r.total || 0),
+        patients: Number(r.pacientes || 0),
+      },
+    ]),
+  );
+
+  let emailSoloGhq12 = 0;
+  let emailSoloDass21 = 0;
+  let emailAmbas = 0;
+  for (const row of emailByPatientRows || []) {
+    const hasGhq12 = Number(row.has_ghq12 || 0) > 0;
+    const hasDass21 = Number(row.has_dass21 || 0) > 0;
+    if (hasGhq12 && hasDass21) emailAmbas++;
+    else if (hasGhq12) emailSoloGhq12++;
+    else if (hasDass21) emailSoloDass21++;
+  }
+
+  const totalConGhq12 = Number(emailByTestMap.get('ghq12')?.total || 0);
+  const totalConDass21 = Number(emailByTestMap.get('dass21')?.total || 0);
+
   const ghqRowByPhone = new Map();
   for (const row of ghq12Deduplicated) {
     ghqRowByPhone.set(String(row.telefono), row);
@@ -1259,6 +1316,13 @@ const getDashboardSummary = async (practitionerEmail = null) => {
       uniquePatients: emailUniquePatients,
       patientsWithoutPractitioner: emailPatientsWithoutPractitioner,
       totalPdfsGenerated: { ghq12: ghq12PdfTotal, dass21: dass21PdfTotal },
+      byTestType: {
+        totalConGhq12,
+        totalConDass21,
+        soloGhq12: emailSoloGhq12,
+        soloDass21: emailSoloDass21,
+        ambas: emailAmbas,
+      },
       ccRecipient: 'chatbotpsicologia@gmail.com',
       byPractitioner: emailByPractitioner,
       byDay: emailByDay,
