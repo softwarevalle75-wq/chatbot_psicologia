@@ -1922,7 +1922,7 @@ export default function AdminHomePage() {
         </div>
 
         {/* ── Practitioner filter ─────────────────────────────── */}
-        {data?.emailTracking?.byPractitioner && data.emailTracking.byPractitioner.length > 0 && (
+        {data?.emailTracking && (
           <div className="flex items-center gap-3 mb-4 bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
             <Filter className="w-4 h-4 text-slate-500 flex-shrink-0" />
             <label htmlFor="practitioner-filter" className="text-sm font-medium text-slate-600 whitespace-nowrap">

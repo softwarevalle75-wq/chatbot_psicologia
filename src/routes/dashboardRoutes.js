@@ -516,7 +516,7 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     prisma.$queryRawUnsafe(`
       SELECT correo_practicante, nombre_practicante, COUNT(*) AS emails, COUNT(DISTINCT telefono_paciente) AS pacientes
       FROM envios_correo
-      WHERE 1=1${emailWhereClause}
+      WHERE 1=1
       GROUP BY correo_practicante, nombre_practicante
       ORDER BY emails DESC
     `).catch(() => []),
