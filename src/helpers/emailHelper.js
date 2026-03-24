@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer'
 import path from 'path'
+import { prisma } from '../lib/prisma.js'
 
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -10,6 +11,13 @@ const transporter = nodemailer.createTransport({
         pass: process.env.SMTP_PASS,
     },
 })
+
+const normalizeTestTipo = (testNombre = '') => {
+    const raw = String(testNombre || '').toLowerCase()
+    if (raw.includes('ghq')) return 'ghq12'
+    if (raw.includes('dass')) return 'dass21'
+    return 'otro'
+}
 
 /**
  * Envía el PDF del informe psicológico por correo electrónico al practicante.
@@ -118,6 +126,32 @@ export const enviarPdfPorCorreo = async (correoPracticante, pdfPath, datosInform
         }
 
         const info = await transporter.sendMail(mailOptions)
+
+        const testTipo = normalizeTestTipo(testNombre)
+        const correoDestino = String(correoPracticante || '').trim().toLowerCase()
+        const telefonoDestino = String(telefonoPaciente || '').trim()
+        const nombreDestino = String(nombrePracticante || '').trim()
+
+        try {
+            await prisma.$executeRawUnsafe(
+                `
+                INSERT INTO envios_correo
+                  (telefono_paciente, correo_practicante, nombre_practicante, test_tipo, test_nombre, pdf_nombre, message_id, fecha_envio)
+                VALUES
+                  (?, ?, ?, ?, ?, ?, ?, NOW())
+                `,
+                telefonoDestino,
+                correoDestino,
+                nombreDestino,
+                testTipo,
+                String(testNombre || ''),
+                nombreArchivo,
+                String(info?.messageId || ''),
+            )
+        } catch (dbError) {
+            console.error('⚠️ Correo enviado, pero no se pudo registrar en envios_correo:', dbError?.message || dbError)
+        }
+
         console.log('✅ Correo enviado exitosamente:', info.messageId)
         return { success: true, message: `Correo enviado a ${correoPracticante}` }
     } catch (error) {
