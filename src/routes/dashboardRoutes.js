@@ -150,6 +150,99 @@ const dassStressLevel = (raw) => {
   return 'Normal';
 };
 
+const GHQ_SUBSCALE_DEFS = {
+  funcionamientoCognitivo: { items: [1, 2], label: 'Funcionamiento Cognitivo' },
+  ansiedadTension: { items: [3, 4], label: 'Ansiedad / Tension' },
+  funcionamientoPsicosocial: { items: [5, 6], label: 'Funcionamiento Psicosocial' },
+  afrontamiento: { items: [7, 8], label: 'Afrontamiento' },
+  estadoAnimoDepresivo: { items: [9, 10], label: 'Estado de Animo Depresivo' },
+  autoestima: { items: [11, 12], label: 'Autoestima' },
+};
+
+const DASS_LEVEL_RANK = {
+  Normal: 1,
+  Leve: 2,
+  Moderado: 3,
+  Severo: 4,
+  'Extremadamente severo': 5,
+};
+
+const ghqRiskRank = (score) => {
+  const v = Number(score || 0);
+  if (v >= 28) return 5;
+  if (v >= 19) return 4;
+  if (v >= 12) return 3;
+  if (v > 0) return 2;
+  return 1;
+};
+
+const ghqRiskLabel = (score) => {
+  const v = Number(score || 0);
+  if (v >= 28) return 'Muy alto';
+  if (v >= 19) return 'Alto';
+  if (v >= 12) return 'Moderado';
+  return 'Sin riesgo';
+};
+
+const combinedRiskLabelByRank = {
+  0: 'Sin pruebas',
+  1: 'Sin riesgo',
+  2: 'Leve',
+  3: 'Moderado',
+  4: 'Alto',
+  5: 'Muy alto',
+};
+
+const parseResultDate = (raw, fallbackDate) => {
+  const parsed = parseDateFromResultados(String(raw || ''));
+  if (parsed && !isNaN(parsed.getTime())) return parsed;
+  if (!fallbackDate) return null;
+  const d = new Date(fallbackDate);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+const toIsoOrNull = (value) => {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+};
+
+const normalizeScore100 = (score, max) => {
+  if (score === null || score === undefined || !max) return -1;
+  return Math.max(0, Math.min(100, (Number(score) / max) * 100));
+};
+
+const computeCombinedRisk = ({ ghqScore, dassDep, dassAnx, dassStr }) => {
+  const hasGhq = ghqScore !== null && ghqScore !== undefined;
+  const hasDass = [dassDep, dassAnx, dassStr].some((v) => v !== null && v !== undefined);
+
+  const ghqRankValue = hasGhq ? ghqRiskRank(Number(ghqScore || 0)) : 0;
+  const depLevel = hasDass ? dassDepressionLevel(Number(dassDep || 0)) : null;
+  const anxLevel = hasDass ? dassAnxietyLevel(Number(dassAnx || 0)) : null;
+  const strLevel = hasDass ? dassStressLevel(Number(dassStr || 0)) : null;
+  const dassRankValue = hasDass ? Math.max(
+    DASS_LEVEL_RANK[depLevel] || 0,
+    DASS_LEVEL_RANK[anxLevel] || 0,
+    DASS_LEVEL_RANK[strLevel] || 0,
+  ) : 0;
+
+  const ghqScore100 = hasGhq ? normalizeScore100(Number(ghqScore || 0), 36) : -1;
+  const maxDassRaw = hasDass ? Math.max(Number(dassDep || 0), Number(dassAnx || 0), Number(dassStr || 0)) : null;
+  const dassScore100 = maxDassRaw !== null ? normalizeScore100(maxDassRaw * 2, 42) : -1;
+
+  const rank = Math.max(ghqRankValue, dassRankValue);
+  let source = 'none';
+  if (ghqScore100 >= dassScore100 && ghqScore100 >= 0) source = 'ghq12';
+  else if (dassScore100 > ghqScore100 && dassScore100 >= 0) source = 'dass21';
+
+  return {
+    rank,
+    label: combinedRiskLabelByRank[rank] || 'Sin pruebas',
+    score: Number(Math.max(ghqScore100, dassScore100, 0).toFixed(2)),
+    source,
+  };
+};
+
 /* ─────────────────────────────────────────────────────────────
  *  Age-range helper
  * ───────────────────────────────────────────────────────────── */
@@ -308,6 +401,7 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     activePractitioners,
     practitionerRows,
     ghq12Rows,
+    dass21Rows,
     dassHistorialRows,
     ghqHistorialRows,
     userRows,
@@ -342,8 +436,15 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     `).catch(() => []),
     // GHQ-12 from ghq12 table
     prisma.$queryRawUnsafe(`
-      SELECT idGhq12, telefono, Puntaje, informePdfFecha
+      SELECT idGhq12, telefono, Puntaje, informePdfFecha, informePdfNombre,
+             (informePdf IS NOT NULL) AS hasPdf
       FROM ghq12 WHERE 1=1${phoneInClause('telefono')}
+    `).catch(() => []),
+    // DASS-21 from dass21 table
+    prisma.$queryRawUnsafe(`
+      SELECT idDass21, telefono, puntajeDep, puntajeAns, puntajeEstr, informePdfFecha, informePdfNombre,
+             (informePdf IS NOT NULL) AS hasPdf
+      FROM dass21 WHERE 1=1${phoneInClause('telefono')}
     `).catch(() => []),
     // DASS-21 from HistorialTest
     filterPhones
@@ -373,7 +474,8 @@ const getDashboardSummary = async (practitionerEmail = null) => {
         `).catch(() => []),
     // All users for sociodemographic & cross-tabs
     prisma.$queryRawUnsafe(`
-      SELECT idUsuario, telefonoPersonal, sexo, fechaNacimiento,
+      SELECT idUsuario, primerNombre, segundoNombre, primerApellido, segundoApellido,
+             correo, telefonoPersonal, sexo, fechaNacimiento,
              orientacionSexual, identidadGenero, etnia, discapacidad,
              perteneceUniversidad, carrera, jornada, semestre
       FROM informacionUsuario WHERE 1=1${phoneInClause('telefonoPersonal')}
@@ -572,25 +674,9 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   /* ── 3b. GHQ-12 subscales from HistorialTest ───────────── */
-  // GHQ-12 subscales (2 items each):
-  //   Funcionamiento Cognitivo: items 1,2
-  //   Ansiedad/Tensión: items 3,4
-  //   Funcionamiento Psicosocial: items 5,6
-  //   Afrontamiento: items 7,8
-  //   Estado Ánimo Depresivo: items 9,10
-  //   Autoestima: items 11,12
-  const ghqSubscaleDefs = {
-    funcionamientoCognitivo: { items: [1, 2], label: 'Funcionamiento Cognitivo' },
-    ansiedadTension: { items: [3, 4], label: 'Ansiedad / Tensión' },
-    funcionamientoPsicosocial: { items: [5, 6], label: 'Funcionamiento Psicosocial' },
-    afrontamiento: { items: [7, 8], label: 'Afrontamiento' },
-    estadoAnimoDepresivo: { items: [9, 10], label: 'Estado de Ánimo Depresivo' },
-    autoestima: { items: [11, 12], label: 'Autoestima' },
-  };
-
   const subscaleSums = {};
   const subscaleCounts = {};
-  for (const key of Object.keys(ghqSubscaleDefs)) {
+  for (const key of Object.keys(GHQ_SUBSCALE_DEFS)) {
     subscaleSums[key] = 0;
     subscaleCounts[key] = 0;
   }
@@ -599,7 +685,7 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     const itemMap = parseItemScores(String(row.resultados || ''));
     if (!itemMap) continue;
 
-    for (const [key, def] of Object.entries(ghqSubscaleDefs)) {
+    for (const [key, def] of Object.entries(GHQ_SUBSCALE_DEFS)) {
       const val = sumItems(itemMap, def.items);
       subscaleSums[key] += val;
       subscaleCounts[key]++;
@@ -607,7 +693,7 @@ const getDashboardSummary = async (practitionerEmail = null) => {
   }
 
   const ghqSubscales = {};
-  for (const [key, def] of Object.entries(ghqSubscaleDefs)) {
+  for (const [key, def] of Object.entries(GHQ_SUBSCALE_DEFS)) {
     ghqSubscales[key] = {
       avg: subscaleCounts[key] > 0
         ? Number((subscaleSums[key] / subscaleCounts[key]).toFixed(2))
@@ -991,6 +1077,111 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     count: Number(r.emails || 0),
   })).filter((r) => r.date);
 
+  const ghqRowByPhone = new Map();
+  for (const row of ghq12Deduplicated) {
+    ghqRowByPhone.set(String(row.telefono), row);
+  }
+
+  const dassRowByPhone = new Map();
+  for (const row of dass21Rows) {
+    const key = String(row.telefono || '');
+    if (!key) continue;
+    const existing = dassRowByPhone.get(key);
+    if (!existing) {
+      dassRowByPhone.set(key, row);
+      continue;
+    }
+    const existDate = existing.informePdfFecha ? new Date(existing.informePdfFecha).getTime() : -Infinity;
+    const newDate = row.informePdfFecha ? new Date(row.informePdfFecha).getTime() : -Infinity;
+    if (newDate > existDate || (newDate === existDate && String(row.idDass21) > String(existing.idDass21))) {
+      dassRowByPhone.set(key, row);
+    }
+  }
+
+  const latestGhqDateByUserId = new Map();
+  for (const row of ghqHistDeduplicated) {
+    const d = parseResultDate(row.resultados, row.fechaCompletado);
+    if (!d || !row.usuarioId) continue;
+    latestGhqDateByUserId.set(String(row.usuarioId), d);
+  }
+
+  const latestDassDateByUserId = new Map();
+  for (const row of dassDeduplicated) {
+    const d = parseResultDate(row.resultados, row.fechaCompletado);
+    if (!d || !row.usuarioId) continue;
+    latestDassDateByUserId.set(String(row.usuarioId), d);
+  }
+
+  const buildFullName = (u) => {
+    const parts = [u.primerNombre, u.segundoNombre, u.primerApellido, u.segundoApellido]
+      .map((v) => String(v || '').trim())
+      .filter(Boolean);
+    if (!parts.length) return 'Sin nombre';
+    return parts.join(' ');
+  };
+
+  const students = userRows
+    .map((u) => {
+      const phone = String(u.telefonoPersonal || '');
+      const ghqRow = ghqRowByPhone.get(phone) || null;
+      const dassRow = dassRowByPhone.get(phone) || null;
+
+      const ghqScore = ghqRow ? Number(ghqRow.Puntaje || 0) : null;
+      const dassDep = dassRow ? Number(dassRow.puntajeDep || 0) : null;
+      const dassAnx = dassRow ? Number(dassRow.puntajeAns || 0) : null;
+      const dassStr = dassRow ? Number(dassRow.puntajeEstr || 0) : null;
+
+      const ghqDate = latestGhqDateByUserId.get(String(u.idUsuario))
+        || (ghqRow?.informePdfFecha ? new Date(ghqRow.informePdfFecha) : null);
+      const dassDate = latestDassDateByUserId.get(String(u.idUsuario))
+        || (dassRow?.informePdfFecha ? new Date(dassRow.informePdfFecha) : null);
+
+      const latestTestDate = [ghqDate, dassDate]
+        .filter((d) => d && !isNaN(d.getTime()))
+        .sort((a, b) => b.getTime() - a.getTime())[0] || null;
+
+      const combinedRisk = computeCombinedRisk({
+        ghqScore,
+        dassDep,
+        dassAnx,
+        dassStr,
+      });
+
+      return {
+        idUsuario: String(u.idUsuario || ''),
+        fullName: buildFullName(u),
+        latestTestDate: toIsoOrNull(latestTestDate),
+        combinedRisk,
+        ghq12: ghqRow
+          ? {
+              id: String(ghqRow.idGhq12),
+              score: ghqScore,
+              riskLabel: ghqRiskLabel(ghqScore),
+              completedAt: toIsoOrNull(ghqDate),
+              hasPdf: Number(ghqRow.hasPdf || 0) > 0,
+              pdfFilename: ghqRow.informePdfNombre ? String(ghqRow.informePdfNombre) : null,
+            }
+          : null,
+        dass21: dassRow
+          ? {
+              id: String(dassRow.idDass21),
+              dep: dassDep,
+              anx: dassAnx,
+              str: dassStr,
+              maxSubscale: Math.max(dassDep || 0, dassAnx || 0, dassStr || 0),
+              completedAt: toIsoOrNull(dassDate),
+              hasPdf: Number(dassRow.hasPdf || 0) > 0,
+              pdfFilename: dassRow.informePdfNombre ? String(dassRow.informePdfNombre) : null,
+            }
+          : null,
+      };
+    })
+    .sort((a, b) => {
+      const ta = a.latestTestDate ? new Date(a.latestTestDate).getTime() : -Infinity;
+      const tb = b.latestTestDate ? new Date(b.latestTestDate).getTime() : -Infinity;
+      return tb - ta;
+    });
+
   /* ── 7. Practitioners processing ───────────────────────── */
   /* ── 7. Build response ─────────────────────────────────── */
   return {
@@ -1073,6 +1264,8 @@ const getDashboardSummary = async (practitionerEmail = null) => {
       byDay: emailByDay,
       currentFilter: practitionerEmail || 'all',
     },
+
+    students,
   };
 };
 
@@ -1099,6 +1292,246 @@ const toPractitionerDto = (row) => ({
   createdAt: row.fechaCreacion,
 });
 
+const buildStudentDashboardDetail = async (userId) => {
+  const user = await prisma.informacionUsuario.findUnique({
+    where: { idUsuario: userId },
+    select: {
+      idUsuario: true,
+      primerNombre: true,
+      segundoNombre: true,
+      primerApellido: true,
+      segundoApellido: true,
+      correo: true,
+      telefonoPersonal: true,
+    },
+  }).catch(() => null);
+
+  if (!user) return null;
+
+  const fullName = [user.primerNombre, user.segundoNombre, user.primerApellido, user.segundoApellido]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean)
+    .join(' ') || 'Sin nombre';
+
+  const [ghqRows, dassRows, ghqHistoryRows, dassHistoryRows] = await Promise.all([
+    prisma.$queryRawUnsafe(`
+      SELECT idGhq12, Puntaje, informePdfFecha, informePdfNombre, (informePdf IS NOT NULL) AS hasPdf
+      FROM ghq12
+      WHERE telefono = ?
+      LIMIT 1
+    `, String(user.telefonoPersonal || '')).catch(() => []),
+    prisma.$queryRawUnsafe(`
+      SELECT idDass21, puntajeDep, puntajeAns, puntajeEstr, informePdfFecha, informePdfNombre, (informePdf IS NOT NULL) AS hasPdf
+      FROM dass21
+      WHERE telefono = ?
+      LIMIT 1
+    `, String(user.telefonoPersonal || '')).catch(() => []),
+    prisma.historialTest.findMany({
+      where: { usuarioId: user.idUsuario, tipoTest: 'interpretacion_ghq12' },
+      orderBy: { fechaCompletado: 'asc' },
+      select: { id: true, resultados: true, fechaCompletado: true },
+    }).catch(() => []),
+    prisma.historialTest.findMany({
+      where: { usuarioId: user.idUsuario, tipoTest: 'interpretacion_dass21' },
+      orderBy: { fechaCompletado: 'asc' },
+      select: { id: true, resultados: true, fechaCompletado: true },
+    }).catch(() => []),
+  ]);
+
+  const ghqDb = ghqRows?.[0] || null;
+  const dassDb = dassRows?.[0] || null;
+
+  const ghqByDayMap = new Map();
+  let latestGhq = null;
+
+  for (const row of ghqHistoryRows) {
+    const itemMap = parseItemScores(String(row.resultados || ''));
+    if (!itemMap) continue;
+
+    const score = Array.from({ length: 12 }, (_v, idx) => idx + 1)
+      .reduce((sum, idx) => sum + (itemMap.get(idx) || 0), 0);
+    const dateObj = parseResultDate(row.resultados, row.fechaCompletado);
+
+    if (!latestGhq || (dateObj && (!latestGhq.dateObj || dateObj.getTime() > latestGhq.dateObj.getTime()))) {
+      latestGhq = {
+        score,
+        itemMap,
+        dateObj: dateObj || null,
+      };
+    }
+
+    if (dateObj) {
+      const dayKey = dateObj.toISOString().slice(0, 10);
+      const current = ghqByDayMap.get(dayKey) || { scoreSum: 0, count: 0 };
+      current.scoreSum += score;
+      current.count += 1;
+      ghqByDayMap.set(dayKey, current);
+    }
+  }
+
+  if (!latestGhq && ghqDb) {
+    latestGhq = {
+      score: Number(ghqDb.Puntaje || 0),
+      itemMap: null,
+      dateObj: ghqDb.informePdfFecha ? new Date(ghqDb.informePdfFecha) : null,
+    };
+  }
+
+  const dassByDayMap = new Map();
+  let latestDass = null;
+
+  for (const row of dassHistoryRows) {
+    const itemMap = parseItemScores(String(row.resultados || ''));
+    if (!itemMap || itemMap.size < 21) continue;
+
+    const depRaw = sumItems(itemMap, DASS_DEP_ITEMS);
+    const anxRaw = sumItems(itemMap, DASS_ANX_ITEMS);
+    const strRaw = sumItems(itemMap, DASS_STR_ITEMS);
+    const dateObj = parseResultDate(row.resultados, row.fechaCompletado);
+
+    if (!latestDass || (dateObj && (!latestDass.dateObj || dateObj.getTime() > latestDass.dateObj.getTime()))) {
+      latestDass = {
+        depRaw,
+        anxRaw,
+        strRaw,
+        dateObj: dateObj || null,
+      };
+    }
+
+    if (dateObj) {
+      const dayKey = dateObj.toISOString().slice(0, 10);
+      const current = dassByDayMap.get(dayKey) || { depSum: 0, anxSum: 0, strSum: 0, count: 0 };
+      current.depSum += depRaw;
+      current.anxSum += anxRaw;
+      current.strSum += strRaw;
+      current.count += 1;
+      dassByDayMap.set(dayKey, current);
+    }
+  }
+
+  if (!latestDass && dassDb) {
+    latestDass = {
+      depRaw: Number(dassDb.puntajeDep || 0),
+      anxRaw: Number(dassDb.puntajeAns || 0),
+      strRaw: Number(dassDb.puntajeEstr || 0),
+      dateObj: dassDb.informePdfFecha ? new Date(dassDb.informePdfFecha) : null,
+    };
+  }
+
+  const ghqByDay = [...ghqByDayMap.entries()]
+    .map(([date, d]) => ({
+      date,
+      score: Number((d.scoreSum / d.count).toFixed(2)),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (!ghqByDay.length && latestGhq?.dateObj) {
+    ghqByDay.push({
+      date: latestGhq.dateObj.toISOString().slice(0, 10),
+      score: Number((latestGhq.score || 0).toFixed(2)),
+    });
+  }
+
+  const dassByDay = [...dassByDayMap.entries()]
+    .map(([date, d]) => ({
+      date,
+      dep: Number((d.depSum / d.count).toFixed(2)),
+      anx: Number((d.anxSum / d.count).toFixed(2)),
+      str: Number((d.strSum / d.count).toFixed(2)),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (!dassByDay.length && latestDass?.dateObj) {
+    dassByDay.push({
+      date: latestDass.dateObj.toISOString().slice(0, 10),
+      dep: Number((latestDass.depRaw || 0).toFixed(2)),
+      anx: Number((latestDass.anxRaw || 0).toFixed(2)),
+      str: Number((latestDass.strRaw || 0).toFixed(2)),
+    });
+  }
+
+  const ghqSubscales = Object.values(GHQ_SUBSCALE_DEFS).map((def) => ({
+    name: def.label,
+    value: latestGhq?.itemMap ? Number(sumItems(latestGhq.itemMap, def.items).toFixed(2)) : 0,
+    max: 6,
+  }));
+
+  const depLevel = latestDass ? dassDepressionLevel(latestDass.depRaw) : 'Sin datos';
+  const anxLevel = latestDass ? dassAnxietyLevel(latestDass.anxRaw) : 'Sin datos';
+  const strLevel = latestDass ? dassStressLevel(latestDass.strRaw) : 'Sin datos';
+  const worstDassRank = latestDass ? Math.max(DASS_LEVEL_RANK[depLevel] || 0, DASS_LEVEL_RANK[anxLevel] || 0, DASS_LEVEL_RANK[strLevel] || 0) : 0;
+  const worstDassLevel = Object.keys(DASS_LEVEL_RANK).find((k) => DASS_LEVEL_RANK[k] === worstDassRank) || 'Sin datos';
+
+  const combinedRisk = computeCombinedRisk({
+    ghqScore: latestGhq ? Number(latestGhq.score || 0) : null,
+    dassDep: latestDass ? Number(latestDass.depRaw || 0) : null,
+    dassAnx: latestDass ? Number(latestDass.anxRaw || 0) : null,
+    dassStr: latestDass ? Number(latestDass.strRaw || 0) : null,
+  });
+
+  const latestTestDate = [latestGhq?.dateObj || null, latestDass?.dateObj || null]
+    .filter((d) => d && !isNaN(d.getTime()))
+    .sort((a, b) => b.getTime() - a.getTime())[0] || null;
+
+  return {
+    student: {
+      idUsuario: String(user.idUsuario),
+      fullName,
+      email: user.correo ? String(user.correo) : '',
+      phone: user.telefonoPersonal ? String(user.telefonoPersonal) : '',
+    },
+    summary: {
+      latestTestDate: toIsoOrNull(latestTestDate),
+      combinedRisk,
+    },
+    ghq12: {
+      hasData: Boolean(latestGhq),
+      score: latestGhq ? Number(latestGhq.score || 0) : null,
+      riskLabel: latestGhq ? ghqRiskLabel(latestGhq.score) : 'Sin datos',
+      completedAt: toIsoOrNull(latestGhq?.dateObj || null),
+      hasPdf: Number(ghqDb?.hasPdf || 0) > 0,
+      pdf: Number(ghqDb?.hasPdf || 0) > 0
+        ? {
+            id: String(ghqDb.idGhq12),
+            filename: ghqDb.informePdfNombre ? String(ghqDb.informePdfNombre) : null,
+          }
+        : null,
+      hasSubscaleData: Boolean(latestGhq?.itemMap),
+      subscales: ghqSubscales,
+      byDay: ghqByDay,
+    },
+    dass21: {
+      hasData: Boolean(latestDass),
+      completedAt: toIsoOrNull(latestDass?.dateObj || null),
+      hasPdf: Number(dassDb?.hasPdf || 0) > 0,
+      pdf: Number(dassDb?.hasPdf || 0) > 0
+        ? {
+            id: String(dassDb.idDass21),
+            filename: dassDb.informePdfNombre ? String(dassDb.informePdfNombre) : null,
+          }
+        : null,
+      current: latestDass
+        ? {
+            dep: Number(latestDass.depRaw || 0),
+            anx: Number(latestDass.anxRaw || 0),
+            str: Number(latestDass.strRaw || 0),
+          }
+        : {
+            dep: 0,
+            anx: 0,
+            str: 0,
+          },
+      levels: {
+        dep: depLevel,
+        anx: anxLevel,
+        str: strLevel,
+        worst: worstDassLevel,
+      },
+      byDay: dassByDay,
+    },
+  };
+};
+
 export function registerDashboardRoutes(server) {
   server.get('/v1/dashboard/summary', async (req, res) => {
     try {
@@ -1110,6 +1543,25 @@ export function registerDashboardRoutes(server) {
     } catch (error) {
       console.error('Error /v1/dashboard/summary:', error);
       return json(res, 500, { error: 'Error interno del servidor' });
+    }
+  });
+
+  server.get('/v1/dashboard/students/:userId', async (req, res) => {
+    try {
+      const auth = await requireAuth(req, res);
+      if (!auth) return;
+      if (auth.role !== 'admin') return json(res, 403, { error: 'No autorizado' });
+
+      const userId = String(req.params?.userId || '').trim();
+      if (!userId) return json(res, 400, { error: 'userId requerido' });
+
+      const detail = await buildStudentDashboardDetail(userId);
+      if (!detail) return json(res, 404, { error: 'Estudiante no encontrado' });
+
+      return json(res, 200, detail);
+    } catch (error) {
+      console.error('Error /v1/dashboard/students/:userId:', error);
+      return json(res, 500, { error: 'Error al consultar detalle del estudiante' });
     }
   });
 

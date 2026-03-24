@@ -131,6 +131,89 @@ export interface DashboardSummary {
 
 // ── New Dashboard Data (v2 endpoint) ────────────────────────
 
+export interface DashboardStudentRow {
+  idUsuario: string;
+  fullName: string;
+  latestTestDate: string | null;
+  combinedRisk: {
+    rank: number;
+    label: string;
+    score: number;
+    source: 'ghq12' | 'dass21' | 'none';
+  };
+  ghq12: {
+    id: string;
+    score: number;
+    riskLabel: string;
+    completedAt: string | null;
+    hasPdf: boolean;
+    pdfFilename: string | null;
+  } | null;
+  dass21: {
+    id: string;
+    dep: number;
+    anx: number;
+    str: number;
+    maxSubscale: number;
+    completedAt: string | null;
+    hasPdf: boolean;
+    pdfFilename: string | null;
+  } | null;
+}
+
+export interface DashboardStudentDetail {
+  student: {
+    idUsuario: string;
+    fullName: string;
+    email: string;
+    phone: string;
+  };
+  summary: {
+    latestTestDate: string | null;
+    combinedRisk: {
+      rank: number;
+      label: string;
+      score: number;
+      source: 'ghq12' | 'dass21' | 'none';
+    };
+  };
+  ghq12: {
+    hasData: boolean;
+    score: number | null;
+    riskLabel: string;
+    completedAt: string | null;
+    hasPdf: boolean;
+    pdf: {
+      id: string;
+      filename: string | null;
+    } | null;
+    hasSubscaleData: boolean;
+    subscales: Array<{ name: string; value: number; max: number }>;
+    byDay: Array<{ date: string; score: number }>;
+  };
+  dass21: {
+    hasData: boolean;
+    completedAt: string | null;
+    hasPdf: boolean;
+    pdf: {
+      id: string;
+      filename: string | null;
+    } | null;
+    current: {
+      dep: number;
+      anx: number;
+      str: number;
+    };
+    levels: {
+      dep: string;
+      anx: string;
+      str: string;
+      worst: string;
+    };
+    byDay: Array<{ date: string; dep: number; anx: number; str: number }>;
+  };
+}
+
 export interface DashboardData {
   overview: {
     totalPatients: number;
@@ -209,6 +292,7 @@ export interface DashboardData {
     byDay: Array<{ date: string; count: number }>;
     currentFilter: string;
   };
+  students: DashboardStudentRow[];
 }
 
 // ── User dashboard types ────────────────────────────────────
@@ -495,10 +579,28 @@ export const api = {
     return `${CORE_API_BASE}/pdfs/file?${params.toString()}`;
   },
 
+  getDatabasePdfFileUrl(kind: 'ghq12' | 'dass21', id: string, filename?: string | null, download = false): string {
+    const token = localStorage.getItem('token') || '';
+    const params = new URLSearchParams();
+    params.set('source', 'database');
+    params.set('id', `${kind}:${id}`);
+    if (filename) params.set('filename', filename);
+    if (download) params.set('download', '1');
+    params.set('token', token);
+    return `${CORE_API_BASE}/pdfs/file?${params.toString()}`;
+  },
+
   getDashboardSummary(practitionerEmail?: string) {
     const params = practitionerEmail ? `?practicante=${encodeURIComponent(practitionerEmail)}` : '';
     return coreRequest<DashboardData>(
       `/dashboard/summary${params}`,
+      { method: 'GET' },
+    );
+  },
+
+  getDashboardStudentDetail(userId: string) {
+    return coreRequest<DashboardStudentDetail>(
+      `/dashboard/students/${encodeURIComponent(userId)}`,
       { method: 'GET' },
     );
   },

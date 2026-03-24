@@ -14,6 +14,11 @@ import {
   Activity,
   GraduationCap,
   Filter,
+  Eye,
+  UserRoundSearch,
+  ChevronLeft,
+  ChevronRight,
+  X,
 } from 'lucide-react';
 import {
   PieChart,
@@ -38,7 +43,7 @@ import {
 
 import DashboardLayout from '../../components/dashboard/DashboardLayout';
 import { api } from '../../services/api';
-import type { DashboardData } from '../../services/api';
+import type { DashboardData, DashboardStudentDetail, DashboardStudentRow } from '../../services/api';
 
 /* ═══════════════════════════════════════════════════════════════
    CLINICAL COLOR PALETTE
@@ -62,6 +67,7 @@ const C = {
 };
 
 const CHART_PALETTE = [C.blue, C.purple, C.teal, C.orange, C.pink, C.cyan, C.emerald, C.amber, C.rose, C.indigo, C.sky, C.slate];
+const STUDENTS_PAGE_SIZE = 10;
 
 /* ═══════════════════════════════════════════════════════════════
    UTILITY FUNCTIONS
@@ -245,6 +251,15 @@ const renderPieLabel = ({
 /* ── TAB 1: Resumen General ───────────────────────────────── */
 function TabResumen({ data }: { data: DashboardData }) {
   const { overview, dass21, ghq12 } = data;
+  const students = data.students || [];
+
+  const [studentSort, setStudentSort] = useState<'recent' | 'alpha' | 'risk'>('recent');
+  const [selectedStudentId, setSelectedStudentId] = useState('');
+  const [studentDetail, setStudentDetail] = useState<DashboardStudentDetail | null>(null);
+  const [studentDetailLoading, setStudentDetailLoading] = useState(false);
+  const [studentDetailError, setStudentDetailError] = useState('');
+  const [studentsPage, setStudentsPage] = useState(1);
+  const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
 
   const dassTotal = dass21.totalTests || 1;
   const depAffected = dass21.depression.distribution
@@ -268,6 +283,142 @@ function TabResumen({ data }: { data: DashboardData }) {
   const onlyGHQ12: number = (overview as any).onlyGHQ12Count ?? overview.totalGHQ12;
   const onlyDASS21: number = (overview as any).onlyDASS21Count ?? 0;
   const evalPct = overview.totalPatients > 0 ? (totalEvaluated / overview.totalPatients) * 100 : 0;
+
+  const sortedStudents = useMemo(() => {
+    const getDateMs = (s: DashboardStudentRow) => (s.latestTestDate ? new Date(s.latestTestDate).getTime() : -Infinity);
+    const arr = [...students];
+
+    if (studentSort === 'alpha') {
+      arr.sort((a, b) => a.fullName.localeCompare(b.fullName, 'es'));
+      return arr;
+    }
+
+    if (studentSort === 'risk') {
+      arr.sort((a, b) => {
+        const rankDiff = (b.combinedRisk?.rank || 0) - (a.combinedRisk?.rank || 0);
+        if (rankDiff !== 0) return rankDiff;
+        const scoreDiff = (b.combinedRisk?.score || 0) - (a.combinedRisk?.score || 0);
+        if (scoreDiff !== 0) return scoreDiff;
+        return getDateMs(b) - getDateMs(a);
+      });
+      return arr;
+    }
+
+    arr.sort((a, b) => getDateMs(b) - getDateMs(a));
+    return arr;
+  }, [students, studentSort]);
+
+  useEffect(() => {
+    if (!selectedStudentId) return;
+    const stillExists = students.some((s) => s.idUsuario === selectedStudentId);
+    if (!stillExists) {
+      setSelectedStudentId('');
+      setStudentDetail(null);
+      setStudentDetailError('');
+      setIsStudentModalOpen(false);
+    }
+  }, [students, selectedStudentId]);
+
+  useEffect(() => {
+    setStudentsPage(1);
+  }, [studentSort]);
+
+  const studentsTotalPages = Math.max(1, Math.ceil(sortedStudents.length / STUDENTS_PAGE_SIZE));
+
+  useEffect(() => {
+    if (studentsPage > studentsTotalPages) {
+      setStudentsPage(studentsTotalPages);
+    }
+  }, [studentsPage, studentsTotalPages]);
+
+  const paginatedStudents = useMemo(() => {
+    const start = (studentsPage - 1) * STUDENTS_PAGE_SIZE;
+    return sortedStudents.slice(start, start + STUDENTS_PAGE_SIZE);
+  }, [sortedStudents, studentsPage]);
+
+  const pageStart = sortedStudents.length === 0 ? 0 : ((studentsPage - 1) * STUDENTS_PAGE_SIZE) + 1;
+  const pageEnd = Math.min(studentsPage * STUDENTS_PAGE_SIZE, sortedStudents.length);
+
+  const openPdfInline = useCallback((kind: 'ghq12' | 'dass21', id: string, filename?: string | null) => {
+    const url = api.getDatabasePdfFileUrl(kind, id, filename, false);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, []);
+
+  const loadStudentDetail = useCallback(async (userId: string) => {
+    setIsStudentModalOpen(true);
+    setSelectedStudentId(userId);
+    setStudentDetailLoading(true);
+    setStudentDetailError('');
+    try {
+      const detail = await api.getDashboardStudentDetail(userId);
+      setStudentDetail(detail);
+    } catch (err) {
+      setStudentDetail(null);
+      setStudentDetailError(err instanceof Error ? err.message : 'No se pudo cargar el detalle del estudiante');
+    } finally {
+      setStudentDetailLoading(false);
+    }
+  }, []);
+
+  const closeStudentModal = useCallback(() => {
+    setIsStudentModalOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isStudentModalOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeStudentModal();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isStudentModalOpen, closeStudentModal]);
+
+  const riskBadgeClass = (rank: number) => {
+    if (rank >= 5) return 'bg-red-100 text-red-700 border border-red-200';
+    if (rank >= 4) return 'bg-orange-100 text-orange-700 border border-orange-200';
+    if (rank >= 3) return 'bg-amber-100 text-amber-700 border border-amber-200';
+    if (rank >= 2) return 'bg-blue-100 text-blue-700 border border-blue-200';
+    return 'bg-emerald-100 text-emerald-700 border border-emerald-200';
+  };
+
+  const fmtDate = (iso?: string | null) => {
+    if (!iso) return 'Sin pruebas';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return 'Sin fecha';
+    return d.toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const selectedStudentRow = useMemo(
+    () => students.find((s) => s.idUsuario === selectedStudentId) || null,
+    [students, selectedStudentId],
+  );
+
+  const ghqRadarData = studentDetail?.ghq12?.subscales.map((s) => ({
+    subject: s.name,
+    value: s.value,
+    fullMark: s.max,
+  })) || [];
+
+  const ghqBarsData = studentDetail?.ghq12?.subscales.map((s) => ({
+    name: s.name,
+    value: s.value,
+  })) || [];
+
+  const dassCurrentBars = studentDetail
+    ? [
+        { name: 'Depresion', value: studentDetail.dass21.current.dep, color: C.blue },
+        { name: 'Ansiedad', value: studentDetail.dass21.current.anx, color: C.orange },
+        { name: 'Estres', value: studentDetail.dass21.current.str, color: C.red },
+      ]
+    : [];
 
   return (
     <div className="space-y-6">
@@ -437,6 +588,334 @@ function TabResumen({ data }: { data: DashboardData }) {
                 <span className="w-2 h-2 rounded-full bg-slate-300 flex-shrink-0" />
                 <span>CC automatico a <strong>chatbotpsicologia@gmail.com</strong> en cada envio</span>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Todos los Estudiantes</h3>
+          <div className="flex items-center gap-2">
+            <UserRoundSearch className="w-4 h-4 text-slate-500" />
+            <select
+              value={studentSort}
+              onChange={(e) => setStudentSort(e.target.value as 'recent' | 'alpha' | 'risk')}
+              className="text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="recent">Mas reciente primero</option>
+              <option value="alpha">Orden alfabetico</option>
+              <option value="risk">Riesgo alto a bajo</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          {sortedStudents.length === 0 ? (
+            <p className="text-sm text-slate-500">No hay estudiantes para mostrar con el filtro actual.</p>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left">
+                      <th className="py-2.5 px-2 text-slate-600 font-semibold">Estudiante</th>
+                      <th className="py-2.5 px-2 text-slate-600 font-semibold">Fecha prueba</th>
+                      <th className="py-2.5 px-2 text-center text-slate-600 font-semibold">GHQ-12</th>
+                      <th className="py-2.5 px-2 text-center text-slate-600 font-semibold">DASS-21</th>
+                      <th className="py-2.5 px-2 text-center text-slate-600 font-semibold">Riesgo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedStudents.map((student) => {
+                      const isSelected = student.idUsuario === selectedStudentId;
+                      return (
+                        <tr
+                          key={student.idUsuario}
+                          className={`border-b border-slate-100 transition-colors ${
+                            isSelected ? 'bg-blue-50/70' : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <td className="py-2.5 px-2 text-slate-800 font-medium">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void loadStudentDetail(student.idUsuario);
+                              }}
+                              className="text-left text-blue-700 hover:text-blue-900 underline underline-offset-2"
+                            >
+                              {student.fullName}
+                            </button>
+                          </td>
+                          <td className="py-2.5 px-2 text-slate-600">{fmtDate(student.latestTestDate)}</td>
+                          <td className="py-2.5 px-2 text-center">
+                            {student.ghq12?.hasPdf ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  openPdfInline('ghq12', student.ghq12!.id, student.ghq12!.pdfFilename);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-purple-200 text-purple-700 hover:bg-purple-50"
+                              >
+                                <Eye className="w-3.5 h-3.5" /> Ver PDF
+                              </button>
+                            ) : (
+                              <span className="inline-flex px-2.5 py-1 text-xs rounded-md bg-slate-100 text-slate-500">Sin PDF</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-2 text-center">
+                            {student.dass21?.hasPdf ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  openPdfInline('dass21', student.dass21!.id, student.dass21!.pdfFilename);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                              >
+                                <Eye className="w-3.5 h-3.5" /> Ver PDF
+                              </button>
+                            ) : (
+                              <span className="inline-flex px-2.5 py-1 text-xs rounded-md bg-slate-100 text-slate-500">Sin PDF</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-2 text-center">
+                            <span className={`inline-flex px-2.5 py-1 text-xs rounded-full font-semibold ${riskBadgeClass(student.combinedRisk.rank)}`}>
+                              {student.combinedRisk.label}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-slate-500">
+                  Mostrando {pageStart}-{pageEnd} de {sortedStudents.length} estudiantes
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setStudentsPage((prev) => Math.max(1, prev - 1))}
+                    disabled={studentsPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md border border-slate-300 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" /> Anterior
+                  </button>
+                  <span className="text-xs text-slate-600">Pagina {studentsPage} de {studentsTotalPages}</span>
+                  <button
+                    type="button"
+                    onClick={() => setStudentsPage((prev) => Math.min(studentsTotalPages, prev + 1))}
+                    disabled={studentsPage >= studentsTotalPages}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md border border-slate-300 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                  >
+                    Siguiente <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {isStudentModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 p-3 sm:p-6 flex items-start justify-center"
+          onClick={closeStudentModal}
+        >
+          <div
+            className="w-full max-w-7xl max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3 sm:px-6 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800">Analisis Individual del Estudiante</h3>
+                <p className="text-xs text-slate-500">
+                  {selectedStudentRow?.fullName || 'Estudiante seleccionado'} - graficas personalizadas por historial
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedStudentRow && (
+                  <span className={`inline-flex px-3 py-1 text-xs rounded-full font-semibold ${riskBadgeClass(selectedStudentRow.combinedRisk.rank)}`}>
+                    Riesgo combinado: {selectedStudentRow.combinedRisk.label}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={closeStudentModal}
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-6 space-y-4">
+              {studentDetailLoading && (
+                <div className="bg-white border border-slate-200 rounded-xl p-6 flex items-center gap-3 text-slate-600">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Cargando graficas del estudiante...
+                </div>
+              )}
+
+              {studentDetailError && !studentDetailLoading && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+                  {studentDetailError}
+                </div>
+              )}
+
+              {studentDetail && !studentDetailLoading && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                    <StatCard
+                      title="GHQ-12 Puntaje"
+                      value={studentDetail.ghq12.score ?? 0}
+                      icon={ClipboardCheck}
+                      color={C.purple}
+                      subtitle={studentDetail.ghq12.hasData ? `Nivel: ${studentDetail.ghq12.riskLabel}` : 'Sin datos GHQ-12'}
+                    />
+                    <StatCard
+                      title="DASS-21 Depresion"
+                      value={studentDetail.dass21.current.dep}
+                      icon={Brain}
+                      color={C.blue}
+                      subtitle={studentDetail.dass21.hasData ? `Nivel: ${studentDetail.dass21.levels.dep}` : 'Sin datos DASS-21'}
+                    />
+                    <StatCard
+                      title="DASS-21 Ansiedad"
+                      value={studentDetail.dass21.current.anx}
+                      icon={Heart}
+                      color={C.orange}
+                      subtitle={studentDetail.dass21.hasData ? `Nivel: ${studentDetail.dass21.levels.anx}` : 'Sin datos DASS-21'}
+                    />
+                    <StatCard
+                      title="DASS-21 Estres"
+                      value={studentDetail.dass21.current.str}
+                      icon={Zap}
+                      color={C.red}
+                      subtitle={studentDetail.dass21.hasData ? `Nivel: ${studentDetail.dass21.levels.str}` : 'Sin datos DASS-21'}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                    <ChartCard title="Perfil Radar - GHQ-12" subtitle="Subescalas del estudiante (ultima evaluacion)">
+                      {studentDetail.ghq12.hasSubscaleData ? (
+                        <ResponsiveContainer width="100%" height={300}>
+                          <RadarChart data={ghqRadarData}>
+                            <PolarGrid stroke="#e2e8f0" />
+                            <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10, fill: '#64748b' }} />
+                            <PolarRadiusAxis domain={[0, 6]} tick={{ fontSize: 9 }} />
+                            <Radar name="Subescala" dataKey="value" stroke={C.blue} fill={C.blue} fillOpacity={0.25} strokeWidth={2} />
+                            <Tooltip content={<CustomTooltip />} />
+                          </RadarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <p className="text-sm text-slate-500">No hay detalle por items para GHQ-12 en este estudiante.</p>
+                      )}
+                    </ChartCard>
+
+                    <ChartCard title="Subescalas GHQ-12 - Barras" subtitle="Comparativo por dimension (ultima evaluacion)">
+                      {studentDetail.ghq12.hasSubscaleData ? (
+                        <ResponsiveContainer width="100%" height={300}>
+                          <BarChart data={ghqBarsData} layout="vertical" margin={{ top: 5, right: 30, left: 90, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                            <XAxis type="number" domain={[0, 6]} tick={{ fontSize: 11 }} />
+                            <YAxis type="category" dataKey="name" width={85} tick={{ fontSize: 10 }} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Bar dataKey="value" name="Puntaje" fill={C.purple} radius={[0, 4, 4, 0]} barSize={18} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <p className="text-sm text-slate-500">No hay subescalas GHQ-12 para visualizar.</p>
+                      )}
+                    </ChartCard>
+                  </div>
+
+                  <ChartCard title="Tendencia Temporal - GHQ-12" subtitle="Evolucion del puntaje GHQ-12 del estudiante">
+                    {studentDetail.ghq12.byDay.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={250}>
+                        <LineChart data={studentDetail.ghq12.byDay} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 11 }} domain={[0, 36]} />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Legend formatter={(value: string) => <span className="text-xs">{value}</span>} />
+                          <Line type="monotone" dataKey="score" name="Puntaje GHQ-12" stroke={C.red} strokeWidth={2} dot={{ r: 3 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <p className="text-sm text-slate-500">No hay historial temporal GHQ-12 para este estudiante.</p>
+                    )}
+                  </ChartCard>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                    <ChartCard title="Comparativo Actual DASS-21" subtitle="Puntajes actuales por subescala">
+                      {studentDetail.dass21.hasData ? (
+                        <ResponsiveContainer width="100%" height={250}>
+                          <BarChart data={dassCurrentBars} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 11 }} domain={[0, 21]} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Bar dataKey="value" name="Puntaje" radius={[6, 6, 0, 0]} barSize={56}>
+                              {dassCurrentBars.map((entry, idx) => (
+                                <Cell key={idx} fill={entry.color} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <p className="text-sm text-slate-500">No hay datos DASS-21 para este estudiante.</p>
+                      )}
+                    </ChartCard>
+
+                    <ChartCard title="Niveles DASS-21" subtitle="Clasificacion por subescala">
+                      {studentDetail.dass21.hasData ? (
+                        <div className="space-y-3 mt-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-slate-600">Depresion</span>
+                            <span className="font-semibold text-slate-900">{studentDetail.dass21.levels.dep}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-slate-600">Ansiedad</span>
+                            <span className="font-semibold text-slate-900">{studentDetail.dass21.levels.anx}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-slate-600">Estres</span>
+                            <span className="font-semibold text-slate-900">{studentDetail.dass21.levels.str}</span>
+                          </div>
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-sm">
+                            <span className="text-slate-600">Nivel predominante</span>
+                            <span className="font-semibold text-red-600">{studentDetail.dass21.levels.worst}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-500">No hay clasificacion DASS-21 disponible.</p>
+                      )}
+                    </ChartCard>
+                  </div>
+
+                  <ChartCard title="Tendencia Temporal - DASS-21" subtitle="Evolucion de depresion, ansiedad y estres">
+                    {studentDetail.dass21.byDay.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={260}>
+                        <LineChart data={studentDetail.dass21.byDay} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 11 }} domain={[0, 21]} />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Legend formatter={(value: string) => <span className="text-xs">{value}</span>} />
+                          <Line type="monotone" dataKey="dep" name="Depresion" stroke={C.blue} strokeWidth={2} dot={{ r: 3 }} />
+                          <Line type="monotone" dataKey="anx" name="Ansiedad" stroke={C.orange} strokeWidth={2} dot={{ r: 3 }} />
+                          <Line type="monotone" dataKey="str" name="Estres" stroke={C.red} strokeWidth={2} dot={{ r: 3 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <p className="text-sm text-slate-500">No hay historial temporal DASS-21 para este estudiante.</p>
+                    )}
+                  </ChartCard>
+                </>
+              )}
             </div>
           </div>
         </div>
