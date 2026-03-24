@@ -530,17 +530,17 @@ const getDashboardSummary = async (practitionerEmail = null) => {
     `).catch(() => []),
     // Email tracking: counts by test type
     prisma.$queryRawUnsafe(`
-      SELECT LOWER(COALESCE(test_tipo, '')) AS test_tipo, COUNT(*) AS total, COUNT(DISTINCT telefono_paciente) AS pacientes
+      SELECT LOWER(IFNULL(test_tipo, '')) AS test_tipo, COUNT(*) AS total, COUNT(DISTINCT telefono_paciente) AS pacientes
       FROM envios_correo
       WHERE 1=1${emailWhereClause}
-      GROUP BY LOWER(COALESCE(test_tipo, ''))
+      GROUP BY LOWER(IFNULL(test_tipo, ''))
     `).catch(() => []),
     // Email tracking: per-patient flags by test type (for solo/ambas)
     prisma.$queryRawUnsafe(`
       SELECT
         telefono_paciente,
-        MAX(CASE WHEN LOWER(COALESCE(test_tipo, '')) = 'ghq12' THEN 1 ELSE 0 END) AS has_ghq12,
-        MAX(CASE WHEN LOWER(COALESCE(test_tipo, '')) = 'dass21' THEN 1 ELSE 0 END) AS has_dass21
+        MAX(CASE WHEN LOWER(IFNULL(test_tipo, '')) = 'ghq12' THEN 1 ELSE 0 END) AS has_ghq12,
+        MAX(CASE WHEN LOWER(IFNULL(test_tipo, '')) = 'dass21' THEN 1 ELSE 0 END) AS has_dass21
       FROM envios_correo
       WHERE 1=1${emailWhereClause}
       GROUP BY telefono_paciente
